@@ -5,6 +5,8 @@ namespace Checkers.App.ViewModels;
 
 public sealed partial class AnalysisViewModel : ObservableObject
 {
+    public event Action? Updated;
+
     [ObservableProperty]
     private string _move = "-";
 
@@ -35,6 +37,7 @@ public sealed partial class AnalysisViewModel : ObservableObject
         Nodes = analysis.Nodes;
         Evaluations = analysis.Evaluations;
         Time = analysis.Time;
+        Updated?.Invoke();
     }
 
     public void Reset()
@@ -46,5 +49,6 @@ public sealed partial class AnalysisViewModel : ObservableObject
         Nodes = "-";
         Evaluations = "-";
         Time = "-";
+        Updated?.Invoke();
     }
 }

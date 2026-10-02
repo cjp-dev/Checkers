@@ -760,4 +760,33 @@ public class MainViewModelTests
         vm.Session.RuleEngine.Variant.Should().Be(CheckersVariant.English);
         vm.Session.MoveHistory.Should().BeEmpty();
     }
+
+    [Fact]
+    public void AnalysisViewModel_UpdatedEvent_FiresOnUpdateAndReset()
+    {
+        var vm = new AnalysisViewModel();
+        int updatedCount = 0;
+        vm.Updated += () => updatedCount++;
+
+        vm.Update(new SearchAnalysis
+        {
+            Move = "12-16",
+            Depth = "3 plies",
+            Value = "+50",
+            BestMove = "12-16",
+            Nodes = "1,000",
+            Evaluations = "500",
+            Time = "0:00.1"
+        });
+
+        updatedCount.Should().Be(1);
+        vm.Move.Should().Be("12-16");
+        vm.Depth.Should().Be("3 plies");
+
+        vm.Reset();
+
+        updatedCount.Should().Be(2);
+        vm.Move.Should().Be("-");
+        vm.Depth.Should().Be("-");
+    }
 }

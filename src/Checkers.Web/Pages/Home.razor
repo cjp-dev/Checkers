@@ -213,7 +213,7 @@
         _commands = _menus.SelectMany(menu => menu.Entries).Select(entry => entry.Command).ToArray();
 
         Vm.PropertyChanged += OnChanged;
-        Vm.Analysis.PropertyChanged += OnChanged;
+        Vm.Analysis.Updated += OnAnalysisUpdated;
         Dialogs.Changed += OnDialogChanged;
 
         foreach (var square in Vm.BoardSquares)
@@ -239,7 +239,7 @@
     public void Dispose()
     {
         Vm.PropertyChanged -= OnChanged;
-        Vm.Analysis.PropertyChanged -= OnChanged;
+        Vm.Analysis.Updated -= OnAnalysisUpdated;
         Dialogs.Changed -= OnDialogChanged;
 
         foreach (var square in Vm.BoardSquares)
@@ -277,6 +277,8 @@
 
     private void OpenDocs() =>
         ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute(""), "_blank", "noopener");
+
+    private void OnAnalysisUpdated() => _ = InvokeAsync(StateHasChanged);
 
     private void OnChanged(object? sender, EventArgs e)
     {

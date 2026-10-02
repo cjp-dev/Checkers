@@ -71,7 +71,7 @@ public sealed class MinimaxPlayer : IPlayer
         CancellationToken cancellationToken = default) =>
         GetMoveAsync(state, legalMoves, progress: null, cancellationToken);
 
-    public ValueTask<Move> GetMoveAsync(
+    public async ValueTask<Move> GetMoveAsync(
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         IProgress<SearchAnalysis>? progress,
@@ -97,7 +97,11 @@ public sealed class MinimaxPlayer : IPlayer
                 Time = "0:00.0"
             };
             progress?.Report(LastAnalysis);
-            return ValueTask.FromResult(singleMove);
+            if (progress != null)
+            {
+                await Task.Delay(1, cancellationToken);
+            }
+            return singleMove;
         }
 
         var sw = Stopwatch.StartNew();
@@ -185,6 +189,24 @@ public sealed class MinimaxPlayer : IPlayer
                 }
 
                 alpha = Math.Max(alpha, score);
+
+                // Periodically report search heartbeat between root moves and yield to browser dispatcher
+                if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 150)
+                {
+                    lastReportMs = sw.ElapsedMilliseconds;
+                    var heartbeatAnalysis = new SearchAnalysis
+                    {
+                        Move = move.Notation,
+                        Depth = $"{d} plies...",
+                        Value = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
+                        BestMove = bestMoveThisDepth?.Notation ?? bestMoveOverall?.Notation ?? move.Notation,
+                        Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+                        Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                        Time = sw.Elapsed.ToString(@"m\:ss\.f")
+                    };
+                    progress.Report(heartbeatAnalysis);
+                    await Task.Delay(1, cancellationToken);
+                }
             }
 
             if (!depthAborted && bestMoveThisDepth != null)
@@ -209,7 +231,13 @@ public sealed class MinimaxPlayer : IPlayer
                     Time = sw.Elapsed.ToString(@"m\:ss\.f")
                 };
                 LastAnalysis = iterationAnalysis;
+                lastReportMs = sw.ElapsedMilliseconds;
                 progress?.Report(iterationAnalysis);
+
+                if (progress != null)
+                {
+                    await Task.Delay(1, cancellationToken);
+                }
 
                 // Stop early if forced win found
                 if (bestScoreOverall >= 90_000)
@@ -238,7 +266,7 @@ public sealed class MinimaxPlayer : IPlayer
 
         progress?.Report(LastAnalysis);
 
-        return ValueTask.FromResult(bestMoveOverall);
+        return bestMoveOverall;
     }
 
     private int NegaMax(
