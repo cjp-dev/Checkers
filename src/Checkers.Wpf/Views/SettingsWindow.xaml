@@ -1,0 +1,57 @@
+<Window x:Class="Checkers.Wpf.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Checkers.App.ViewModels;assembly=Checkers.App"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
+        Title="Settings" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="#FFFFFF" TextElement.Foreground="#2C3E50">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="90" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.ColumnSpan="3" Margin="0,0,0,12" FontSize="13" FontWeight="SemiBold" Text="How long may the computer think?" />
+
+        <RadioButton Grid.Row="1" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                     Content="Fixed depth" IsChecked="{Binding IsFixedDepth}" />
+        <Slider Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxDepth}"
+                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding Depth}" IsEnabled="{Binding IsFixedDepth}"
+                AutomationProperties.Name="Depth" />
+        <TextBlock Grid.Row="1" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                   Text="{Binding Depth, StringFormat={}{0} plies}" />
+
+        <RadioButton Grid.Row="2" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                     Content="Time per move" IsChecked="{Binding IsTimePerMove}" />
+        <Slider Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxSecondsPerMove}"
+                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding SecondsPerMove}" IsEnabled="{Binding IsTimePerMove}"
+                AutomationProperties.Name="Seconds per move" />
+        <TextBlock Grid.Row="2" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                   Text="{Binding SecondsPerMove, StringFormat={}{0} seconds}" />
+
+        <RadioButton Grid.Row="3" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                     Content="Time per game" IsChecked="{Binding IsTimePerGame}" />
+        <Slider Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxMinutesPerGame}"
+                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding MinutesPerGame}" IsEnabled="{Binding IsTimePerGame}"
+                AutomationProperties.Name="Minutes per game" />
+        <TextBlock Grid.Row="3" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                   Text="{Binding MinutesPerGame, StringFormat={}{0} minutes}" />
+
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Margin="0,16,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="80" Content="OK" IsDefault="True" Click="OnOk" Padding="0,4" Background="#3498DB" Foreground="#FFFFFF" BorderThickness="0" Cursor="Hand" />
+            <Button Width="80" Margin="8,0,0,0" Content="Cancel" IsCancel="True" Padding="0,4" Background="#ECEFF1" Foreground="#333333" BorderThickness="0" Cursor="Hand" />
+        </StackPanel>
+    </Grid>
+</Window>

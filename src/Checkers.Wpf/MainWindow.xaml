@@ -61,23 +61,7 @@
                           Command="{Binding SetGameModeCommand}"
                           CommandParameter="{x:Static models:GameMode.HumanVsHuman}" />
                 <Separator />
-                <MenuItem Header="Difficulty" IsEnabled="{Binding IsAiDifficultyEnabled}">
-                    <MenuItem Header="_Easy (Random)"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsEasyDifficulty, Mode=OneWay}"
-                              Command="{Binding SetDifficultyCommand}"
-                              CommandParameter="{x:Static models:AiDifficulty.Easy}" />
-                    <MenuItem Header="_Medium (Minimax 3)"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsMediumDifficulty, Mode=OneWay}"
-                              Command="{Binding SetDifficultyCommand}"
-                              CommandParameter="{x:Static models:AiDifficulty.Medium}" />
-                    <MenuItem Header="_Hard (Minimax 6)"
-                              IsCheckable="True"
-                              IsChecked="{Binding IsHardDifficulty, Mode=OneWay}"
-                              Command="{Binding SetDifficultyCommand}"
-                              CommandParameter="{x:Static models:AiDifficulty.Hard}" />
-                </MenuItem>
+                <MenuItem Header="S_ettings..." Command="{Binding EditSettingsCommand}" />
             </MenuItem>
             <MenuItem Header="_Moves">
                 <MenuItem Header="_Undo" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}" />
@@ -119,27 +103,16 @@
                             <TextBlock Text="{Binding GameModeBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
                         </Border>
 
-                        <TextBlock Text="DIFFICULTY: " FontSize="11" FontWeight="Bold" Foreground="#888888" VerticalAlignment="Center" Margin="0,0,4,0"
-                                   Visibility="{Binding IsAiDifficultyEnabled, Converter={StaticResource BoolToVis}}" />
-                        <Border CornerRadius="4" Padding="8,3"
-                                Visibility="{Binding IsAiDifficultyEnabled, Converter={StaticResource BoolToVis}}">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Background" Value="#2980B9" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsEasyDifficulty}" Value="True">
-                                            <Setter Property="Background" Value="#27AE60" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsMediumDifficulty}" Value="True">
-                                            <Setter Property="Background" Value="#2980B9" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsHardDifficulty}" Value="True">
-                                            <Setter Property="Background" Value="#C0392B" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <TextBlock Text="{Binding DifficultyBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
+                        <TextBlock Text="AI: " FontSize="11" FontWeight="Bold" Foreground="#888888" VerticalAlignment="Center" Margin="0,0,4,0"
+                                   Visibility="{Binding IsHumanVsComputer, Converter={StaticResource BoolToVis}}" />
+                        <Border Background="#2980B9" CornerRadius="4" Padding="8,3" Margin="0,0,6,0"
+                                Visibility="{Binding IsHumanVsComputer, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding SettingsBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
+                        </Border>
+
+                        <Border Background="#8E44AD" CornerRadius="4" Padding="8,3"
+                                Visibility="{Binding IsClockVisible, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding ClockText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
                         </Border>
                     </StackPanel>
                 </Border>
@@ -286,76 +259,23 @@
                         </Grid>
 
                         <Grid Margin="0,0,0,6">
-                            <TextBlock Text="AI DIFFICULTY" FontSize="11" FontWeight="Bold" Foreground="#888888" HorizontalAlignment="Left" />
-                            <TextBlock Text="(vs Human mode)" FontSize="10" Foreground="#B0BEC5" HorizontalAlignment="Right"
-                                       Visibility="{Binding IsHumanVsHuman, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="COMPUTER SETTINGS" FontSize="11" FontWeight="Bold" Foreground="#888888" HorizontalAlignment="Left" />
+                            <TextBlock Text="{Binding ClockText}" FontSize="10" FontWeight="Bold" Foreground="#E67E22" HorizontalAlignment="Right"
+                                       Visibility="{Binding IsClockVisible, Converter={StaticResource BoolToVis}}" />
                         </Grid>
-                        <Grid IsEnabled="{Binding IsAiDifficultyEnabled}">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0"
-                                    Command="{Binding SetDifficultyCommand}"
-                                    CommandParameter="{x:Static models:AiDifficulty.Easy}"
-                                    Margin="0,0,2,0" Padding="4,6" FontSize="11" FontWeight="SemiBold"
-                                    BorderThickness="0" Cursor="Hand">
-                                <Button.Style>
-                                    <Style TargetType="Button">
-                                        <Setter Property="Background" Value="#ECEFF1" />
-                                        <Setter Property="Foreground" Value="#546E7A" />
-                                        <Setter Property="Content" Value="Easy" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsEasyDifficulty}" Value="True">
-                                                <Setter Property="Background" Value="#27AE60" />
-                                                <Setter Property="Foreground" Value="#FFFFFF" />
-                                                <Setter Property="Content" Value="✓ Easy" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
+                            <Border Grid.Column="0" Background="#ECEFF1" CornerRadius="4" Padding="8,6" Margin="0,0,6,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SettingsBadgeText}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" TextTrimming="CharacterEllipsis" />
+                            </Border>
                             <Button Grid.Column="1"
-                                    Command="{Binding SetDifficultyCommand}"
-                                    CommandParameter="{x:Static models:AiDifficulty.Medium}"
-                                    Margin="2,0,2,0" Padding="4,6" FontSize="11" FontWeight="SemiBold"
-                                    BorderThickness="0" Cursor="Hand">
-                                <Button.Style>
-                                    <Style TargetType="Button">
-                                        <Setter Property="Background" Value="#ECEFF1" />
-                                        <Setter Property="Foreground" Value="#546E7A" />
-                                        <Setter Property="Content" Value="Medium" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsMediumDifficulty}" Value="True">
-                                                <Setter Property="Background" Value="#2980B9" />
-                                                <Setter Property="Foreground" Value="#FFFFFF" />
-                                                <Setter Property="Content" Value="✓ Medium" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
-                            <Button Grid.Column="2"
-                                    Command="{Binding SetDifficultyCommand}"
-                                    CommandParameter="{x:Static models:AiDifficulty.Hard}"
-                                    Margin="2,0,0,0" Padding="4,6" FontSize="11" FontWeight="SemiBold"
-                                    BorderThickness="0" Cursor="Hand">
-                                <Button.Style>
-                                    <Style TargetType="Button">
-                                        <Setter Property="Background" Value="#ECEFF1" />
-                                        <Setter Property="Foreground" Value="#546E7A" />
-                                        <Setter Property="Content" Value="Hard" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsHardDifficulty}" Value="True">
-                                                <Setter Property="Background" Value="#C0392B" />
-                                                <Setter Property="Foreground" Value="#FFFFFF" />
-                                                <Setter Property="Content" Value="✓ Hard" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
+                                    Content="Settings..."
+                                    Command="{Binding EditSettingsCommand}"
+                                    Padding="12,6" FontSize="11" FontWeight="SemiBold"
+                                    Background="#3498DB" Foreground="#FFFFFF" BorderThickness="0" Cursor="Hand" />
                         </Grid>
                     </StackPanel>
                 </Border>

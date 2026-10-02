@@ -1,10 +1,11 @@
+using System.Diagnostics;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
 namespace Checkers.Core.AI;
 
 /// <summary>
-/// Minimax AI with Alpha-Beta pruning, move ordering, and heuristic evaluation.
+/// Minimax AI with Alpha-Beta pruning, iterative deepening, PV move ordering, and time controls.
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
@@ -13,27 +14,39 @@ public sealed class MinimaxPlayer : IPlayer
 
     private readonly IRuleEngine _ruleEngine;
     private readonly IEvaluationFunction _evaluator;
-    private readonly Random _rng = new(42);
 
     public string Name { get; }
-    public int Depth { get; }
+    public SearchLimits Limits { get; }
+    public int Depth => Limits.Depth;
     public long NodesEvaluated { get; private set; }
     public long LeafEvaluations { get; private set; }
     public SearchAnalysis? LastAnalysis { get; private set; }
+
+    public MinimaxPlayer(
+        SearchLimits limits,
+        string? name = null,
+        IRuleEngine? ruleEngine = null,
+        IEvaluationFunction? evaluator = null)
+    {
+        Limits = limits;
+        Name = name ?? limits.Mode switch
+        {
+            TimeControlMode.FixedDepth => $"Minimax (Depth {limits.Depth})",
+            TimeControlMode.TimePerMove => $"Minimax ({limits.Time.TotalSeconds:0}s/move)",
+            TimeControlMode.TimePerGame => "Minimax (Clock)",
+            _ => "Minimax AI"
+        };
+        _ruleEngine = ruleEngine ?? new RuleEngine();
+        _evaluator = evaluator ?? new EvaluationFunction();
+    }
 
     public MinimaxPlayer(
         int depth = 4,
         string? name = null,
         IRuleEngine? ruleEngine = null,
         IEvaluationFunction? evaluator = null)
+        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator)
     {
-        if (depth < 1)
-            throw new ArgumentOutOfRangeException(nameof(depth), "Depth must be at least 1.");
-
-        Depth = depth;
-        Name = name ?? $"Minimax (Depth {depth})";
-        _ruleEngine = ruleEngine ?? new RuleEngine();
-        _evaluator = evaluator ?? new EvaluationFunction();
     }
 
     public ValueTask<Move> GetMoveAsync(
@@ -53,7 +66,7 @@ public sealed class MinimaxPlayer : IPlayer
             LastAnalysis = new SearchAnalysis
             {
                 Move = singleMove.Notation,
-                Depth = $"{Depth} plies (Forced)",
+                Depth = "1 ply (Forced)",
                 Value = "Forced",
                 BestMove = singleMove.Notation,
                 Nodes = "1",
@@ -63,64 +76,119 @@ public sealed class MinimaxPlayer : IPlayer
             return ValueTask.FromResult(singleMove);
         }
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         NodesEvaluated = 0;
         LeafEvaluations = 0;
 
-        var orderedMoves = OrderMoves(legalMoves);
-        int alpha = -200_000;
-        int beta = 200_000;
+        // Compute time budgets (soft and hard limits in milliseconds)
+        long softLimitMs = long.MaxValue;
+        long hardLimitMs = long.MaxValue;
+        int maxTargetDepth = Limits.Mode == TimeControlMode.FixedDepth ? Limits.Depth : 20;
 
-        var bestMoves = new List<Move>();
-        int bestScore = int.MinValue;
-
-        foreach (var move in orderedMoves)
+        if (Limits.Mode == TimeControlMode.TimePerMove)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            hardLimitMs = (long)Limits.Time.TotalMilliseconds;
+            softLimitMs = (hardLimitMs * 2) / 3;
+        }
+        else if (Limits.Mode == TimeControlMode.TimePerGame)
+        {
+            int piecesLeft = state.WhitePiecesCount + state.BlackPiecesCount;
+            int estimatedMoves = Math.Clamp(piecesLeft, 2, 25);
+            long allocatedMs = (long)(Limits.Time.TotalMilliseconds / estimatedMoves);
+            hardLimitMs = Math.Max(10, allocatedMs);
+            softLimitMs = (hardLimitMs * 2) / 3;
+        }
 
-            var nextState = _ruleEngine.ApplyMove(state, move);
-            int score = -NegaMax(nextState, Depth - 1, -beta, -alpha, ply: 1, cancellationToken);
+        Move? bestMoveOverall = null;
+        int bestScoreOverall = 0;
+        int completedDepth = 1;
 
-            if (score > bestScore)
+        var currentOrder = OrderMoves(legalMoves).ToList();
+
+        // Iterative Deepening from depth 1 up to maxTargetDepth
+        for (int d = 1; d <= maxTargetDepth; d++)
+        {
+            // If soft limit reached after finishing previous depth, stop iterating
+            if (d > 1 && sw.ElapsedMilliseconds >= softLimitMs)
+                break;
+
+            Move? bestMoveThisDepth = null;
+            int bestScoreThisDepth = int.MinValue;
+            int alpha = -200_000;
+            int beta = 200_000;
+            bool depthAborted = false;
+
+            foreach (var move in currentOrder)
             {
-                bestScore = score;
-                bestMoves.Clear();
-                bestMoves.Add(move);
-            }
-            else if (score == bestScore)
-            {
-                bestMoves.Add(move);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (sw.ElapsedMilliseconds >= hardLimitMs)
+                {
+                    depthAborted = true;
+                    break;
+                }
+
+                var nextState = _ruleEngine.ApplyMove(state, move);
+                int score = -NegaMax(nextState, d - 1, -beta, -alpha, ply: 1, sw, hardLimitMs, cancellationToken, out bool aborted);
+
+                if (aborted)
+                {
+                    depthAborted = true;
+                    break;
+                }
+
+                if (score > bestScoreThisDepth)
+                {
+                    bestScoreThisDepth = score;
+                    bestMoveThisDepth = move;
+                }
+
+                alpha = Math.Max(alpha, score);
             }
 
-            alpha = Math.Max(alpha, score);
+            if (!depthAborted && bestMoveThisDepth != null)
+            {
+                bestMoveOverall = bestMoveThisDepth;
+                bestScoreOverall = bestScoreThisDepth;
+                completedDepth = d;
+
+                // PV move ordering: prioritize the best move found in this depth
+                currentOrder.Remove(bestMoveThisDepth);
+                currentOrder.Insert(0, bestMoveThisDepth);
+
+                // Stop early if forced win found
+                if (bestScoreOverall >= 90_000)
+                    break;
+            }
+            else
+            {
+                break;
+            }
         }
 
         sw.Stop();
 
-        // Among moves tied for the best score, choose uniformly at random
-        int selectedIndex = _rng.Next(bestMoves.Count);
-        var chosenMove = bestMoves[selectedIndex];
+        bestMoveOverall ??= currentOrder[0];
 
-        string valueStr = bestScore switch
+        string valueStr = bestScoreOverall switch
         {
-            >= 90_000 => $"+Win in {WinScore - bestScore} plies",
-            <= -90_000 => $"-Loss in {bestScore - LossScore} plies",
-            > 0 => $"+{bestScore}",
-            _ => bestScore.ToString()
+            >= 90_000 => $"+Win in {WinScore - bestScoreOverall} plies",
+            <= -90_000 => $"-Loss in {bestScoreOverall - LossScore} plies",
+            > 0 => $"+{bestScoreOverall}",
+            _ => bestScoreOverall.ToString()
         };
 
         LastAnalysis = new SearchAnalysis
         {
-            Move = chosenMove.Notation,
-            Depth = $"{Depth} plies",
+            Move = bestMoveOverall.Notation,
+            Depth = $"{completedDepth} plies",
             Value = valueStr,
-            BestMove = chosenMove.Notation,
+            BestMove = bestMoveOverall.Notation,
             Nodes = NodesEvaluated.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
             Evaluations = LeafEvaluations.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
             Time = sw.Elapsed.ToString(@"m\:ss\.f")
         };
 
-        return ValueTask.FromResult(chosenMove);
+        return ValueTask.FromResult(bestMoveOverall);
     }
 
     private int NegaMax(
@@ -129,9 +197,23 @@ public sealed class MinimaxPlayer : IPlayer
         int alpha,
         int beta,
         int ply,
-        CancellationToken cancellationToken)
+        Stopwatch sw,
+        long hardLimitMs,
+        CancellationToken cancellationToken,
+        out bool aborted)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        aborted = false;
+
+        if ((NodesEvaluated & 511) == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (sw.ElapsedMilliseconds >= hardLimitMs)
+            {
+                aborted = true;
+                return 0;
+            }
+        }
+
         NodesEvaluated++;
 
         var (status, _) = _ruleEngine.EvaluateGameStatus(state);
@@ -162,7 +244,10 @@ public sealed class MinimaxPlayer : IPlayer
         foreach (var move in orderedMoves)
         {
             var nextState = _ruleEngine.ApplyMove(state, move);
-            int score = -NegaMax(nextState, depth - 1, -beta, -alpha, ply + 1, cancellationToken);
+            int score = -NegaMax(nextState, depth - 1, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
+
+            if (aborted)
+                return 0;
 
             maxScore = Math.Max(maxScore, score);
             alpha = Math.Max(alpha, score);

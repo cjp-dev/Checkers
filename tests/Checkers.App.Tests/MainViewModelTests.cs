@@ -25,10 +25,12 @@ public class MainViewModelTests
     private class TestDialogService : IDialogService
     {
         public List<string> Errors { get; } = [];
+        public GameSettings? SettingsToReturn { get; set; }
         public void ShowInfo(string title, string message) { }
         public bool ShowConfirmation(string title, string message) => true;
         public void ShowAbout() { }
         public void ShowError(string message) => Errors.Add(message);
+        public Task<GameSettings?> EditSettingsAsync(GameSettings current) => Task.FromResult(SettingsToReturn);
     }
 
     private class TestGameFileService : IGameFileService
@@ -161,18 +163,21 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void SetDifficulty_UpdatesAiPlayerType()
+    public async Task EditSettingsCommand_UpdatesSettingsAndAiPlayerLimits()
     {
-        var vm = new MainViewModel();
+        var dialogs = new TestDialogService
+        {
+            SettingsToReturn = new GameSettings(TimeControlMode.FixedDepth, 12, 10, 15)
+        };
+        var vm = new MainViewModel(dialogService: dialogs);
 
-        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy);
-        vm.Difficulty.Should().Be(AiDifficulty.Easy);
-        vm.CreateAiPlayer().Should().BeOfType<Checkers.Core.AI.RandomPlayer>();
+        await vm.EditSettingsCommand.ExecuteAsync(null);
 
-        vm.SetDifficultyCommand.Execute(AiDifficulty.Hard);
-        vm.Difficulty.Should().Be(AiDifficulty.Hard);
-        var hardAi = vm.CreateAiPlayer().Should().BeOfType<Checkers.Core.AI.MinimaxPlayer>().Subject;
-        hardAi.Depth.Should().Be(6);
+        vm.Settings.Mode.Should().Be(TimeControlMode.FixedDepth);
+        vm.Settings.Depth.Should().Be(12);
+        vm.SettingsBadgeText.Should().Be("12 plies");
+        var player = vm.CreateAiPlayer().Should().BeOfType<MinimaxPlayer>().Subject;
+        player.Depth.Should().Be(12);
     }
 
     [Fact]
@@ -180,7 +185,7 @@ public class MainViewModelTests
     {
         var vm = new MainViewModel();
         vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
-        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy); // fast for testing
+        vm.Settings = new GameSettings(TimeControlMode.FixedDepth, 1, 1, 1); // fast for testing
 
         // Human plays (5,0) -> (4,1)
         vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
@@ -276,41 +281,43 @@ public class MainViewModelTests
         // Default mode is HumanVsHuman
         vm.IsHumanVsHuman.Should().BeTrue();
         vm.IsHumanVsComputer.Should().BeFalse();
-        vm.IsAiDifficultyEnabled.Should().BeFalse();
         vm.GameModeBadgeText.Should().Be("vs Human");
 
         // Switch to HumanVsComputer
         vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
         vm.IsHumanVsComputer.Should().BeTrue();
         vm.IsHumanVsHuman.Should().BeFalse();
-        vm.IsAiDifficultyEnabled.Should().BeTrue();
         vm.GameModeBadgeText.Should().Be("vs Computer");
         vm.WhitePlayerLabel.Should().Contain("You");
         vm.BlackPlayerLabel.Should().Contain("Computer");
     }
 
     [Fact]
-    public void Difficulty_PropertiesReflectActiveSelection()
+    public void Settings_PropertiesAndClockReflectActiveSelection()
     {
         var vm = new MainViewModel();
 
-        // Default is Medium
-        vm.IsMediumDifficulty.Should().BeTrue();
-        vm.IsEasyDifficulty.Should().BeFalse();
-        vm.IsHardDifficulty.Should().BeFalse();
-        vm.DifficultyBadgeText.Should().Contain("Medium");
+        // Default settings is TimePerGame 5 min
+        vm.Settings.Mode.Should().Be(TimeControlMode.TimePerGame);
+        vm.SettingsBadgeText.Should().Be("5 min / game");
+        vm.IsClockVisible.Should().BeFalse(); // Because default mode is HumanVsHuman
 
-        // Set to Easy
-        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy);
-        vm.IsEasyDifficulty.Should().BeTrue();
-        vm.IsMediumDifficulty.Should().BeFalse();
-        vm.DifficultyBadgeText.Should().Contain("Easy");
+        // Switch to HumanVsComputer -> Clock becomes visible
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.IsClockVisible.Should().BeTrue();
+        vm.ClockText.Should().Be("Clock: 5:00");
 
-        // Set to Hard
-        vm.SetDifficultyCommand.Execute(AiDifficulty.Hard);
-        vm.IsHardDifficulty.Should().BeTrue();
-        vm.IsEasyDifficulty.Should().BeFalse();
-        vm.DifficultyBadgeText.Should().Contain("Hard");
+        // Change to TimePerMove
+        vm.Settings = new GameSettings(TimeControlMode.TimePerMove, 8, 10, 5);
+        vm.SettingsBadgeText.Should().Be("10s / move");
+        vm.IsClockVisible.Should().BeFalse();
+        vm.ClockText.Should().BeEmpty();
+
+        // Change to FixedDepth
+        vm.Settings = new GameSettings(TimeControlMode.FixedDepth, 6, 10, 5);
+        vm.SettingsBadgeText.Should().Be("6 plies");
+        vm.IsClockVisible.Should().BeFalse();
+        vm.ClockText.Should().BeEmpty();
     }
 
     [Fact]
@@ -472,7 +479,7 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public async Task OpenCommand_LoadsGameAndRestoresSessionModeAndDifficulty()
+    public async Task OpenCommand_LoadsGameAndRestoresSettings()
     {
         // First make a move in a session to format
         var baseSession = new GameSession();
@@ -481,7 +488,8 @@ public class MainViewModelTests
 
         string savedContent = $"""
             [GameMode "HumanVsComputer"]
-            [Difficulty "Hard"]
+            [TimeControlMode "TimePerMove"]
+            [SecondsPerMove "15"]
 
             {move1.Notation}
             """;
@@ -497,10 +505,37 @@ public class MainViewModelTests
         vm.FileName.Should().Be(@"C:\SavedGames\match.checkers");
         vm.Title.Should().Be("Checkers (Draughts) – match.checkers");
         vm.GameMode.Should().Be(GameMode.HumanVsComputer);
-        vm.Difficulty.Should().Be(AiDifficulty.Hard);
+        vm.Settings.Mode.Should().Be(TimeControlMode.TimePerMove);
+        vm.Settings.SecondsPerMove.Should().Be(15);
         vm.Session.MoveHistory.Should().HaveCount(1);
         vm.Session.MoveHistory[0].Notation.Should().Be(move1.Notation);
         vm.MoveHistoryList.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task OpenCommand_BackwardsCompatibilityWithDifficultyTag()
+    {
+        var baseSession = new GameSession();
+        var move1 = baseSession.LegalMoves.First();
+
+        string savedContent = $"""
+            [GameMode "HumanVsComputer"]
+            [Difficulty "Hard"]
+
+            {move1.Notation}
+            """;
+
+        var files = new TestGameFileService
+        {
+            FileToOpen = new GameFile(@"C:\SavedGames\legacy.checkers", savedContent)
+        };
+        var vm = new MainViewModel(fileService: files);
+
+        await vm.OpenCommand.ExecuteAsync(null);
+
+        vm.GameMode.Should().Be(GameMode.HumanVsComputer);
+        vm.Settings.Mode.Should().Be(TimeControlMode.FixedDepth);
+        vm.Settings.Depth.Should().Be(8);
     }
 
     [Fact]

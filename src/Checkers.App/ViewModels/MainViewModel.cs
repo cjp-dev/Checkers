@@ -59,16 +59,25 @@ public sealed partial class MainViewModel : ObservableObject
     private GameMode _gameMode = GameMode.HumanVsHuman;
 
     [ObservableProperty]
-    private AiDifficulty _difficulty = AiDifficulty.Medium;
+    private GameSettings _settings = GameSettings.Default;
+
+    private TimeSpan _computerTimeLeft;
+    private readonly Dictionary<int, TimeSpan> _timeLeftAtPly = [];
 
     public bool IsHumanVsComputer => GameMode == GameMode.HumanVsComputer;
     public bool IsHumanVsHuman => GameMode == GameMode.HumanVsHuman;
 
-    public bool IsEasyDifficulty => Difficulty == AiDifficulty.Easy;
-    public bool IsMediumDifficulty => Difficulty == AiDifficulty.Medium;
-    public bool IsHardDifficulty => Difficulty == AiDifficulty.Hard;
+    public string SettingsBadgeText => Settings.Summary;
 
-    public bool IsAiDifficultyEnabled => GameMode == GameMode.HumanVsComputer;
+    public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame && GameMode == GameMode.HumanVsComputer;
+
+    public string ClockText => IsClockVisible
+        ? $"Clock: {FormatClock(_computerTimeLeft)}"
+        : string.Empty;
+
+    public TimeSpan ComputerTimeLeft => _computerTimeLeft;
+
+    private static string FormatClock(TimeSpan span) => span < TimeSpan.Zero ? "0:00" : $"{(int)span.TotalMinutes}:{span.Seconds:00}";
 
     public string GameModeBadgeText => GameMode switch
     {
@@ -78,17 +87,9 @@ public sealed partial class MainViewModel : ObservableObject
         _ => "Checkers"
     };
 
-    public string DifficultyBadgeText => Difficulty switch
-    {
-        AiDifficulty.Easy => "Easy (Random)",
-        AiDifficulty.Medium => "Medium (Minimax 3)",
-        AiDifficulty.Hard => "Hard (Minimax 6)",
-        _ => Difficulty.ToString()
-    };
-
     public string GameModeDescription => GameMode switch
     {
-        GameMode.HumanVsComputer => $"vs Computer ({DifficultyBadgeText})",
+        GameMode.HumanVsComputer => $"vs Computer ({Settings.Summary})",
         GameMode.HumanVsHuman => "Human vs Human",
         GameMode.ComputerVsComputer => "Computer vs Computer",
         _ => string.Empty
@@ -104,7 +105,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string BlackPlayerLabel => GameMode switch
     {
-        GameMode.HumanVsComputer => $"Computer ({DifficultyBadgeText})",
+        GameMode.HumanVsComputer => $"Computer ({Settings.Summary})",
         GameMode.HumanVsHuman => "Player 2",
         GameMode.ComputerVsComputer => "Computer 2",
         _ => "Black"
@@ -127,12 +128,13 @@ public sealed partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsHumanVsComputer));
         OnPropertyChanged(nameof(IsHumanVsHuman));
-        OnPropertyChanged(nameof(IsAiDifficultyEnabled));
         OnPropertyChanged(nameof(ShowAnalysis));
         OnPropertyChanged(nameof(GameModeBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
         OnPropertyChanged(nameof(WhitePlayerLabel));
         OnPropertyChanged(nameof(BlackPlayerLabel));
+        OnPropertyChanged(nameof(ClockText));
+        OnPropertyChanged(nameof(IsClockVisible));
     }
 
     partial void OnIsAnalysisVisibleChanged(bool value)
@@ -140,14 +142,13 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowAnalysis));
     }
 
-    partial void OnDifficultyChanged(AiDifficulty value)
+    partial void OnSettingsChanged(GameSettings value)
     {
-        OnPropertyChanged(nameof(IsEasyDifficulty));
-        OnPropertyChanged(nameof(IsMediumDifficulty));
-        OnPropertyChanged(nameof(IsHardDifficulty));
-        OnPropertyChanged(nameof(DifficultyBadgeText));
+        OnPropertyChanged(nameof(SettingsBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
         OnPropertyChanged(nameof(BlackPlayerLabel));
+        OnPropertyChanged(nameof(ClockText));
+        OnPropertyChanged(nameof(IsClockVisible));
     }
 
     [ObservableProperty]
@@ -172,6 +173,7 @@ public sealed partial class MainViewModel : ObservableObject
         _soundService = soundService ?? new DummySoundService();
         _dialogService = dialogService;
         _fileService = fileService;
+        _computerTimeLeft = Settings.GameTime;
 
         // Initialize 8x8 squares
         for (int r = 0; r < 8; r++)
@@ -188,6 +190,13 @@ public sealed partial class MainViewModel : ObservableObject
         Session.GameOver += OnGameOverHandler;
 
         RefreshBoard();
+    }
+
+    public void ResetClock()
+    {
+        _computerTimeLeft = Settings.GameTime;
+        _timeLeftAtPly.Clear();
+        OnPropertyChanged(nameof(ClockText));
     }
 
     private void AttachSession(GameSession newSession)
@@ -314,6 +323,7 @@ public sealed partial class MainViewModel : ObservableObject
         CancelAi();
         ClearSelection();
         Analysis.Reset();
+        ResetClock();
         FileName = string.Empty;
         Session.StartNewGame();
         RefreshBoard();
@@ -351,10 +361,24 @@ public sealed partial class MainViewModel : ObservableObject
             GameMode = gm;
         }
 
-        if (loaded.Tags.TryGetValue("Difficulty", out var diffStr) &&
-            Enum.TryParse<AiDifficulty>(diffStr, true, out var diff))
+        if (loaded.Tags.TryGetValue("TimeControlMode", out var modeStr) &&
+            Enum.TryParse<TimeControlMode>(modeStr, true, out var mode))
         {
-            Difficulty = diff;
+            int depth = loaded.Tags.TryGetValue("Depth", out var dStr) && int.TryParse(dStr, out var d) ? d : GameSettings.Default.Depth;
+            int spm = loaded.Tags.TryGetValue("SecondsPerMove", out var sStr) && int.TryParse(sStr, out var s) ? s : GameSettings.Default.SecondsPerMove;
+            int mpg = loaded.Tags.TryGetValue("MinutesPerGame", out var mStr) && int.TryParse(mStr, out var m) ? m : GameSettings.Default.MinutesPerGame;
+            Settings = new GameSettings(mode, depth, spm, mpg).Normalize();
+            ResetClock();
+        }
+        else if (loaded.Tags.TryGetValue("Difficulty", out var diffStr))
+        {
+            Settings = diffStr.ToLowerInvariant() switch
+            {
+                "easy" => new GameSettings(TimeControlMode.FixedDepth, 1, 5, 5),
+                "hard" => new GameSettings(TimeControlMode.FixedDepth, 8, 5, 5),
+                _ => new GameSettings(TimeControlMode.FixedDepth, 4, 5, 5),
+            };
+            ResetClock();
         }
 
         AttachSession(loaded.Session);
@@ -381,7 +405,10 @@ public sealed partial class MainViewModel : ObservableObject
         var tags = new Dictionary<string, string>
         {
             ["GameMode"] = GameMode.ToString(),
-            ["Difficulty"] = Difficulty.ToString()
+            ["TimeControlMode"] = Settings.Mode.ToString(),
+            ["Depth"] = Settings.Depth.ToString(),
+            ["SecondsPerMove"] = Settings.SecondsPerMove.ToString(),
+            ["MinutesPerGame"] = Settings.MinutesPerGame.ToString()
         };
 
         string recordText = GameRecordFormat.Format(Session, tags);
@@ -414,6 +441,13 @@ public sealed partial class MainViewModel : ObservableObject
             if (GameMode == GameMode.HumanVsComputer && Session.CurrentState.ActivePlayer == PieceColor.Black && Session.CanUndo)
             {
                 Session.Undo();
+            }
+
+            int currentPly = Session.MoveHistory.Count;
+            if (_timeLeftAtPly.TryGetValue(currentPly, out var restoredTime))
+            {
+                _computerTimeLeft = restoredTime;
+                OnPropertyChanged(nameof(ClockText));
             }
 
             RefreshBoard();
@@ -451,11 +485,16 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void SetDifficulty(AiDifficulty difficulty)
+    public async Task EditSettings()
     {
-        if (Difficulty != difficulty)
+        if (_dialogService == null)
+            return;
+
+        var updated = await _dialogService.EditSettingsAsync(Settings);
+        if (updated != null && updated != Settings)
         {
-            Difficulty = difficulty;
+            Settings = updated;
+            ResetClock();
             RefreshBoard();
         }
     }
@@ -705,6 +744,9 @@ public sealed partial class MainViewModel : ObservableObject
         CanRedo = false;
         UpdateStatusText();
 
+        int plyBefore = Session.MoveHistory.Count;
+        _timeLeftAtPly[plyBefore] = _computerTimeLeft;
+
         try
         {
             var ai = CreateAiPlayer();
@@ -713,7 +755,15 @@ public sealed partial class MainViewModel : ObservableObject
             // Small delay for natural feel
             await Task.Delay(250, token);
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, token), token);
+            sw.Stop();
+
+            if (Settings.Mode == TimeControlMode.TimePerGame)
+            {
+                _computerTimeLeft = _computerTimeLeft > sw.Elapsed ? _computerTimeLeft - sw.Elapsed : TimeSpan.Zero;
+                OnPropertyChanged(nameof(ClockText));
+            }
 
             if (ai.LastAnalysis != null)
             {
@@ -749,13 +799,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    public IPlayer CreateAiPlayer() => Difficulty switch
-    {
-        AiDifficulty.Easy => new RandomPlayer("Easy AI"),
-        AiDifficulty.Medium => new MinimaxPlayer(depth: 3, name: "Medium AI"),
-        AiDifficulty.Hard => new MinimaxPlayer(depth: 6, name: "Hard AI"),
-        _ => new MinimaxPlayer(depth: 3)
-    };
+    public IPlayer CreateAiPlayer() => new MinimaxPlayer(Settings.ToLimits(_computerTimeLeft));
 
     public void CancelAi()
     {

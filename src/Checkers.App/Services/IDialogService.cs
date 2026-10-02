@@ -1,3 +1,5 @@
+using Checkers.App.Models;
+
 namespace Checkers.App.Services;
 
 public interface IDialogService
@@ -6,4 +8,5 @@ public interface IDialogService
     bool ShowConfirmation(string title, string message);
     void ShowAbout();
     void ShowError(string message);
+    Task<GameSettings?> EditSettingsAsync(GameSettings current);
 }
