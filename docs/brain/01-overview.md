@@ -41,26 +41,39 @@ flowchart LR
 | `Piece` | `Checkers.Core.Models` | Immutable record struct representing a piece (`Color`, `Type`: Man or King). |
 | `Move` | `Checkers.Core.Models` | Atomic move record with `From`, `To`, full `Path`, `CapturedPositions`, `IsPromotion`, and `Notation`. |
 | `BoardState` | `Checkers.Core.Models` | Snapshot of the 8x8 board: piece grid, active turn, move clocks, piece counts, and Zobrist hash. |
+| `CheckersVariant` | `Checkers.Core.Models` | Rule variant enum: `International` (Flying Kings) or `English` (1-step Kings). |
 | `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`WhiteWon`, `BlackWon`, `Draw`) and exact reasons. |
-| `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine: legal move generation, mandatory capture filtering, move validation, and status evaluation. |
-| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist hashing for rapid state identification and threefold repetition detection. |
+| `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine: legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
+| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist hashing for rapid state identification, threefold repetition detection, and transposition caching. |
+| `GameRecordFormat` | `Checkers.Core.Engine` | PDN (Portable Draughts Notation) serializer and parser with metadata tags (`[Variant ...]`, `[TimeControlMode ...]`). |
 | `GameSession` | `Checkers.Core.Engine` | High-level coordinator managing current board state, move history, Undo/Redo stacks, and lifecycle events. |
+| `IEvaluationFunction` & `EvaluationFunction` | `Checkers.Core.AI` | Heuristic evaluation functions tailored per variant: material weights, advancement, center control, and king centralization. |
+| `SearchLimits` | `Checkers.Core.AI` | Value object encapsulating time control and depth bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`). |
+| `MinimaxPlayer` | `Checkers.Core.AI` | High-performance Negamax $\alpha$-$\beta$ engine with iterative deepening, transposition table, quiescence search, and live search telemetry. |
+| `TranspositionTable` | `Checkers.Core.AI` | High-speed power-of-two 64-bit Zobrist cache storing bounds (`Exact`, `LowerBound`, `UpperBound`), scores, depths, and hash moves. |
 
 ---
 
 ## Where the rules come from
 
 Checkers variants have evolved distinct traditions across different countries:
-- **American / English Draughts:** Standard 8x8 board with 12 pieces per player, where regular men capture only diagonally forward and kings move only 1 square.
-- **International Draughts:** 10x10 board with 20 pieces per side, featuring backward captures for men, flying kings, and the "majority capture" rule (must take the maximum number of pieces).
-- **Russian / Brazilian Draughts:** 8x8 board with 12 pieces per side, featuring **Flying Kings** (kings fly along any open diagonal distance) and **Free Choice** (player can choose any valid capture line, but must finish the chosen sequence).
+- **English Checkers (American Draughts / Straight Checkers):** Standard 8x8 board with 12 pieces per player, where regular men move and jump forward diagonally, and Kings move and jump strictly 1 square in all 4 diagonal directions.
+- **International Draughts (Flying Kings):** 8x8 or 10x10 board, featuring **Flying Kings** (kings fly along any open diagonal distance and jump from afar) and **Free Choice** (player can choose any valid capture line, but must finish the chosen sequence).
+- **Russian / Brazilian Draughts:** 8x8 board with flying kings and backward captures for men.
 
-This project implements the popular **8x8 Draughts with Flying Kings**:
-1. Standard 8x8 board with 12 pieces per player.
-2. Regular men move and jump diagonally forward (English style).
-3. Kings are **Flying Kings** (can slide and jump across diagonal spans).
-4. Captures are strictly mandatory with **Free Choice** among available capture branches.
-5. Reaching the crown row immediately crowns the piece and **ends the turn**.
+This project implements two selectable **8x8 Draughts variants**, configurable via the Settings dialog:
+1. **International Draughts (Flying Kings - Default):**
+   - Standard 8x8 board with 12 pieces per player.
+   - Regular men move and jump diagonally forward.
+   - Kings are **Flying Kings** (can slide and jump across arbitrary open diagonal spans).
+   - Captures are strictly mandatory with **Free Choice** among available capture branches.
+   - Reaching the crown row immediately crowns the piece and **ends the turn**.
+2. **English Checkers (American Draughts):**
+   - Standard 8x8 board with 12 pieces per player.
+   - Regular men move and jump diagonally forward.
+   - Kings move **strictly 1 square** diagonally in all 4 directions and capture adjacent opponent pieces landing on the immediate square behind.
+   - Strict mandatory captures with **Free Choice** among capture branches and multi-jump continuation.
+   - Reaching the crown row crowns the piece and ends the turn.
 
 ---
 

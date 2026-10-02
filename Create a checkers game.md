@@ -264,6 +264,6 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 
 - **Platform:** .NET 10 (C# 13)
 - **Compiler Warnings:** 0 warnings across all projects (Debug & Release builds)
-- **Total Automated Unit Tests:** 113 tests (100% pass rate)
+- **Total Automated Unit Tests:** 114 tests (100% pass rate)
   - `Checkers.Core.Tests`: 76 passing tests
-  - `Checkers.App.Tests`: 37 passing tests
+  - `Checkers.App.Tests`: 38 passing tests

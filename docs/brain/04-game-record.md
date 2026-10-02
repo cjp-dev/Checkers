@@ -110,3 +110,45 @@ public event EventHandler<GameOverEventArgs>? GameOver;
 ```
 
 These events enable sound playback, board animation triggers, and game-over modals without requiring presentation layers to poll the engine.
+
+---
+
+## Game record persistence & Portable Draughts Notation (PDN)
+
+[GameRecordFormat.cs](../../src/Checkers.Core/Engine/GameRecordFormat.cs) implements full serialization and parsing for games saved to disk or exported to the web.
+
+### 1. PDN Structure & Tags
+Saved game files (`.checkers` or `.pdn`) use standard tag pairs followed by numbered moves:
+
+```pdn
+[Event "Checkers Match"]
+[Variant "English"]
+[GameMode "HumanVsComputer"]
+[TimeControlMode "TimePerGame"]
+[Depth "8"]
+[SecondsPerMove "5"]
+[MinutesPerGame "5"]
+
+1. 11-15 24-19 2. 9-14 22-17 3. 5-9 17x10 4. 6x15 25-22
+```
+
+Supported metadata tags include:
+* `Variant`: `"International"` or `"English"`.
+* `GameMode`: `"HumanVsHuman"`, `"HumanVsComputer"`, `"ComputerVsComputer"`.
+* `TimeControlMode`: `"FixedDepth"`, `"TimePerMove"`, `"TimePerGame"`.
+* `Depth`: Target ply depth for fixed depth mode.
+* `SecondsPerMove`: Budget for time per move.
+* `MinutesPerGame`: Clock allotment for time per game.
+
+### 2. Move Formatting
+Moves are serialized into standard notation:
+* **Quiet moves:** `From-To` (e.g., `11-15`).
+* **Captures:** `FromxLanding` (e.g., `17x10`), and multi-jumps traverse each landing square (`29x18x4`).
+* Moves are grouped under full-move numbers (`1. White Black 2. White Black ...`).
+
+### 3. Parsing & Variant Reconstruction
+When `GameRecordFormat.Parse(text)` loads a game:
+1. It tokenizes tags and strips bracket/brace comments (`{ ... }` and `; ...`).
+2. It detects the `Variant` tag. If absent, it gracefully defaults to `CheckersVariant.International` ensuring 100% backward compatibility with legacy saves.
+3. It constructs a new `GameSession` equipped with a matching `RuleEngine(variant)`.
+4. It parses each move notation token (`11-15`, `17x10`), matches it against the current state's `LegalMoves`, and applies it to reproduce the exact move history and final board state.

@@ -72,6 +72,23 @@ In `TimePerGame` mode, the application tracks the clock continuously:
 
 ## Cancellation & UI responsiveness
 
-AI search executes asynchronously on a background thread (`Task.Run`) and observes a `CancellationToken`:
+AI search executes asynchronously on a background thread (`Task.Run` in WPF; cooperatively yielded in WebAssembly) and observes a `CancellationToken`:
 - Starting a **New Game** (`Ctrl+N`), **Opening** a file (`Ctrl+O`), or pressing **Undo** (`Ctrl+Z`) cancels running AI tasks immediately.
-- The UI remains completely responsive at 60 FPS while the computer thinks, displaying a thinking progress bar and updating the analysis pane.
+- The UI remains completely responsive at 60 FPS while the computer thinks, displaying a thinking progress bar and updating the analysis pane in real time.
+
+---
+
+## Settings Dialog & Variant Selection
+
+The **Game -> Settings...** modal dialog consolidates all game rules and engine limits into a unified interface:
+
+1. **Checkers Rules & Variant:**
+   - **International Draughts (Flying Kings):** Kings fly across open diagonals; long-distance captures with free choice among branches.
+   - **English Checkers (1-Step Kings):** Kings move strictly 1 square in 4 directions; short captures with 4-direction multi-jump chains.
+2. **Computer Limits:**
+   - Radio selection between **Fixed Depth**, **Time per Move**, and **Time per Game**.
+   - Interactive sliders with immediate numeric feedback.
+3. **Mid-Game Variant Safety Guard:**
+   - If the variant is changed while a game is actively in progress with moves on the board, `MainViewModel` prompts the player:
+     > *"Changing the checkers variant requires starting a new game. Do you want to start a new game now with the new rules?"*
+   - If the user confirms, a fresh game starts under the new rule engine. If cancelled, the active game and rules remain intact.

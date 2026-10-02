@@ -4,12 +4,12 @@
 
 ## In short
 
-The search engine decides which move the computer will play. `MinimaxPlayer` uses the **Negamax formulation of the Alpha-Beta pruning algorithm**. 
+The search engine decides which move the computer will play. `MinimaxPlayer` uses the **Negamax formulation of the Alpha-Beta pruning algorithm with Iterative Deepening**. 
 
-The search balances tactical foresight against computational cost:
-* **Easy:** `RandomPlayer` (baseline)
-* **Medium:** `MinimaxPlayer` at search depth 3 ($\approx 10$ to $50$ ms per turn)
-* **Hard:** `MinimaxPlayer` at search depth 6 ($\approx 100$ to $400$ ms per turn)
+The search configuration is customized in the **Game -> Settings...** dialog matching Stello and Connect-4:
+* **Fixed depth:** 1 to 20 plies (default: 8 plies)
+* **Time per move:** 1 to 60 seconds (default: 5 seconds)
+* **Time per game:** 1 to 60 minutes (default: 5 minutes)
 
 ---
 
@@ -54,12 +54,11 @@ By incorporating `ply`:
 
 ## Asynchronous Execution & Non-Blocking UI
 
-In both WPF and WebAssembly, long-running CPU calculations on the UI thread freeze rendering and user input.
+In both WPF and WebAssembly, CPU-bound game search must never block rendering or user interaction:
 
-To guarantee a responsive 60 FPS experience:
-1. `MainViewModel` dispatches AI computations to background threads via `Task.Run(...)`.
-2. A `CancellationToken` is passed down the search tree. Every node checks `cancellationToken.ThrowIfCancellationRequested()`.
-3. If the user clicks **New Game** or **Undo** while the AI is computing, the search aborts instantly without lag or thread leaks.
+1. **WPF Desktop:** `MainViewModel` dispatches search to a background ThreadPool thread via `Task.Run(...)`.
+2. **Blazor WebAssembly:** In the single-threaded browser runtime, `MinimaxPlayer.GetMoveAsync` cooperatively yields execution to the browser event loop using `await Task.Delay(1, cancellationToken)` at each depth iteration and on $\ge 150\text{ms}$ heartbeats, allowing the browser to paint DOM updates at 60 FPS.
+3. **Responsive Cancellation:** A `CancellationToken` is observed throughout the search tree. Every 1,024 nodes evaluated, `cancellationToken.ThrowIfCancellationRequested()` is checked. Starting a **New Game**, **Opening** a file, or clicking **Undo** cancels running searches instantly.
 
 ---
 
@@ -69,7 +68,7 @@ If multiple root moves evaluate to the exact same highest score, `MinimaxPlayer`
 
 ```csharp
 int selectedIndex = _rng.Next(bestMoves.Count);
-return ValueTask.FromResult(bestMoves[selectedIndex]);
+return bestMoves[selectedIndex];
 ```
 
 This prevents the computer opponent from repeating the exact same sequence in every game, making matches varied and engaging.
@@ -82,15 +81,19 @@ Matching the design and user experience of **Stello** and **Connect-4**, the eng
 
 1. **`IProgress<SearchAnalysis>` Pipeline:**
    - `IPlayer.GetMoveAsync(..., IProgress<SearchAnalysis>? progress, ...)` accepts an optional progress reporter.
-   - `MainViewModel` instantiates a `Progress<SearchAnalysis>` on the UI thread, ensuring safe dispatcher marshaling to the WPF UI thread without UI thread locks.
+   - `MainViewModel` creates a `Progress<SearchAnalysis>` on the UI thread, ensuring safe dispatcher marshaling.
    - A monotonic `_searchId` token guards against out-of-order or late progress reports if an AI turn is canceled or undone.
 
 2. **Reporting Triggers:**
    - **Forced Moves:** Immediately reports `Depth = "1 ply (Forced)"`, `Value = "Forced"`.
    - **Iterative Deepening Iterations:** As each completed depth $d \in \{1, 2, \dots, D\}$ finishes, the PV best move, score, total nodes, evaluations, and elapsed time are reported.
-   - **Periodic Search Heartbeat:** Every 200 ms (sampled every 1,024 nodes) during deep searches, the engine reports the active candidate move, nodes evaluated, leaf evaluations, and elapsed time (`"Depth: 7 plies..."`), providing continuous visual feedback during long evaluations.
+   - **Periodic Search Heartbeat:** Every 150–200 ms during deep searches, the engine reports the active candidate move, nodes evaluated, leaf evaluations, and elapsed time (`"Depth: 7 plies..."`), providing continuous visual feedback during long evaluations.
 
-3. **Analysis Pane Fields:**
+3. **WebAssembly Macrotask Yielding:**
+   - In Blazor WebAssembly, progress callbacks are posted to `BrowserSynchronizationContext`.
+   - By awaiting `Task.Delay(1)` during reports, the browser dispatches these callbacks, fires `AnalysisViewModel.Updated`, and triggers `InvokeAsync(StateHasChanged)` in `Home.razor` to paint live analysis and animate the thinking progress bar in real time.
+
+4. **Analysis Pane Fields:**
    - **Move:** Current candidate root move being evaluated.
    - **Depth:** Current completed search depth (or active depth with ellipsis during long computations).
    - **Value:** Centipawn / heuristic evaluation score from active player's viewpoint (or `Forced`, `Win`, `Loss`).
