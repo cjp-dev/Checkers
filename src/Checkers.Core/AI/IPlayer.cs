@@ -21,4 +21,15 @@ public interface IPlayer
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Chooses a move from the available legal moves for the given state,
+    /// optionally reporting search progress and analysis telemetry in real time.
+    /// </summary>
+    ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
+        CancellationToken cancellationToken = default) =>
+        GetMoveAsync(state, legalMoves, cancellationToken);
 }

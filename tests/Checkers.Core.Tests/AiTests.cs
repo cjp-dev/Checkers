@@ -79,4 +79,66 @@ public class AiTests
         var act = async () => await ai.GetMoveAsync(board, legalMoves, cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    private sealed class SyncProgress<T> : IProgress<T>
+    {
+        private readonly List<T> _items = [];
+        public List<T> Items
+        {
+            get
+            {
+                lock (_items) return [.. _items];
+            }
+        }
+
+        public void Report(T value)
+        {
+            lock (_items)
+            {
+                _items.Add(value);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task MinimaxPlayer_ReportsProgressDuringSearch()
+    {
+        var board = BoardState.CreateInitial();
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+
+        var ai = new MinimaxPlayer(depth: 3);
+        var progress = new SyncProgress<SearchAnalysis>();
+
+        var move = await ai.GetMoveAsync(board, legalMoves, progress, CancellationToken.None);
+
+        legalMoves.Should().Contain(move);
+        var reports = progress.Items;
+        reports.Should().NotBeEmpty();
+        reports.Should().Contain(r => r.Depth.Contains("1 plies"));
+        reports.Last().Move.Should().NotBe("-");
+        reports.Last().Nodes.Should().NotBe("-");
+        reports.Last().Time.Should().NotBe("-");
+    }
+
+    [Fact]
+    public async Task MinimaxPlayer_SingleLegalMove_ReportsForcedAnalysisProgress()
+    {
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(new Position(5, 0), new Piece(PieceColor.White, PieceType.Man));
+        // Single legal move: (5,0) -> (4,1)
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+        legalMoves.Should().HaveCount(1);
+
+        var ai = new MinimaxPlayer(depth: 3);
+        var progress = new SyncProgress<SearchAnalysis>();
+
+        var move = await ai.GetMoveAsync(board, legalMoves, progress, CancellationToken.None);
+
+        move.Should().Be(legalMoves[0]);
+        var reports = progress.Items;
+        reports.Should().ContainSingle();
+        reports[0].Depth.Should().Be("1 ply (Forced)");
+        reports[0].Value.Should().Be("Forced");
+        reports[0].BestMove.Should().Be(legalMoves[0].Notation);
+    }
 }

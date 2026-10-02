@@ -569,4 +569,120 @@ public class MainViewModelTests
         vm.FileName.Should().BeEmpty();
         vm.Title.Should().Be("Checkers (Draughts)");
     }
+
+    private class TestAiPlayer : IPlayer
+    {
+        private readonly List<SearchAnalysis> _progressReports;
+        private readonly Move _moveToReturn;
+
+        public TestAiPlayer(Move moveToReturn, params SearchAnalysis[] progressReports)
+        {
+            _moveToReturn = moveToReturn;
+            _progressReports = [.. progressReports];
+        }
+
+        public string Name => "Test AI";
+        public SearchAnalysis? LastAnalysis { get; private set; }
+
+        public ValueTask<Move> GetMoveAsync(BoardState state, IReadOnlyList<Move> legalMoves, CancellationToken cancellationToken = default) =>
+            GetMoveAsync(state, legalMoves, progress: null, cancellationToken);
+
+        public async ValueTask<Move> GetMoveAsync(BoardState state, IReadOnlyList<Move> legalMoves, IProgress<SearchAnalysis>? progress, CancellationToken cancellationToken = default)
+        {
+            foreach (var report in _progressReports)
+            {
+                LastAnalysis = report;
+                progress?.Report(report);
+                await Task.Yield();
+            }
+            return _moveToReturn;
+        }
+    }
+
+    [Fact]
+    public async Task AiTurn_UpdatesAnalysisPaneLiveViaProgress()
+    {
+        var vm = new MainViewModel
+        {
+            AiDelayMs = 0
+        };
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+
+        var intermediate = new SearchAnalysis
+        {
+            Move = "12-16",
+            Depth = "2 plies",
+            Value = "+45",
+            BestMove = "12-16",
+            Nodes = "320",
+            Evaluations = "180",
+            Time = "0:00.1"
+        };
+        var final = new SearchAnalysis
+        {
+            Move = "12-16",
+            Depth = "4 plies",
+            Value = "+120",
+            BestMove = "12-16",
+            Nodes = "1,850",
+            Evaluations = "920",
+            Time = "0:00.3"
+        };
+
+        var movePlayed = false;
+        vm.AiPlayerFactory = (settings, time) =>
+        {
+            var legalMoves = vm.Session.LegalMoves;
+            var chosen = legalMoves.First();
+            return new TestAiPlayer(chosen, intermediate, final);
+        };
+
+        // Human plays (5,0) -> (4,1) to trigger AI turn
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        // Wait for AI turn to complete
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 2)
+            {
+                movePlayed = true;
+                break;
+            }
+            await Task.Delay(25);
+        }
+
+        movePlayed.Should().BeTrue();
+        vm.Analysis.Depth.Should().Be("4 plies");
+        vm.Analysis.Value.Should().Be("+120");
+        vm.Analysis.Nodes.Should().Be("1,850");
+        vm.Analysis.Evaluations.Should().Be("920");
+    }
+
+    [Fact]
+    public async Task AiTurn_WithDefaultMinimaxPlayer_UpdatesAnalysisPane()
+    {
+        var vm = new MainViewModel
+        {
+            AiDelayMs = 0,
+            Settings = new GameSettings(TimeControlMode.FixedDepth, 2, 1, 1)
+        };
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+
+        // Human plays (5,0) -> (4,1) to trigger AI turn
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 2)
+                break;
+            await Task.Delay(50);
+        }
+
+        vm.Session.MoveHistory.Should().HaveCountGreaterThanOrEqualTo(2);
+        vm.Analysis.Move.Should().NotBe("-");
+        vm.Analysis.Depth.Should().Contain("plies");
+        vm.Analysis.Nodes.Should().NotBe("-");
+    }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
@@ -6,7 +7,7 @@ namespace Checkers.Core.AI;
 
 /// <summary>
 /// Minimax AI with Alpha-Beta pruning, iterative deepening, PV and TT move ordering,
-/// 64-bit Zobrist transposition table, quiescence search, and time controls.
+/// 64-bit Zobrist transposition table, quiescence search, live progress reporting, and time controls.
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
@@ -67,6 +68,13 @@ public sealed class MinimaxPlayer : IPlayer
     public ValueTask<Move> GetMoveAsync(
         BoardState state,
         IReadOnlyList<Move> legalMoves,
+        CancellationToken cancellationToken = default) =>
+        GetMoveAsync(state, legalMoves, progress: null, cancellationToken);
+
+    public ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -88,12 +96,14 @@ public sealed class MinimaxPlayer : IPlayer
                 Evaluations = "0",
                 Time = "0:00.0"
             };
+            progress?.Report(LastAnalysis);
             return ValueTask.FromResult(singleMove);
         }
 
         var sw = Stopwatch.StartNew();
         NodesEvaluated = 0;
         LeafEvaluations = 0;
+        long lastReportMs = 0;
 
         TranspositionTable?.NewSearch();
 
@@ -145,7 +155,22 @@ public sealed class MinimaxPlayer : IPlayer
                 }
 
                 var nextState = _ruleEngine.ApplyMove(state, move);
-                int score = -NegaMax(nextState, d - 1, -beta, -alpha, ply: 1, sw, hardLimitMs, cancellationToken, out bool aborted);
+                int score = -NegaMax(
+                    nextState,
+                    d - 1,
+                    -beta,
+                    -alpha,
+                    ply: 1,
+                    sw,
+                    hardLimitMs,
+                    cancellationToken,
+                    progress,
+                    ref lastReportMs,
+                    d,
+                    move,
+                    bestMoveOverall,
+                    bestScoreOverall,
+                    out bool aborted);
 
                 if (aborted)
                 {
@@ -172,6 +197,20 @@ public sealed class MinimaxPlayer : IPlayer
                 currentOrder.Remove(bestMoveThisDepth);
                 currentOrder.Insert(0, bestMoveThisDepth);
 
+                // Report completed depth iteration live to progress listener
+                var iterationAnalysis = new SearchAnalysis
+                {
+                    Move = bestMoveOverall.Notation,
+                    Depth = $"{completedDepth} plies",
+                    Value = FormatValue(bestScoreOverall),
+                    BestMove = bestMoveOverall.Notation,
+                    Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+                    Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                    Time = sw.Elapsed.ToString(@"m\:ss\.f")
+                };
+                LastAnalysis = iterationAnalysis;
+                progress?.Report(iterationAnalysis);
+
                 // Stop early if forced win found
                 if (bestScoreOverall >= 90_000)
                     break;
@@ -186,24 +225,18 @@ public sealed class MinimaxPlayer : IPlayer
 
         bestMoveOverall ??= currentOrder[0];
 
-        string valueStr = bestScoreOverall switch
-        {
-            >= 90_000 => $"+Win in {WinScore - bestScoreOverall} plies",
-            <= -90_000 => $"-Loss in {bestScoreOverall - LossScore} plies",
-            > 0 => $"+{bestScoreOverall}",
-            _ => bestScoreOverall.ToString()
-        };
-
         LastAnalysis = new SearchAnalysis
         {
             Move = bestMoveOverall.Notation,
             Depth = $"{completedDepth} plies",
-            Value = valueStr,
+            Value = FormatValue(bestScoreOverall),
             BestMove = bestMoveOverall.Notation,
-            Nodes = NodesEvaluated.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
-            Evaluations = LeafEvaluations.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+            Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+            Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
             Time = sw.Elapsed.ToString(@"m\:ss\.f")
         };
+
+        progress?.Report(LastAnalysis);
 
         return ValueTask.FromResult(bestMoveOverall);
     }
@@ -217,17 +250,39 @@ public sealed class MinimaxPlayer : IPlayer
         Stopwatch sw,
         long hardLimitMs,
         CancellationToken cancellationToken,
+        IProgress<SearchAnalysis>? progress,
+        ref long lastReportMs,
+        int currentIterDepth,
+        Move? currentRootMove,
+        Move? bestRootMoveOverall,
+        int bestScoreOverall,
         out bool aborted)
     {
         aborted = false;
 
-        if ((NodesEvaluated & 511) == 0)
+        if ((NodesEvaluated & 1023) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sw.ElapsedMilliseconds >= hardLimitMs)
             {
                 aborted = true;
                 return 0;
+            }
+
+            // Periodically report search heartbeat during long depth evaluations
+            if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 200)
+            {
+                lastReportMs = sw.ElapsedMilliseconds;
+                progress.Report(new SearchAnalysis
+                {
+                    Move = currentRootMove?.Notation ?? bestRootMoveOverall?.Notation ?? "-",
+                    Depth = $"{currentIterDepth} plies...",
+                    Value = FormatValue(bestScoreOverall),
+                    BestMove = bestRootMoveOverall?.Notation ?? "-",
+                    Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+                    Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                    Time = sw.Elapsed.ToString(@"m\:ss\.f")
+                });
             }
         }
 
@@ -287,7 +342,22 @@ public sealed class MinimaxPlayer : IPlayer
         foreach (var move in orderedMoves)
         {
             var nextState = _ruleEngine.ApplyMove(state, move);
-            int score = -NegaMax(nextState, depth - 1, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
+            int score = -NegaMax(
+                nextState,
+                depth - 1,
+                -beta,
+                -alpha,
+                ply + 1,
+                sw,
+                hardLimitMs,
+                cancellationToken,
+                progress,
+                ref lastReportMs,
+                currentIterDepth,
+                currentRootMove,
+                bestRootMoveOverall,
+                bestScoreOverall,
+                out aborted);
 
             if (aborted)
                 return 0;
@@ -343,7 +413,7 @@ public sealed class MinimaxPlayer : IPlayer
     {
         aborted = false;
 
-        if ((NodesEvaluated & 511) == 0)
+        if ((NodesEvaluated & 1023) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sw.ElapsedMilliseconds >= hardLimitMs)
@@ -434,4 +504,12 @@ public sealed class MinimaxPlayer : IPlayer
 
         return list;
     }
+
+    private static string FormatValue(int score) => score switch
+    {
+        >= 90_000 => $"+Win in {WinScore - score} plies",
+        <= -90_000 => $"-Loss in {score - LossScore} plies",
+        > 0 => $"+{score}",
+        _ => score.ToString()
+    };
 }

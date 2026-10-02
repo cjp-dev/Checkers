@@ -16,6 +16,13 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IGameFileService? _fileService;
     private Position? _selectedPosition;
     private CancellationTokenSource? _aiCts;
+    private int _searchId;
+
+    /// <summary>
+    /// Artificial delay in milliseconds before AI starts searching to provide a natural feel.
+    /// Can be set to 0 in automated unit tests.
+    /// </summary>
+    public int AiDelayMs { get; set; } = 250;
 
     public GameSession Session { get; private set; }
     public SquareViewModel[,] Squares { get; } = new SquareViewModel[8, 8];
@@ -747,16 +754,30 @@ public sealed partial class MainViewModel : ObservableObject
         int plyBefore = Session.MoveHistory.Count;
         _timeLeftAtPly[plyBefore] = _computerTimeLeft;
 
+        int searchId = ++_searchId;
+        Analysis.Reset();
+
+        var progress = new Progress<SearchAnalysis>(info =>
+        {
+            if (searchId == _searchId && IsAiThinking && !token.IsCancellationRequested)
+            {
+                Analysis.Update(info);
+            }
+        });
+
         try
         {
             var ai = CreateAiPlayer();
             var legalMoves = Session.LegalMoves;
 
             // Small delay for natural feel
-            await Task.Delay(250, token);
+            if (AiDelayMs > 0)
+            {
+                await Task.Delay(AiDelayMs, token);
+            }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, token), token);
+            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, progress, token), token);
             sw.Stop();
 
             if (Settings.Mode == TimeControlMode.TimePerGame)
@@ -765,12 +786,12 @@ public sealed partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(ClockText));
             }
 
-            if (ai.LastAnalysis != null)
+            if (searchId == _searchId && !token.IsCancellationRequested && ai.LastAnalysis != null)
             {
                 Analysis.Update(ai.LastAnalysis);
             }
 
-            if (!token.IsCancellationRequested && Session.Status == GameStatus.InProgress)
+            if (searchId == _searchId && !token.IsCancellationRequested && Session.Status == GameStatus.InProgress)
             {
                 bool success = Session.TryMakeMove(move);
                 if (success)
@@ -792,17 +813,27 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
-            IsAiThinking = false;
-            CanUndo = Session.CanUndo;
-            CanRedo = Session.CanRedo;
-            UpdateStatusText();
+            if (searchId == _searchId)
+            {
+                IsAiThinking = false;
+                CanUndo = Session.CanUndo;
+                CanRedo = Session.CanRedo;
+                UpdateStatusText();
+            }
         }
     }
 
-    public IPlayer CreateAiPlayer() => new MinimaxPlayer(Settings.ToLimits(_computerTimeLeft));
+    /// <summary>
+    /// Optional factory to instantiate AI players (e.g. for testing or custom engines).
+    /// </summary>
+    public Func<GameSettings, TimeSpan, IPlayer>? AiPlayerFactory { get; set; }
+
+    public IPlayer CreateAiPlayer() =>
+        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(Settings.ToLimits(_computerTimeLeft));
 
     public void CancelAi()
     {
+        _searchId++;
         if (_aiCts != null)
         {
             _aiCts.Cancel();

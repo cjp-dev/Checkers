@@ -73,3 +73,28 @@ return ValueTask.FromResult(bestMoves[selectedIndex]);
 ```
 
 This prevents the computer opponent from repeating the exact same sequence in every game, making matches varied and engaging.
+
+---
+
+## Live Search Analysis Telemetry
+
+Matching the design and user experience of **Stello** and **Connect-4**, the engine streams real-time search telemetry to the user interface while the computer is actively thinking:
+
+1. **`IProgress<SearchAnalysis>` Pipeline:**
+   - `IPlayer.GetMoveAsync(..., IProgress<SearchAnalysis>? progress, ...)` accepts an optional progress reporter.
+   - `MainViewModel` instantiates a `Progress<SearchAnalysis>` on the UI thread, ensuring safe dispatcher marshaling to the WPF UI thread without UI thread locks.
+   - A monotonic `_searchId` token guards against out-of-order or late progress reports if an AI turn is canceled or undone.
+
+2. **Reporting Triggers:**
+   - **Forced Moves:** Immediately reports `Depth = "1 ply (Forced)"`, `Value = "Forced"`.
+   - **Iterative Deepening Iterations:** As each completed depth $d \in \{1, 2, \dots, D\}$ finishes, the PV best move, score, total nodes, evaluations, and elapsed time are reported.
+   - **Periodic Search Heartbeat:** Every 200 ms (sampled every 1,024 nodes) during deep searches, the engine reports the active candidate move, nodes evaluated, leaf evaluations, and elapsed time (`"Depth: 7 plies..."`), providing continuous visual feedback during long evaluations.
+
+3. **Analysis Pane Fields:**
+   - **Move:** Current candidate root move being evaluated.
+   - **Depth:** Current completed search depth (or active depth with ellipsis during long computations).
+   - **Value:** Centipawn / heuristic evaluation score from active player's viewpoint (or `Forced`, `Win`, `Loss`).
+   - **Best move:** Best move found so far across completed iterations.
+   - **Nodes:** Total number of search tree nodes visited.
+   - **Evaluations:** Total number of static / leaf position evaluations.
+   - **Time:** Real-time search elapsed time formatted as `m:ss.f`.

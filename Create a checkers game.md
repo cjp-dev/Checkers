@@ -118,8 +118,8 @@ Checkers/
 │       └── wwwroot/                   # CSS, audio, icons, static web assets
 │
 └── tests/
-    ├── Checkers.Core.Tests/           # 54 Unit tests: Rules, Moves, Kings, AI, Time Limits
-    └── Checkers.App.Tests/            # 32 Unit tests: ViewModels, Session, File I/O, Settings, Clocks
+    ├── Checkers.Core.Tests/           # 66 Unit tests: Rules, Moves, Kings, AI, Quiescence, TT, Telemetry
+    └── Checkers.App.Tests/            # 34 Unit tests: ViewModels, Session, File I/O, Settings, Clocks, Live Analysis
 ```
 
 ### 3.1 `Checkers.Core` (Engine & Logic)
@@ -129,20 +129,20 @@ Checkers/
   * `IRuleEngine`: Generates all legal moves (including mandatory captures and jump chains), validates moves, applies moves, and detects terminal states.
   * `IPlayer`: Player abstraction implemented by `RandomPlayer` and `MinimaxPlayer`.
   * `SearchLimits`: Encapsulates search bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`).
-  * `MinimaxPlayer`: Alpha-Beta search with **Iterative Deepening**, PV move ordering, soft time limits (2/3 of budget), and hard node interrupts.
+  * `MinimaxPlayer`: Alpha-Beta search with **Iterative Deepening**, 64-bit Zobrist Transposition Table, Quiescence search, PV move ordering, soft time limits (2/3 of budget), hard node interrupts, and real-time `IProgress<SearchAnalysis>` telemetry streaming.
   * `GameRecordFormat`: Formats and parses text move lists with metadata tags.
 
 ### 3.2 `Checkers.App` (Shared Application Layer)
 * Shared between `Checkers.Wpf` and `Checkers.Web`.
 * Hosts the MVVM ViewModels (`MainViewModel`, `AnalysisViewModel`, `SettingsViewModel`).
-* Asynchronous AI game loop with background task execution and cancellation support.
+* Asynchronous AI game loop with background task execution, cancellation support, and live `IProgress<SearchAnalysis>` reporting directly updating the Analysis pane during active search.
 * Chess clock management: tracks remaining time per game, allocates move budgets, and refunds clock time on `Undo`.
 * Abstractions for sounds (`ISoundService`), dialogs (`IDialogService`), and storage (`IGameFileService`).
 
 ### 3.3 `Checkers.Wpf` (Desktop UI)
 * Native Windows desktop UI using WPF and modern clean styling.
 * 60 FPS responsive animations, drag-and-drop, click-to-move, route hover previews, and procedural sound effects.
-* Dedicated **Analysis** pane displaying engine telemetry.
+* Dedicated **Analysis** pane displaying engine telemetry (Move, Depth, Value, Best Move, Nodes, Evaluations, Time) updated live while the computer thinks (matching Stello and Connect-4).
 * **Settings Window** dialog with radio toggles and sliders matching Stello and Connect-4.
 * Visual indicators: mode and settings badges, chess clock countdown, and thinking progress bar.
 
@@ -180,8 +180,12 @@ Configurable via `Game -> Settings...` dialog and reflected in the sidebar:
   * Advancement: Tiered bonuses rewarding regular men for advancing toward the crown row.
   * Home row defense: Retaining back-rank men to prevent opponent kinging.
   * Trapped piece penalties: Pieces with 0 legal exits.
-* **Telemetry Output (`SearchAnalysis`):**
-  * Move, Depth, Value, Best Move, Nodes Evaluated, Leaf Evaluations, and Search Time.
+* **Live Search Telemetry Output (`SearchAnalysis`):**
+  * Streams real-time updates via `IProgress<SearchAnalysis>` while the computer thinks:
+    - At every completed iterative deepening depth.
+    - Periodic heartbeat every 200 ms during deep evaluations.
+    - Instantly on single forced moves.
+  * Fields: Move, Depth, Value, Best Move, Nodes Evaluated, Leaf Evaluations, and Search Time.
 
 ### 4.3 Transposition Table (Zobrist Hashing) & Empirical Benchmark Suite
 To accelerate search depth and eliminate duplicate subtree evaluations across branches and iterative deepening passes:
