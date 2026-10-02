@@ -5,7 +5,8 @@ using Checkers.Core.Models;
 namespace Checkers.Core.AI;
 
 /// <summary>
-/// Minimax AI with Alpha-Beta pruning, iterative deepening, PV move ordering, and time controls.
+/// Minimax AI with Alpha-Beta pruning, iterative deepening, PV and TT move ordering,
+/// 64-bit Zobrist transposition table, quiescence search, and time controls.
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
@@ -22,11 +23,18 @@ public sealed class MinimaxPlayer : IPlayer
     public long LeafEvaluations { get; private set; }
     public SearchAnalysis? LastAnalysis { get; private set; }
 
+    public TranspositionTable? TranspositionTable { get; }
+    public bool UseTranspositionTable => TranspositionTable != null;
+    public bool UseQuiescence { get; set; } = true;
+
     public MinimaxPlayer(
         SearchLimits limits,
         string? name = null,
         IRuleEngine? ruleEngine = null,
-        IEvaluationFunction? evaluator = null)
+        IEvaluationFunction? evaluator = null,
+        TranspositionTable? transpositionTable = null,
+        bool useTranspositionTable = true,
+        bool useQuiescence = true)
     {
         Limits = limits;
         Name = name ?? limits.Mode switch
@@ -38,14 +46,21 @@ public sealed class MinimaxPlayer : IPlayer
         };
         _ruleEngine = ruleEngine ?? new RuleEngine();
         _evaluator = evaluator ?? new EvaluationFunction();
+        TranspositionTable = useTranspositionTable
+            ? (transpositionTable ?? new TranspositionTable(megabytes: 32))
+            : null;
+        UseQuiescence = useQuiescence;
     }
 
     public MinimaxPlayer(
         int depth = 4,
         string? name = null,
         IRuleEngine? ruleEngine = null,
-        IEvaluationFunction? evaluator = null)
-        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator)
+        IEvaluationFunction? evaluator = null,
+        TranspositionTable? transpositionTable = null,
+        bool useTranspositionTable = true,
+        bool useQuiescence = true)
+        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence)
     {
     }
 
@@ -80,6 +95,8 @@ public sealed class MinimaxPlayer : IPlayer
         NodesEvaluated = 0;
         LeafEvaluations = 0;
 
+        TranspositionTable?.NewSearch();
+
         // Compute time budgets (soft and hard limits in milliseconds)
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
@@ -103,7 +120,7 @@ public sealed class MinimaxPlayer : IPlayer
         int bestScoreOverall = 0;
         int completedDepth = 1;
 
-        var currentOrder = OrderMoves(legalMoves).ToList();
+        var currentOrder = OrderMoves(legalMoves, null).ToList();
 
         // Iterative Deepening from depth 1 up to maxTargetDepth
         for (int d = 1; d <= maxTargetDepth; d++)
@@ -226,8 +243,28 @@ public sealed class MinimaxPlayer : IPlayer
             return LossScore + ply;
         }
 
+        int originalAlpha = alpha;
+        Move? ttMove = null;
+        Position ttFrom = default;
+        Position ttTo = default;
+
+        // Transposition Table Probe
+        if (TranspositionTable != null &&
+            TranspositionTable.TryProbe(state.ZobristHash, depth, alpha, beta, ply, out int ttScore, out ttFrom, out ttTo, out bool hasCutoff))
+        {
+            if (hasCutoff)
+            {
+                return ttScore;
+            }
+        }
+
+        // Quiescence search at leaf nodes
         if (depth == 0)
         {
+            if (UseQuiescence)
+            {
+                return Quiescence(state, alpha, beta, ply, sw, hardLimitMs, cancellationToken, out aborted);
+            }
             LeafEvaluations++;
             return _evaluator.Evaluate(state);
         }
@@ -238,7 +275,13 @@ public sealed class MinimaxPlayer : IPlayer
             return LossScore + ply;
         }
 
-        var orderedMoves = OrderMoves(legalMoves);
+        if (TranspositionTable != null && ttFrom.IsValid && ttTo.IsValid)
+        {
+            ttMove = legalMoves.FirstOrDefault(m => m.From == ttFrom && m.To == ttTo);
+        }
+
+        var orderedMoves = OrderMoves(legalMoves, ttMove);
+        Move? bestMoveThisNode = null;
         int maxScore = int.MinValue;
 
         foreach (var move in orderedMoves)
@@ -249,22 +292,146 @@ public sealed class MinimaxPlayer : IPlayer
             if (aborted)
                 return 0;
 
-            maxScore = Math.Max(maxScore, score);
+            if (score > maxScore)
+            {
+                maxScore = score;
+                bestMoveThisNode = move;
+            }
+
             alpha = Math.Max(alpha, score);
 
             if (alpha >= beta)
             {
-                // Alpha-Beta cutoff
+                // Beta cutoff
                 break;
             }
+        }
+
+        // Transposition Table Store
+        if (TranspositionTable != null && !aborted)
+        {
+            TranspositionBound bound;
+            if (maxScore <= originalAlpha)
+                bound = TranspositionBound.UpperBound;
+            else if (maxScore >= beta)
+                bound = TranspositionBound.LowerBound;
+            else
+                bound = TranspositionBound.Exact;
+
+            TranspositionTable.Store(
+                state.ZobristHash,
+                depth,
+                maxScore,
+                bound,
+                ply,
+                bestMoveThisNode?.From ?? default,
+                bestMoveThisNode?.To ?? default);
         }
 
         return maxScore;
     }
 
-    private static IReadOnlyList<Move> OrderMoves(IEnumerable<Move> moves) =>
-        moves
+    private int Quiescence(
+        BoardState state,
+        int alpha,
+        int beta,
+        int ply,
+        Stopwatch sw,
+        long hardLimitMs,
+        CancellationToken cancellationToken,
+        out bool aborted)
+    {
+        aborted = false;
+
+        if ((NodesEvaluated & 511) == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (sw.ElapsedMilliseconds >= hardLimitMs)
+            {
+                aborted = true;
+                return 0;
+            }
+        }
+
+        NodesEvaluated++;
+
+        var (status, _) = _ruleEngine.EvaluateGameStatus(state);
+        if (status != GameStatus.InProgress)
+        {
+            return status == GameStatus.Draw ? 0 : LossScore + ply;
+        }
+
+        int standPat = _evaluator.Evaluate(state);
+        LeafEvaluations++;
+
+        if (standPat >= beta)
+        {
+            return beta;
+        }
+
+        if (standPat > alpha)
+        {
+            alpha = standPat;
+        }
+
+        // Limit maximum quiescence search extension to prevent runaway search
+        if (ply >= 24)
+        {
+            return alpha;
+        }
+
+        var legalMoves = _ruleEngine.GetLegalMoves(state);
+        var captureMoves = legalMoves.Where(m => m.IsCapture).ToList();
+
+        // In Checkers, if there are captures, mandatory jumping applies.
+        // If there are no captures, the position is quiet.
+        if (captureMoves.Count == 0)
+        {
+            return alpha;
+        }
+
+        var orderedCaptures = OrderMoves(captureMoves, null);
+
+        foreach (var move in orderedCaptures)
+        {
+            var nextState = _ruleEngine.ApplyMove(state, move);
+            int score = -Quiescence(nextState, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
+
+            if (aborted)
+                return 0;
+
+            if (score >= beta)
+            {
+                return beta;
+            }
+
+            if (score > alpha)
+            {
+                alpha = score;
+            }
+        }
+
+        return alpha;
+    }
+
+    private static IReadOnlyList<Move> OrderMoves(IEnumerable<Move> moves, Move? ttMove = null)
+    {
+        var list = moves
             .OrderByDescending(m => m.CapturedPositions.Count) // Multi-jumps first
             .ThenByDescending(m => m.IsPromotion ? 1 : 0)     // Promotions next
             .ToList();
+
+        if (ttMove != null)
+        {
+            int index = list.FindIndex(m => m.From == ttMove.From && m.To == ttMove.To);
+            if (index > 0)
+            {
+                var move = list[index];
+                list.RemoveAt(index);
+                list.Insert(0, move);
+            }
+        }
+
+        return list;
+    }
 }

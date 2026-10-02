@@ -54,9 +54,9 @@ flowchart TD
 | 05 | [Evaluation](05-evaluation.md) | **Available** | Static heuristic scoring: material weights, center control, advancement |
 | 06 | [Move ordering](06-move-ordering.md) | **Available** | Sorting captures, promotions, and multi-jumps for alpha-beta cutoffs |
 | 07 | [Search](07-search.md) | **Available** | Minimax search, alpha-beta pruning, async execution, distance-to-mate |
-| 08 | Transposition table | *Phase 4* | 64-bit Zobrist hash table, entry flags, and replacement policies |
+| 08 | [Transposition table](08-transposition-table.md) | **Available** | 64-bit Zobrist hash table, entry flags, and 40-position benchmark |
 | 09 | Endgame solver | *Phase 4* | Solved endgame databases / heuristics for small-piece positions |
-| 10 | Time control | *Phase 4* | Soft and hard move timers, dynamic depth allocation |
+| 10 | [Time control](10-time-control.md) | **Available** | Soft and hard move timers, dynamic depth allocation, chess clocks |
 | 11 | Opening book | *Phase 4* | Precalculated opening repertoire lookup |
 | 12 | App integration | *Phase 2 & 5* | Game loop, background workers, WPF and Blazor WebAssembly integration |
 | 13 | Glossary | *Upcoming* | Checkers and draughts terms used across these documents |
