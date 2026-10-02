@@ -31,6 +31,8 @@
 
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="N" Command="{Binding NewGameCommand}" />
+        <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
+        <KeyBinding Modifiers="Control" Key="S" Command="{Binding SaveCommand}" />
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}" />
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}" />
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding ToggleAnalysisCommand}" />
@@ -41,6 +43,9 @@
         <Menu DockPanel.Dock="Top" Background="#FFFFFF" Padding="4,2">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Game" InputGestureText="Ctrl+N" Command="{Binding NewGameCommand}" />
+                <MenuItem Header="_Open..." InputGestureText="Ctrl+O" Command="{Binding OpenCommand}" />
+                <MenuItem Header="_Save" InputGestureText="Ctrl+S" Command="{Binding SaveCommand}" />
+                <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>

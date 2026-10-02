@@ -15,6 +15,11 @@ public sealed class WpfDialogService : IDialogService
         return MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
     }
 
+    public void ShowError(string message)
+    {
+        MessageBox.Show(message, "Checkers", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
     public void ShowAbout()
     {
         string message = 

@@ -13,10 +13,11 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ISoundService _soundService;
     private readonly IDialogService? _dialogService;
+    private readonly IGameFileService? _fileService;
     private Position? _selectedPosition;
     private CancellationTokenSource? _aiCts;
 
-    public GameSession Session { get; }
+    public GameSession Session { get; private set; }
     public SquareViewModel[,] Squares { get; } = new SquareViewModel[8, 8];
     public ObservableCollection<SquareViewModel> BoardSquares { get; } = [];
     public ObservableCollection<Move> MoveHistoryList { get; } = [];
@@ -149,16 +150,28 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BlackPlayerLabel));
     }
 
-    public string Title => "Checkers (Draughts)";
+    [ObservableProperty]
+    private string _fileName = string.Empty;
+
+    public string Title => string.IsNullOrEmpty(FileName)
+        ? "Checkers (Draughts)"
+        : $"Checkers (Draughts) – {System.IO.Path.GetFileName(FileName)}";
+
+    partial void OnFileNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(Title));
+    }
 
     public MainViewModel(
         GameSession? session = null,
         ISoundService? soundService = null,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        IGameFileService? fileService = null)
     {
         Session = session ?? new GameSession();
         _soundService = soundService ?? new DummySoundService();
         _dialogService = dialogService;
+        _fileService = fileService;
 
         // Initialize 8x8 squares
         for (int r = 0; r < 8; r++)
@@ -171,11 +184,25 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
 
-        Session.MoveExecuted += (s, e) => OnMoveExecuted();
-        Session.GameOver += (s, e) => HandleGameOver(e);
+        Session.MoveExecuted += OnMoveExecutedHandler;
+        Session.GameOver += OnGameOverHandler;
 
         RefreshBoard();
     }
+
+    private void AttachSession(GameSession newSession)
+    {
+        Session.MoveExecuted -= OnMoveExecutedHandler;
+        Session.GameOver -= OnGameOverHandler;
+
+        Session = newSession;
+
+        Session.MoveExecuted += OnMoveExecutedHandler;
+        Session.GameOver += OnGameOverHandler;
+    }
+
+    private void OnMoveExecutedHandler(object? sender, MoveExecutedEventArgs e) => OnMoveExecuted();
+    private void OnGameOverHandler(object? sender, GameOverEventArgs e) => HandleGameOver(e);
 
     [RelayCommand]
     public void SquareClicked(SquareViewModel? square)
@@ -287,8 +314,91 @@ public sealed partial class MainViewModel : ObservableObject
         CancelAi();
         ClearSelection();
         Analysis.Reset();
+        FileName = string.Empty;
         Session.StartNewGame();
         RefreshBoard();
+    }
+
+    [RelayCommand]
+    public async Task Open()
+    {
+        if (_fileService == null)
+            return;
+
+        GameFile? file;
+        GameRecord loaded;
+        try
+        {
+            file = await _fileService.OpenAsync();
+            if (file == null)
+                return;
+
+            loaded = GameRecordFormat.Parse(file.Text);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
+        {
+            _dialogService?.ShowError($"The game could not be opened.\n\n{ex.Message}");
+            return;
+        }
+
+        CancelAi();
+        ClearSelection();
+        Analysis.Reset();
+
+        if (loaded.Tags.TryGetValue("GameMode", out var gmStr) &&
+            Enum.TryParse<GameMode>(gmStr, true, out var gm))
+        {
+            GameMode = gm;
+        }
+
+        if (loaded.Tags.TryGetValue("Difficulty", out var diffStr) &&
+            Enum.TryParse<AiDifficulty>(diffStr, true, out var diff))
+        {
+            Difficulty = diff;
+        }
+
+        AttachSession(loaded.Session);
+        FileName = file.Path;
+        RefreshBoard();
+
+        if (Session.MoveHistory.Count > 0)
+        {
+            HighlightLastMove(Session.MoveHistory[^1]);
+        }
+    }
+
+    [RelayCommand]
+    public Task Save() => WriteAsync(askForName: false);
+
+    [RelayCommand]
+    public Task SaveAs() => WriteAsync(askForName: true);
+
+    private async Task WriteAsync(bool askForName)
+    {
+        if (_fileService == null)
+            return;
+
+        var tags = new Dictionary<string, string>
+        {
+            ["GameMode"] = GameMode.ToString(),
+            ["Difficulty"] = Difficulty.ToString()
+        };
+
+        string recordText = GameRecordFormat.Format(Session, tags);
+
+        try
+        {
+            string? currentPath = string.IsNullOrEmpty(FileName) ? null : FileName;
+            string? savedPath = await _fileService.SaveAsync(recordText + Environment.NewLine, currentPath, askForName);
+            if (savedPath != null)
+            {
+                FileName = savedPath;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _dialogService?.ShowError($"The game could not be saved.\n\n{ex.Message}");
+        }
     }
 
     [RelayCommand]

@@ -22,6 +22,34 @@ public class MainViewModelTests
         }
     }
 
+    private class TestDialogService : IDialogService
+    {
+        public List<string> Errors { get; } = [];
+        public void ShowInfo(string title, string message) { }
+        public bool ShowConfirmation(string title, string message) => true;
+        public void ShowAbout() { }
+        public void ShowError(string message) => Errors.Add(message);
+    }
+
+    private class TestGameFileService : IGameFileService
+    {
+        public GameFile? FileToOpen { get; set; }
+        public string? SavedPathResult { get; set; } = @"C:\Games\test.checkers";
+        public string? LastSavedText { get; private set; }
+        public string? LastSavedCurrentPath { get; private set; }
+        public bool LastAskForName { get; private set; }
+
+        public Task<GameFile?> OpenAsync() => Task.FromResult(FileToOpen);
+
+        public Task<string?> SaveAsync(string text, string? currentPath, bool askForName)
+        {
+            LastSavedText = text;
+            LastSavedCurrentPath = currentPath;
+            LastAskForName = askForName;
+            return Task.FromResult(SavedPathResult);
+        }
+    }
+
     [Fact]
     public void Constructor_Initializes64SquaresAndPieceCounts()
     {
@@ -394,5 +422,116 @@ public class MainViewModelTests
         vm.Analysis.Nodes.Should().Be("-");
         vm.Analysis.Evaluations.Should().Be("-");
         vm.Analysis.Time.Should().Be("-");
+    }
+
+    [Fact]
+    public async Task SaveCommand_WhenFileNameEmpty_PromptsForPathAndUpdatesTitle()
+    {
+        var files = new TestGameFileService { SavedPathResult = @"C:\Games\mygame.checkers" };
+        var vm = new MainViewModel(fileService: files);
+
+        vm.Title.Should().Be("Checkers (Draughts)");
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        files.LastSavedCurrentPath.Should().BeNull();
+        files.LastSavedText.Should().Contain("[GameMode \"HumanVsHuman\"]");
+        vm.FileName.Should().Be(@"C:\Games\mygame.checkers");
+        vm.Title.Should().Be("Checkers (Draughts) – mygame.checkers");
+    }
+
+    [Fact]
+    public async Task SaveCommand_WhenFileNameAlreadySet_SavesDirectlyWithoutAsking()
+    {
+        var files = new TestGameFileService { SavedPathResult = @"C:\Games\existing.checkers" };
+        var vm = new MainViewModel(fileService: files);
+
+        // First save sets filename (currentPath was null)
+        await vm.SaveCommand.ExecuteAsync(null);
+        files.LastSavedCurrentPath.Should().BeNull();
+
+        // Second save does not ask for name and passes existing path
+        await vm.SaveCommand.ExecuteAsync(null);
+        files.LastAskForName.Should().BeFalse();
+        files.LastSavedCurrentPath.Should().Be(@"C:\Games\existing.checkers");
+    }
+
+    [Fact]
+    public async Task SaveAsCommand_AlwaysPromptsForPath()
+    {
+        var files = new TestGameFileService { SavedPathResult = @"C:\Games\custom.checkers" };
+        var vm = new MainViewModel(fileService: files);
+
+        // Pre-set filename via first save
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        // SaveAs must ask for name even though filename is set
+        await vm.SaveAsCommand.ExecuteAsync(null);
+        files.LastAskForName.Should().BeTrue();
+        files.LastSavedCurrentPath.Should().Be(@"C:\Games\custom.checkers");
+    }
+
+    [Fact]
+    public async Task OpenCommand_LoadsGameAndRestoresSessionModeAndDifficulty()
+    {
+        // First make a move in a session to format
+        var baseSession = new GameSession();
+        var move1 = baseSession.LegalMoves.First();
+        baseSession.TryMakeMove(move1);
+
+        string savedContent = $"""
+            [GameMode "HumanVsComputer"]
+            [Difficulty "Hard"]
+
+            {move1.Notation}
+            """;
+
+        var files = new TestGameFileService
+        {
+            FileToOpen = new GameFile(@"C:\SavedGames\match.checkers", savedContent)
+        };
+        var vm = new MainViewModel(fileService: files);
+
+        await vm.OpenCommand.ExecuteAsync(null);
+
+        vm.FileName.Should().Be(@"C:\SavedGames\match.checkers");
+        vm.Title.Should().Be("Checkers (Draughts) – match.checkers");
+        vm.GameMode.Should().Be(GameMode.HumanVsComputer);
+        vm.Difficulty.Should().Be(AiDifficulty.Hard);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.Session.MoveHistory[0].Notation.Should().Be(move1.Notation);
+        vm.MoveHistoryList.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task OpenCommand_WhenCorruptFile_ShowsErrorDialog()
+    {
+        var dialogs = new TestDialogService();
+        var files = new TestGameFileService
+        {
+            FileToOpen = new GameFile(@"C:\bad.checkers", "invalid-move-notation-here")
+        };
+        var vm = new MainViewModel(dialogService: dialogs, fileService: files);
+
+        await vm.OpenCommand.ExecuteAsync(null);
+
+        dialogs.Errors.Should().ContainSingle();
+        dialogs.Errors[0].Should().Contain("The game could not be opened");
+        vm.FileName.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void NewGameCommand_ResetsFileNameAndTitle()
+    {
+        var files = new TestGameFileService { SavedPathResult = @"C:\Games\sample.checkers" };
+        var vm = new MainViewModel(fileService: files);
+
+        vm.SaveCommand.Execute(null);
+        vm.FileName.Should().Be(@"C:\Games\sample.checkers");
+        vm.Title.Should().Contain("sample.checkers");
+
+        vm.NewGameCommand.Execute(null);
+        vm.FileName.Should().BeEmpty();
+        vm.Title.Should().Be("Checkers (Draughts)");
     }
 }

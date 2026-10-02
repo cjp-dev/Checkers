@@ -12,7 +12,8 @@ public partial class MainWindow : Window
 
         var soundService = new WpfSoundService();
         var dialogService = new WpfDialogService();
-        DataContext = new MainViewModel(soundService: soundService, dialogService: dialogService);
+        var fileService = new WpfGameFileService();
+        DataContext = new MainViewModel(soundService: soundService, dialogService: dialogService, fileService: fileService);
     }
 
     private void OnExitClicked(object sender, RoutedEventArgs e)
