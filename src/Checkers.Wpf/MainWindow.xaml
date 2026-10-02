@@ -98,6 +98,11 @@
                         <DropShadowEffect BlurRadius="6" Direction="270" ShadowDepth="1" Opacity="0.08" />
                     </Border.Effect>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="RULES: " FontSize="11" FontWeight="Bold" Foreground="#888888" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Border Background="#16A085" CornerRadius="4" Padding="8,3" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding VariantBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
+                        </Border>
+
                         <TextBlock Text="MODE: " FontSize="11" FontWeight="Bold" Foreground="#888888" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <Border Background="#2C3E50" CornerRadius="4" Padding="8,3" Margin="0,0,8,0">
                             <TextBlock Text="{Binding GameModeBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />

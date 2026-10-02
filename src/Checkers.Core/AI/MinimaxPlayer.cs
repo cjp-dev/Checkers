@@ -46,7 +46,7 @@ public sealed class MinimaxPlayer : IPlayer
             _ => "Minimax AI"
         };
         _ruleEngine = ruleEngine ?? new RuleEngine();
-        _evaluator = evaluator ?? new EvaluationFunction();
+        _evaluator = evaluator ?? new EvaluationFunction(_ruleEngine.Variant);
         TranspositionTable = useTranspositionTable
             ? (transpositionTable ?? new TranspositionTable(megabytes: 32))
             : null;

@@ -20,6 +20,7 @@ public sealed class GameOverEventArgs : EventArgs
 public sealed class GameSession
 {
     private readonly IRuleEngine _ruleEngine;
+    public IRuleEngine RuleEngine => _ruleEngine;
     private readonly List<BoardState> _stateHistory = [];
     private readonly List<Move> _moveHistory = [];
     private readonly Stack<(BoardState State, Move Move)> _redoStack = [];

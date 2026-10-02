@@ -177,4 +177,18 @@ public class GameRecordFormatTests
         var r3 = GameRecordFormat.Parse("18x9", s3);
         r3.Session.MoveHistory.Should().HaveCount(1);
     }
+
+    [Fact]
+    public void FormatAndParse_EnglishVariant_PreservesRuleEngineVariant()
+    {
+        var englishSession = new GameSession(new RuleEngine(CheckersVariant.English));
+        var tags = new Dictionary<string, string> { ["Event"] = "English Checkers Championship" };
+
+        string text = GameRecordFormat.Format(englishSession, tags);
+        text.Should().Contain("[Variant \"English\"]");
+
+        var record = GameRecordFormat.Parse(text);
+        record.Session.RuleEngine.Variant.Should().Be(CheckersVariant.English);
+        record.GetTag("Variant").Should().Be("English");
+    }
 }

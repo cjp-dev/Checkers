@@ -1,18 +1,23 @@
 using Checkers.Core.AI;
+using Checkers.Core.Models;
 
 namespace Checkers.App.Models;
 
 /// <summary>
-/// Controls how long the computer may think: Fixed depth, Time per move, or Time per game.
-/// Matches the Stello and Connect-4 computer settings specification.
+/// Controls the checkers variant and how long the computer may think.
 /// </summary>
-public sealed record GameSettings(TimeControlMode Mode, int Depth, int SecondsPerMove, int MinutesPerGame)
+public sealed record GameSettings(
+    TimeControlMode Mode,
+    int Depth,
+    int SecondsPerMove,
+    int MinutesPerGame,
+    CheckersVariant Variant = CheckersVariant.International)
 {
     public const int MaxDepth = 20;
     public const int MaxSecondsPerMove = 60;
     public const int MaxMinutesPerGame = 60;
 
-    public static GameSettings Default { get; } = new(TimeControlMode.TimePerGame, 8, 5, 5);
+    public static GameSettings Default { get; } = new(TimeControlMode.TimePerGame, 8, 5, 5, CheckersVariant.International);
 
     public TimeSpan GameTime => TimeSpan.FromMinutes(MinutesPerGame);
 
@@ -21,7 +26,8 @@ public sealed record GameSettings(TimeControlMode Mode, int Depth, int SecondsPe
         Mode is TimeControlMode.FixedDepth or TimeControlMode.TimePerMove or TimeControlMode.TimePerGame ? Mode : Default.Mode,
         Math.Clamp(Depth, 1, MaxDepth),
         Math.Clamp(SecondsPerMove, 1, MaxSecondsPerMove),
-        Math.Clamp(MinutesPerGame, 1, MaxMinutesPerGame));
+        Math.Clamp(MinutesPerGame, 1, MaxMinutesPerGame),
+        Variant is CheckersVariant.English ? CheckersVariant.English : CheckersVariant.International);
 
     public SearchLimits ToLimits(TimeSpan computerTimeLeft) => Mode switch
     {
@@ -35,5 +41,17 @@ public sealed record GameSettings(TimeControlMode Mode, int Depth, int SecondsPe
         TimeControlMode.FixedDepth => $"{Depth} plies",
         TimeControlMode.TimePerMove => $"{SecondsPerMove}s / move",
         _ => $"{MinutesPerGame} min / game",
+    };
+
+    public string VariantName => Variant switch
+    {
+        CheckersVariant.English => "English Checkers",
+        _ => "International Draughts"
+    };
+
+    public string VariantBadgeText => Variant switch
+    {
+        CheckersVariant.English => "English",
+        _ => "Flying Kings"
     };
 }

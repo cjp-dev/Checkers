@@ -6,16 +6,19 @@
 
 Move generation in `Checkers.Core` is governed by `IRuleEngine` and implemented in `RuleEngine.cs`. 
 
-The engine enforces **English Draughts base rules combined with International Flying Kings**:
-1. Regular men move and capture diagonally forward only.
-2. Kings can slide and jump across open diagonals of any distance in all 4 directions (**Flying Kings**).
-3. **Mandatory Captures:** If any capture is available, non-capturing moves are strictly illegal.
-4. **Free Choice:** The player may choose among any available capture branches, but once chosen, the full jump sequence must be completed.
-5. **Turn-ending Promotion:** A man reaching the crown row promotes immediately and ends its turn.
+The engine supports two configurable variants via `CheckersVariant`:
+1. **International Draughts (Flying Kings):** Men move/jump forward; Kings slide arbitrary diagonal distances and jump across open diagonals.
+2. **English Checkers (American Draughts / Straight Checkers):** Men move/jump forward; Kings move and jump strictly 1 square / 1 hop in all 4 diagonal directions.
+
+### Core Rules Common to Both Variants
+1. Regular men move diagonally forward only, and capture diagonally forward only.
+2. **Mandatory Captures:** If any capture is available, non-capturing moves are strictly illegal.
+3. **Free Choice:** The player may choose among any available capture branches, but once chosen, the full jump sequence must be completed.
+4. **Turn-ending Promotion:** A man reaching the crown row promotes immediately and ends its turn.
 
 ---
 
-## Regular men movement
+## Regular men movement (both variants)
 
 A regular man is constrained by its designated forward direction:
 * **White:** moves toward row `0` (`dRow = -1`).
@@ -30,16 +33,36 @@ The man can slide into that square. If $\text{dest.Row}$ reaches the crown row (
 If an adjacent forward diagonal square holds an opponent piece and the square immediately beyond it along the same diagonal is vacant:
 $$\text{jumped} = \text{from} + (\Delta_{\text{row}}, \Delta_{\text{col}})$$
 $$\text{landing} = \text{from} + (2\Delta_{\text{row}}, 2\Delta_{\text{col}})$$
-The man jumps over the opponent piece, removes it from the board, and lands on $\text{landing}$.
+The man jumps over the opponent piece, removes it from the board, and lands on $\text{landing}$. Men cannot move or jump backward in either variant.
 
 ### 3. Multi-Jump Chains
 From the landing square, the engine recursively searches for further available jumps. If additional jumps exist, the man **must** continue jumping until no further jumps can be made. All intermediate hops and captured coordinates are recorded in the composite `Move.Path` and `Move.CapturedPositions`.
 
 ---
 
-## Flying kings movement
+## English Checkers Kings movement
 
-When a piece is crowned, it becomes a **Flying King**. Flying kings move and capture along all four diagonal vectors:
+Under the English Checkers variant (`CheckersVariant.English`):
+
+### 1. Quiet Moves
+An English King moves **exactly 1 square diagonally** in any of the 4 diagonal directions:
+$$\mathbf{D} \in \{ (-1,-1), (-1,+1), (+1,-1), (+1,+1) \}$$
+$$\text{dest} = \text{from} + \mathbf{d}, \quad \mathbf{d} \in \mathbf{D}$$
+The destination square must be a dark square and vacant. It cannot slide multiple squares.
+
+### 2. Single-Hop Captures
+An English King captures by jumping over an **adjacent** opponent piece and landing on the **immediate vacant square behind it** along the same diagonal:
+$$\text{jumped} = \text{from} + \mathbf{d}$$
+$$\text{landing} = \text{from} + 2\mathbf{d}$$
+
+### 3. Four-Direction Multi-Jumps
+If further jumps are available from the landing square in any of the 4 diagonal directions, the King must continue jumping until no further captures remain. All jumped pieces are recorded in `Move.CapturedPositions` and removed upon move execution.
+
+---
+
+## Flying kings movement (International variant)
+
+When `CheckersVariant.International` is selected, crowned pieces become **Flying Kings**:
 
 $$\mathbf{D} \in \{ (-1,-1), (-1,+1), (+1,-1), (+1,+1) \}$$
 

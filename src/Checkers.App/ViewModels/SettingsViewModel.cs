@@ -1,14 +1,19 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Checkers.App.Models;
 using Checkers.Core.AI;
+using Checkers.Core.Models;
 
 namespace Checkers.App.ViewModels;
 
 /// <summary>
-/// ViewModel for the computer thinking settings dialog.
+/// ViewModel for the computer thinking and checkers variant settings dialog.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInternational), nameof(IsEnglish))]
+    private CheckersVariant _variant;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsFixedDepth), nameof(IsTimePerMove), nameof(IsTimePerGame))]
     private TimeControlMode _mode;
@@ -24,6 +29,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(GameSettings settings)
     {
+        Variant = settings.Variant;
         Mode = settings.Mode;
         Depth = settings.Depth;
         SecondsPerMove = settings.SecondsPerMove;
@@ -33,6 +39,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     public int MaxDepth => GameSettings.MaxDepth;
     public int MaxSecondsPerMove => GameSettings.MaxSecondsPerMove;
     public int MaxMinutesPerGame => GameSettings.MaxMinutesPerGame;
+
+    public bool IsInternational
+    {
+        get => Variant == CheckersVariant.International;
+        set { if (value) Variant = CheckersVariant.International; }
+    }
+
+    public bool IsEnglish
+    {
+        get => Variant == CheckersVariant.English;
+        set { if (value) Variant = CheckersVariant.English; }
+    }
 
     public bool IsFixedDepth
     {
@@ -52,7 +70,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         set => SelectMode(value, TimeControlMode.TimePerGame);
     }
 
-    public GameSettings ToSettings() => new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame).Normalize();
+    public GameSettings ToSettings() => new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame, Variant).Normalize();
 
     private void SelectMode(bool selected, TimeControlMode mode)
     {

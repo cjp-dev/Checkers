@@ -21,7 +21,9 @@ Design and user interface inspiration for desktop and web clients is drawn from 
 
 ## 2. Game Rules & Mechanics
 
-The game implements an **8x8 Draughts variant combining English capture rules with International Flying Kings**:
+The game implements two selectable **8x8 Draughts variants**, configurable via the Settings dialog:
+1. **International Draughts (Flying Kings):** Men move/jump forward; Kings fly along open diagonals and can jump from afar.
+2. **English Checkers (American Draughts / Straight Checkers):** Men move/jump forward; Kings move and jump strictly 1 square / 1 hop in all 4 diagonal directions.
 
 ### 2.1 Board & Pieces
 * **Board:** 8x8 grid (64 squares total; 32 active dark squares).
@@ -30,13 +32,19 @@ The game implements an **8x8 Draughts variant combining English capture rules wi
 * **Active Player:** White moves first.
 
 ### 2.2 Movement Rules
-* **Regular Men:**
-  * Move forward diagonally by 1 square into an unoccupied dark square.
-  * *Captures:* Jump forward diagonally over an adjacent opponent piece into the immediate vacant square behind it.
-* **Kings:**
-  * Crowned when a regular man reaches the furthest opponent rank.
-  * **Flying Kings (International style):** Can move any number of vacant squares diagonally in all 4 directions (forward and backward).
-  * **Flying King Captures:** Can jump over an opponent piece at any distance along an open diagonal and land on *any* vacant square beyond it along the same diagonal line.
+
+#### Regular Men (Both Variants)
+* Move forward diagonally by 1 square into an unoccupied dark square.
+* *Captures:* Jump forward diagonally over an adjacent opponent piece into the immediate vacant square behind it. Men cannot move or jump backward in either variant.
+
+#### Kings: International Draughts (Flying Kings)
+* **Movement:** Move any number of vacant squares diagonally in all 4 directions (forward and backward).
+* **Captures:** Jump over an opponent piece at any distance along an open diagonal and land on *any* vacant square beyond it along the same diagonal line.
+
+#### Kings: English Checkers (American Draughts)
+* **Movement:** Move exactly 1 square diagonally in all 4 directions (forward and backward). Not a flying king.
+* **Captures:** Jump over an adjacent opponent piece (distance 1) and land on the *immediate* vacant square behind it (distance 2) in all 4 diagonal directions (forward and backward).
+* **Multi-Jumps:** If further jumps are available from the landing square in any of the 4 directions, the King must continue jumping in the same turn.
 
 ### 2.3 Captures & Multi-Jumps
 * **Strict Mandatory Captures (Forced Jumps):**
@@ -57,12 +65,13 @@ The game implements an **8x8 Draughts variant combining English capture rules wi
 
 ### 2.5 Game Record & Persistence
 * **Format:** Standard Draughts notation (`21-17`, `26x17`, or multi-jump routes `2x16x26x17x3`) with optional metadata headers:
+  * `[Variant "English"]` or `[Variant "International"]`
   * `[GameMode "HumanVsComputer"]`
   * `[TimeControlMode "TimePerGame"]`
   * `[Depth "8"]`
   * `[SecondsPerMove "5"]`
   * `[MinutesPerGame "5"]`
-* **Parser:** Tokenizes standard moves, handles move numbers (`1.`, `2.`), semicolon/brace comments, and tags. Backwards-compatible with legacy `[Difficulty ...]` records.
+* **Parser:** Tokenizes standard moves, handles move numbers (`1.`, `2.`), semicolon/brace comments, and tags. Automatically configures the game session rule engine to the saved variant. Backwards-compatible with legacy records (omitted variant defaults to International).
 * **File Operations:** Standard `Open...`, `Save`, and `Save As...` with dirty tracking and window title integration.
 
 ---
@@ -156,16 +165,19 @@ Checkers/
 
 ## 4. Artificial Intelligence & Computer Settings
 
-### 4.1 Computer Options Dialog (Matching Stello & Connect-4)
+### 4.1 Computer Options & Variant Settings Dialog (Matching Stello & Connect-4)
 Configurable via `Game -> Settings...` dialog and reflected in the sidebar:
-1. **Fixed depth**:
+1. **Checkers Variant**:
+   - Radio selection: **International Draughts (Flying Kings)** vs **English Checkers (1-step Kings)**.
+   - Configures the core rule engine, move generator, king behaviors, and evaluation heuristics.
+2. **Fixed depth**:
    - Slider: 1 to 20 plies (default: 8 plies).
    - Searches to a fixed ply depth using iterative deepening.
-2. **Time per move**:
+3. **Time per move**:
    - Slider: 1 to 60 seconds (default: 5 seconds).
    - Soft limit: searches up to 2/3 of budget before starting a new depth ply.
    - Hard limit: aborts search mid-ply if time budget expires (checked every 512 nodes).
-3. **Time per game**:
+4. **Time per game**:
    - Slider: 1 to 60 minutes (default: 5 minutes).
    - Allocates remaining clock dynamically across estimated remaining moves.
    - Live chess clock countdown displayed in header banner and sidebar.
@@ -175,8 +187,9 @@ Configurable via `Game -> Settings...` dialog and reflected in the sidebar:
 * **Algorithm:** Minimax with Alpha-Beta pruning ($\alpha$-$\beta$).
 * **Iterative Deepening:** Explores depths $1, 2, \dots, D$, maintaining the Principal Variation (PV) best move from the previous iteration to seed move ordering for the next depth.
 * **Evaluation Heuristics ($H(s)$):**
-  * Material balance: Men = 100 pts, Kings = 300 pts.
+  * Material balance: Men = 100 pts. Kings: International = 300 pts (long-range flying diagonals); English = 170 pts (localized short-range power).
   * Central control: Bonus for dark squares in columns 2–5 and rows 2–5.
+  * King Centralization: In English Checkers, kings holding center squares receive an active bonus (+10 pts) reflecting short-range endgame dominance.
   * Advancement: Tiered bonuses rewarding regular men for advancing toward the crown row.
   * Home row defense: Retaining back-rank men to prevent opponent kinging.
   * Trapped piece penalties: Pieces with 0 legal exits.
@@ -243,6 +256,7 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 | **Phase 3** | **AI Opponent, Analysis & Game Records** | • `IPlayer` abstraction & `MinimaxPlayer` with heuristics<br>• Non-blocking asynchronous AI turns with cancellation<br>• Real-time **Analysis Pane** (Move, Depth, Score, Best Move, Nodes, Time) matching Stello<br>• Full **Save & Load** system (PDN-compatible format and tags)<br>• Document chapters `05-evaluation.md`, `06-move-ordering.md`, `07-search.md` | **COMPLETED** |
 | **Phase 4** | **Computer Settings, Time Controls & Engine Polish** | • **Computer Settings Dialog** matching Stello & Connect-4 (Fixed depth, Time per move, Time per game)<br>• **Chess clock / time management** with iterative deepening & clock countdown/refund on undo<br>• **Transposition table** (64-bit Zobrist hashing, replacement scheme, entry flags)<br>• **40-position empirical benchmark** (71.9% node reduction, 2.88x speedup)<br>• **Quiescence search** & capture chain extension<br>• Document chapters `08-transposition-table.md`, `10-time-control.md` | **COMPLETED** |
 | **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs/brain` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | **COMPLETED** |
+| **Phase 6** | **Multi-Variant Support (English Checkers & International Flying Kings)** | • `CheckersVariant` domain enum (`International`, `English`)<br>• 1-step King move generation & 4-direction single-hop multi-jumps in `RuleEngine`<br>• Variant-aware `EvaluationFunction` (King values 300 vs 170, King centralization)<br>• Radio button variant selection in desktop `SettingsWindow.xaml` & web `DialogHost.razor`<br>• PDN `[Variant ...]` tag serialization & deserialization<br>• Full unit test coverage for English Checkers rules & moves | **COMPLETED** |
 
 ---
 
@@ -250,6 +264,6 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 
 - **Platform:** .NET 10 (C# 13)
 - **Compiler Warnings:** 0 warnings across all projects (Debug & Release builds)
-- **Total Automated Unit Tests:** 100 tests (100% pass rate)
-  - `Checkers.Core.Tests`: 66 passing tests
-  - `Checkers.App.Tests`: 34 passing tests
+- **Total Automated Unit Tests:** 113 tests (100% pass rate)
+  - `Checkers.Core.Tests`: 76 passing tests
+  - `Checkers.App.Tests`: 37 passing tests

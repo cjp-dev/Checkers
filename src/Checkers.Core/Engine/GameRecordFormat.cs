@@ -32,7 +32,13 @@ public static partial class GameRecordFormat
 
         if (tags != null && tags.Count > 0)
         {
-            foreach (var kvp in tags)
+            var mergedTags = new Dictionary<string, string>(tags, StringComparer.OrdinalIgnoreCase);
+            if (!mergedTags.ContainsKey("Variant"))
+            {
+                mergedTags["Variant"] = session.RuleEngine.Variant == CheckersVariant.English ? "English" : "International";
+            }
+
+            foreach (var kvp in mergedTags)
             {
                 sb.AppendLine($"[{kvp.Key} \"{kvp.Value}\"]");
             }
@@ -55,7 +61,6 @@ public static partial class GameRecordFormat
     /// <exception cref="FormatException">Thrown when a move is illegal, malformed, or played after game over.</exception>
     public static GameRecord Parse(string text, GameSession? session = null)
     {
-        session ??= new GameSession();
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // 1. Extract metadata tags
@@ -65,6 +70,14 @@ public static partial class GameRecordFormat
             string key = match.Groups[1].Value;
             string value = match.Groups[2].Value;
             tags[key] = value;
+        }
+
+        if (session == null)
+        {
+            var variant = tags.TryGetValue("Variant", out var varStr) && varStr.Equals("English", StringComparison.OrdinalIgnoreCase)
+                ? CheckersVariant.English
+                : CheckersVariant.International;
+            session = new GameSession(new RuleEngine(variant));
         }
 
         // 2. Strip tags from text

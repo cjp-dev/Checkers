@@ -9,49 +9,59 @@
         Title="Settings" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="#FFFFFF" TextElement.Foreground="#2C3E50">
-    <Grid Margin="16">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="200" />
-            <ColumnDefinition Width="90" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <TextBlock Grid.ColumnSpan="3" Margin="0,0,0,12" FontSize="13" FontWeight="SemiBold" Text="How long may the computer think?" />
-
-        <RadioButton Grid.Row="1" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
-                     Content="Fixed depth" IsChecked="{Binding IsFixedDepth}" />
-        <Slider Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxDepth}"
-                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding Depth}" IsEnabled="{Binding IsFixedDepth}"
-                AutomationProperties.Name="Depth" />
-        <TextBlock Grid.Row="1" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
-                   Text="{Binding Depth, StringFormat={}{0} plies}" />
-
-        <RadioButton Grid.Row="2" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
-                     Content="Time per move" IsChecked="{Binding IsTimePerMove}" />
-        <Slider Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxSecondsPerMove}"
-                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding SecondsPerMove}" IsEnabled="{Binding IsTimePerMove}"
-                AutomationProperties.Name="Seconds per move" />
-        <TextBlock Grid.Row="2" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
-                   Text="{Binding SecondsPerMove, StringFormat={}{0} seconds}" />
-
-        <RadioButton Grid.Row="3" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
-                     Content="Time per game" IsChecked="{Binding IsTimePerGame}" />
-        <Slider Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxMinutesPerGame}"
-                IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding MinutesPerGame}" IsEnabled="{Binding IsTimePerGame}"
-                AutomationProperties.Name="Minutes per game" />
-        <TextBlock Grid.Row="3" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
-                   Text="{Binding MinutesPerGame, StringFormat={}{0} minutes}" />
-
-        <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Margin="0,16,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Width="80" Content="OK" IsDefault="True" Click="OnOk" Padding="0,4" Background="#3498DB" Foreground="#FFFFFF" BorderThickness="0" Cursor="Hand" />
-            <Button Width="80" Margin="8,0,0,0" Content="Cancel" IsCancel="True" Padding="0,4" Background="#ECEFF1" Foreground="#333333" BorderThickness="0" Cursor="Hand" />
+    <StackPanel Margin="18" Width="390">
+        <!-- Variant Section -->
+        <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold" Text="Checkers Rules &amp; Variant" />
+        <StackPanel Margin="4,0,0,16">
+            <RadioButton Margin="0,3,0,3" Content="International Draughts (Flying Kings)" GroupName="Variant"
+                         IsChecked="{Binding IsInternational}" />
+            <RadioButton Margin="0,3,0,3" Content="English Checkers (1-step Kings)" GroupName="Variant"
+                         IsChecked="{Binding IsEnglish}" />
         </StackPanel>
-    </Grid>
+
+        <!-- Time Control Section -->
+        <TextBlock Margin="0,0,0,10" FontSize="13" FontWeight="SemiBold" Text="How long may the computer think?" />
+        <Grid Margin="4,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="80" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <RadioButton Grid.Row="0" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                         Content="Fixed depth" IsChecked="{Binding IsFixedDepth}" />
+            <Slider Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxDepth}"
+                    IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding Depth}" IsEnabled="{Binding IsFixedDepth}"
+                    AutomationProperties.Name="Depth" />
+            <TextBlock Grid.Row="0" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                       Text="{Binding Depth, StringFormat={}{0} plies}" />
+
+            <RadioButton Grid.Row="1" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                         Content="Time per move" IsChecked="{Binding IsTimePerMove}" />
+            <Slider Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxSecondsPerMove}"
+                    IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding SecondsPerMove}" IsEnabled="{Binding IsTimePerMove}"
+                    AutomationProperties.Name="Seconds per move" />
+            <TextBlock Grid.Row="1" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                       Text="{Binding SecondsPerMove, StringFormat={}{0} seconds}" />
+
+            <RadioButton Grid.Row="2" Margin="0,4,12,4" VerticalAlignment="Center" GroupName="Mode"
+                         Content="Time per game" IsChecked="{Binding IsTimePerGame}" />
+            <Slider Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Minimum="1" Maximum="{Binding MaxMinutesPerGame}"
+                    IsSnapToTickEnabled="True" TickFrequency="1" Value="{Binding MinutesPerGame}" IsEnabled="{Binding IsTimePerGame}"
+                    AutomationProperties.Name="Minutes per game" />
+            <TextBlock Grid.Row="2" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                       Text="{Binding MinutesPerGame, StringFormat={}{0} minutes}" />
+        </Grid>
+
+        <!-- Buttons -->
+        <StackPanel Margin="0,20,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="80" Content="OK" IsDefault="True" Click="OnOk" Padding="0,5" Background="#3498DB" Foreground="#FFFFFF" BorderThickness="0" Cursor="Hand" />
+            <Button Width="80" Margin="8,0,0,0" Content="Cancel" IsCancel="True" Padding="0,5" Background="#ECEFF1" Foreground="#333333" BorderThickness="0" Cursor="Hand" />
+        </StackPanel>
+    </StackPanel>
 </Window>

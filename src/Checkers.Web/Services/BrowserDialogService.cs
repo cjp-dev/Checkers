@@ -35,6 +35,12 @@ public sealed class BrowserDialogService(IJSInProcessRuntime js) : IDialogServic
         return true;
     }
 
+    public async Task<bool> ConfirmAsync(string title, string message)
+    {
+        int button = await ShowAsync(new DialogRequest { Title = title, Message = message, Buttons = ["Yes", "No"] });
+        return button == 0;
+    }
+
     public void ShowError(string message) =>
         _ = ShowAsync(new DialogRequest { Title = Caption, Message = message, Buttons = ["OK"] });
 

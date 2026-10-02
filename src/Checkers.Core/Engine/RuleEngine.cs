@@ -13,6 +13,13 @@ public sealed class RuleEngine : IRuleEngine
         (-1, -1), (-1, 1), (1, -1), (1, 1)
     ];
 
+    public CheckersVariant Variant { get; }
+
+    public RuleEngine(CheckersVariant variant = CheckersVariant.International)
+    {
+        Variant = variant;
+    }
+
     public IReadOnlyList<Move> GetLegalMoves(BoardState state)
     {
         var captureMoves = new List<Move>();
@@ -29,6 +36,10 @@ public sealed class RuleEngine : IRuleEngine
                     if (piece.Value.IsMan)
                     {
                         FindManCaptures(state, pos, pos, [pos], [], captureMoves);
+                    }
+                    else if (Variant == CheckersVariant.English)
+                    {
+                        FindEnglishKingCaptures(state, pos, pos, [pos], [], captureMoves);
                     }
                     else
                     {
@@ -57,6 +68,10 @@ public sealed class RuleEngine : IRuleEngine
                     if (piece.Value.IsMan)
                     {
                         FindManQuietMoves(state, pos, piece.Value, quietMoves);
+                    }
+                    else if (Variant == CheckersVariant.English)
+                    {
+                        FindEnglishKingQuietMoves(state, pos, quietMoves);
                     }
                     else
                     {
@@ -380,6 +395,74 @@ public sealed class RuleEngine : IRuleEngine
                             newCaptured,
                             isPromotion: false));
                     }
+                }
+            }
+        }
+    }
+
+    #endregion
+
+    #region English King Move Generation
+
+    private static void FindEnglishKingQuietMoves(
+        BoardState state,
+        Position from,
+        List<Move> quietMoves)
+    {
+        foreach (var (dRow, dCol) in AllDiagonals)
+        {
+            var dest = from.Offset(dRow, dCol);
+            if (dest.IsValid && dest.IsDarkSquare && state.GetPiece(dest) == null)
+            {
+                quietMoves.Add(Move.CreateQuiet(from, dest, isPromotion: false));
+            }
+        }
+    }
+
+    private static void FindEnglishKingCaptures(
+        BoardState state,
+        Position initialFrom,
+        Position currentPos,
+        List<Position> pathSoFar,
+        List<Position> capturedSoFar,
+        List<Move> resultMoves)
+    {
+        var playerColor = state.ActivePlayer;
+
+        foreach (var (dRow, dCol) in AllDiagonals)
+        {
+            var jumpedPos = currentPos.Offset(dRow, dCol);
+            var landingPos = currentPos.Offset(2 * dRow, 2 * dCol);
+
+            if (!landingPos.IsValid || !landingPos.IsDarkSquare)
+                continue;
+
+            // Landing square must be empty (or start of path if circular jump)
+            if (state.GetPiece(landingPos) != null && landingPos != initialFrom)
+                continue;
+
+            // Must jump over opponent piece that hasn't been jumped yet in this sequence
+            var jumpedPiece = state.GetPiece(jumpedPos);
+            if (jumpedPiece.HasValue &&
+                jumpedPiece.Value.Color == playerColor.Opponent() &&
+                !capturedSoFar.Contains(jumpedPos))
+            {
+                var newPath = new List<Position>(pathSoFar) { landingPos };
+                var newCaptured = new List<Position>(capturedSoFar) { jumpedPos };
+
+                // Search recursively for further jumps from landingPos in all 4 directions
+                int countBefore = resultMoves.Count;
+                FindEnglishKingCaptures(state, initialFrom, landingPos, newPath, newCaptured, resultMoves);
+
+                // If no further jumps from landingPos, this landing is the completed capture move
+                if (resultMoves.Count == countBefore)
+                {
+                    resultMoves.Add(Move.CreateCapture(
+                        initialFrom,
+                        landingPos,
+                        newPath,
+                        newCaptured,
+                        isPromotion: false));
                 }
             }
         }

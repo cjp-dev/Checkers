@@ -34,6 +34,12 @@
             }
             @if (dialog.Settings is { } settings)
             {
+                <fieldset class="settings" style="margin-bottom: 1rem;">
+                    <legend>Checkers Rules &amp; Variant</legend>
+                    <label><input type="radio" name="variant" checked="@settings.IsInternational" @onchange="() => { settings.IsInternational = true; }" /> International (Flying Kings)</label>
+                    <label><input type="radio" name="variant" checked="@settings.IsEnglish" @onchange="() => { settings.IsEnglish = true; }" /> English Checkers (1-step Kings)</label>
+                </fieldset>
+
                 <fieldset class="settings">
                     <legend>How long may the computer think?</legend>
 

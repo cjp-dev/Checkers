@@ -26,8 +26,10 @@ public class MainViewModelTests
     {
         public List<string> Errors { get; } = [];
         public GameSettings? SettingsToReturn { get; set; }
+        public bool ConfirmResult { get; set; } = true;
         public void ShowInfo(string title, string message) { }
-        public bool ShowConfirmation(string title, string message) => true;
+        public bool ShowConfirmation(string title, string message) => ConfirmResult;
+        public Task<bool> ConfirmAsync(string title, string message) => Task.FromResult(ConfirmResult);
         public void ShowAbout() { }
         public void ShowError(string message) => Errors.Add(message);
         public Task<GameSettings?> EditSettingsAsync(GameSettings current) => Task.FromResult(SettingsToReturn);
@@ -684,5 +686,78 @@ public class MainViewModelTests
         vm.Analysis.Move.Should().NotBe("-");
         vm.Analysis.Depth.Should().Contain("plies");
         vm.Analysis.Nodes.Should().NotBe("-");
+    }
+
+    [Fact]
+    public void SettingsViewModel_VariantSelection_UpdatesVariantProperty()
+    {
+        var settings = GameSettings.Default; // International by default
+        var vm = new SettingsViewModel(settings);
+
+        vm.IsInternational.Should().BeTrue();
+        vm.IsEnglish.Should().BeFalse();
+        vm.Variant.Should().Be(CheckersVariant.International);
+
+        // Switch to English
+        vm.IsEnglish = true;
+        vm.IsEnglish.Should().BeTrue();
+        vm.IsInternational.Should().BeFalse();
+        vm.Variant.Should().Be(CheckersVariant.English);
+
+        var updated = vm.ToSettings();
+        updated.Variant.Should().Be(CheckersVariant.English);
+        updated.VariantName.Should().Be("English Checkers");
+        updated.VariantBadgeText.Should().Be("English");
+    }
+
+    [Fact]
+    public async Task EditSettings_VariantChanged_AtGameStart_SwitchesSessionVariantImmediately()
+    {
+        var dialogService = new TestDialogService
+        {
+            SettingsToReturn = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5, CheckersVariant.English)
+        };
+
+        var vm = new MainViewModel(dialogService: dialogService);
+        vm.Session.RuleEngine.Variant.Should().Be(CheckersVariant.International);
+
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        vm.Settings.Variant.Should().Be(CheckersVariant.English);
+        vm.Session.RuleEngine.Variant.Should().Be(CheckersVariant.English);
+        vm.VariantBadgeText.Should().Be("English");
+    }
+
+    [Fact]
+    public async Task EditSettings_VariantChanged_MidGame_PromptsConfirmation()
+    {
+        var dialogService = new TestDialogService
+        {
+            SettingsToReturn = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5, CheckersVariant.English),
+            ConfirmResult = false // User cancels
+        };
+
+        var vm = new MainViewModel(dialogService: dialogService);
+        // Play one move: (5,0) -> (4,1)
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        // Try to change variant, but decline confirmation
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        // Variant should remain International
+        vm.Settings.Variant.Should().Be(CheckersVariant.International);
+        vm.Session.RuleEngine.Variant.Should().Be(CheckersVariant.International);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        // Now user accepts confirmation
+        dialogService.ConfirmResult = true;
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        // Game should restart with English variant
+        vm.Settings.Variant.Should().Be(CheckersVariant.English);
+        vm.Session.RuleEngine.Variant.Should().Be(CheckersVariant.English);
+        vm.Session.MoveHistory.Should().BeEmpty();
     }
 }

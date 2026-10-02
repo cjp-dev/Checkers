@@ -26,6 +26,9 @@ public sealed class WpfDialogService : IDialogService
             return MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
     }
 
+    public Task<bool> ConfirmAsync(string title, string message) =>
+        Task.FromResult(ShowConfirmation(title, message));
+
     public void ShowError(string message)
     {
         if (Owner != null)

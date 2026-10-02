@@ -8,6 +8,11 @@ namespace Checkers.Core.Engine;
 public interface IRuleEngine
 {
     /// <summary>
+    /// The checkers variant implemented by this rule engine.
+    /// </summary>
+    CheckersVariant Variant { get; }
+
+    /// <summary>
     /// Generates all legal moves for the current active player.
     /// Strictly enforces the mandatory capture rule (returns ONLY capture moves if any exist).
     /// </summary>

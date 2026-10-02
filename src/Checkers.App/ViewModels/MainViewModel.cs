@@ -75,6 +75,7 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsHumanVsHuman => GameMode == GameMode.HumanVsHuman;
 
     public string SettingsBadgeText => Settings.Summary;
+    public string VariantBadgeText => Settings.VariantBadgeText;
 
     public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame && GameMode == GameMode.HumanVsComputer;
 
@@ -152,6 +153,7 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnSettingsChanged(GameSettings value)
     {
         OnPropertyChanged(nameof(SettingsBadgeText));
+        OnPropertyChanged(nameof(VariantBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
         OnPropertyChanged(nameof(BlackPlayerLabel));
         OnPropertyChanged(nameof(ClockText));
@@ -176,7 +178,7 @@ public sealed partial class MainViewModel : ObservableObject
         IDialogService? dialogService = null,
         IGameFileService? fileService = null)
     {
-        Session = session ?? new GameSession();
+        Session = session ?? new GameSession(new RuleEngine(Settings.Variant));
         _soundService = soundService ?? new DummySoundService();
         _dialogService = dialogService;
         _fileService = fileService;
@@ -388,6 +390,16 @@ public sealed partial class MainViewModel : ObservableObject
             ResetClock();
         }
 
+        if (loaded.Tags.TryGetValue("Variant", out var varStr) &&
+            Enum.TryParse<CheckersVariant>(varStr, true, out var parsedVar))
+        {
+            Settings = Settings with { Variant = parsedVar };
+        }
+        else
+        {
+            Settings = Settings with { Variant = loaded.Session.RuleEngine.Variant };
+        }
+
         AttachSession(loaded.Session);
         FileName = file.Path;
         RefreshBoard();
@@ -411,6 +423,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         var tags = new Dictionary<string, string>
         {
+            ["Variant"] = Settings.Variant.ToString(),
             ["GameMode"] = GameMode.ToString(),
             ["TimeControlMode"] = Settings.Mode.ToString(),
             ["Depth"] = Settings.Depth.ToString(),
@@ -500,8 +513,32 @@ public sealed partial class MainViewModel : ObservableObject
         var updated = await _dialogService.EditSettingsAsync(Settings);
         if (updated != null && updated != Settings)
         {
+            bool variantChanged = updated.Variant != Settings.Variant;
+            if (variantChanged && Session.MoveHistory.Count > 0 && Session.Status == GameStatus.InProgress)
+            {
+                bool confirm = await _dialogService.ConfirmAsync(
+                    "Change Checkers Variant",
+                    "Changing the checkers variant requires starting a new game.\n\nDo you want to start a new game now with the new rules?");
+
+                if (!confirm)
+                {
+                    updated = updated with { Variant = Settings.Variant };
+                    variantChanged = false;
+                }
+            }
+
             Settings = updated;
             ResetClock();
+
+            if (variantChanged)
+            {
+                CancelAi();
+                ClearSelection();
+                Analysis.Reset();
+                FileName = string.Empty;
+                AttachSession(new GameSession(new RuleEngine(Settings.Variant)));
+            }
+
             RefreshBoard();
         }
     }
@@ -562,7 +599,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (isCapture)
         {
             int maxCaps = validMoves.Max(m => m.CapturedPositions.Count);
-            string kingPrefix = isKing ? "Flying King " : "";
+            string kingPrefix = isKing ? (Session.RuleEngine.Variant == CheckersVariant.English ? "King " : "Flying King ") : "";
             string capPlural = maxCaps > 1 ? $"{maxCaps} pieces" : "1 piece";
             StatusText = $"{TurnIndicatorText} — Selected #{sqNum} ({kingPrefix}Multi-Jump captures {capPlural}!). Click a green landing circle.";
         }
@@ -612,7 +649,7 @@ public sealed partial class MainViewModel : ObservableObject
                 if (isCapture)
                 {
                     int maxCaps = movesForPiece.Max(m => m.CapturedPositions.Count);
-                    string kingPrefix = isKing ? "Flying King " : "";
+                    string kingPrefix = isKing ? (Session.RuleEngine.Variant == CheckersVariant.English ? "King " : "Flying King ") : "";
                     string capPlural = maxCaps > 1 ? $"{maxCaps} pieces" : "1 piece";
                     StatusText = $"{TurnIndicatorText} — Selected #{sqNum} ({kingPrefix}Multi-Jump captures {capPlural}!). Click a green landing circle.";
                 }
@@ -829,7 +866,10 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<GameSettings, TimeSpan, IPlayer>? AiPlayerFactory { get; set; }
 
     public IPlayer CreateAiPlayer() =>
-        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(Settings.ToLimits(_computerTimeLeft));
+        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(
+            Settings.ToLimits(_computerTimeLeft),
+            ruleEngine: new RuleEngine(Settings.Variant),
+            evaluator: new EvaluationFunction(Settings.Variant));
 
     public void CancelAi()
     {

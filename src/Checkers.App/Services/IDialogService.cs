@@ -6,6 +6,7 @@ public interface IDialogService
 {
     void ShowInfo(string title, string message);
     bool ShowConfirmation(string title, string message);
+    Task<bool> ConfirmAsync(string title, string message);
     void ShowAbout();
     void ShowError(string message);
     Task<GameSettings?> EditSettingsAsync(GameSettings current);
