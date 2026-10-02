@@ -1,6 +1,7 @@
 using Checkers.App.Models;
 using Checkers.App.Services;
 using Checkers.App.ViewModels;
+using Checkers.Core.AI;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 using FluentAssertions;
@@ -312,5 +313,86 @@ public class MainViewModelTests
         // Unhover restores status text
         vm.UnhoverSquare(vm.Squares[2, 1]);
         vm.StatusText.Should().Contain("captures 1 piece");
+    }
+
+    [Fact]
+    public void ShowAnalysis_DependsOnGameModeAndIsAnalysisVisible()
+    {
+        var vm = new MainViewModel();
+
+        // Default state: HumanVsHuman, ShowAnalysis is false because not playing computer
+        vm.GameMode.Should().Be(GameMode.HumanVsHuman);
+        vm.IsAnalysisVisible.Should().BeTrue();
+        vm.ShowAnalysis.Should().BeFalse();
+
+        // Switch to HumanVsComputer -> should become visible
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.ShowAnalysis.Should().BeTrue();
+
+        // Toggle visibility off
+        vm.ToggleAnalysisCommand.Execute(null);
+        vm.IsAnalysisVisible.Should().BeFalse();
+        vm.ShowAnalysis.Should().BeFalse();
+
+        // Toggle visibility on
+        vm.ToggleAnalysisCommand.Execute(null);
+        vm.IsAnalysisVisible.Should().BeTrue();
+        vm.ShowAnalysis.Should().BeTrue();
+
+        // Switch to HumanVsHuman mode -> should hide even when IsAnalysisVisible is true
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsHuman);
+        vm.ShowAnalysis.Should().BeFalse();
+        vm.IsAnalysisVisible.Should().BeTrue();
+
+        // Switch back to HumanVsComputer -> should be visible again
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.ShowAnalysis.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Analysis_UpdateAndReset_BehavesCorrectly()
+    {
+        var vm = new MainViewModel();
+
+        // Initially placeholder values
+        vm.Analysis.Move.Should().Be("-");
+        vm.Analysis.Depth.Should().Be("-");
+        vm.Analysis.Value.Should().Be("-");
+        vm.Analysis.BestMove.Should().Be("-");
+        vm.Analysis.Nodes.Should().Be("-");
+        vm.Analysis.Evaluations.Should().Be("-");
+        vm.Analysis.Time.Should().Be("-");
+
+        // Update with metrics
+        var analysis = new SearchAnalysis
+        {
+            Move = "32-28",
+            Depth = "3 plies",
+            Value = "+120",
+            BestMove = "32-28",
+            Nodes = "1,450",
+            Evaluations = "820",
+            Time = "0:00.1"
+        };
+        vm.Analysis.Update(analysis);
+
+        vm.Analysis.Move.Should().Be("32-28");
+        vm.Analysis.Depth.Should().Be("3 plies");
+        vm.Analysis.Value.Should().Be("+120");
+        vm.Analysis.BestMove.Should().Be("32-28");
+        vm.Analysis.Nodes.Should().Be("1,450");
+        vm.Analysis.Evaluations.Should().Be("820");
+        vm.Analysis.Time.Should().Be("0:00.1");
+
+        // New game resets analysis
+        vm.NewGameCommand.Execute(null);
+
+        vm.Analysis.Move.Should().Be("-");
+        vm.Analysis.Depth.Should().Be("-");
+        vm.Analysis.Value.Should().Be("-");
+        vm.Analysis.BestMove.Should().Be("-");
+        vm.Analysis.Nodes.Should().Be("-");
+        vm.Analysis.Evaluations.Should().Be("-");
+        vm.Analysis.Time.Should().Be("-");
     }
 }

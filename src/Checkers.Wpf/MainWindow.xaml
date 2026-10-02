@@ -16,12 +16,24 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="AnalysisLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,2,14,2" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#7F8C8D" />
+        </Style>
+        <Style x:Key="AnalysisField" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,2,0,2" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#2C3E50" />
+        </Style>
     </Window.Resources>
 
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="N" Command="{Binding NewGameCommand}" />
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}" />
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Modifiers="Control" Key="A" Command="{Binding ToggleAnalysisCommand}" />
     </Window.InputBindings>
 
     <DockPanel>
@@ -65,6 +77,9 @@
             <MenuItem Header="_Moves">
                 <MenuItem Header="_Undo" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}" />
                 <MenuItem Header="_Redo" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}" />
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="_Analysis" InputGestureText="Ctrl+A" IsCheckable="True" IsChecked="{Binding IsAnalysisVisible}" />
             </MenuItem>
             <MenuItem Header="_Options">
                 <MenuItem Header="_Sound" IsCheckable="True" IsChecked="{Binding IsSoundOn}" Command="{Binding ToggleSoundCommand}" />
@@ -135,6 +150,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -157,8 +173,61 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Analysis Panel (Visible in Human vs Computer mode) -->
+                <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="6" Padding="12" Margin="0,0,0,12"
+                        Visibility="{Binding ShowAnalysis, Converter={StaticResource BoolToVis}}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" Direction="270" ShadowDepth="2" Opacity="0.1" />
+                    </Border.Effect>
+                    <Grid DataContext="{Binding Analysis}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="ANALYSIS" FontSize="11" FontWeight="Bold" Foreground="#888888" Margin="0,0,0,8" />
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Move:" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Move}" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Depth:" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Depth}" TextWrapping="Wrap" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Value:" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Value}" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Best move:" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding BestMove}" />
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Nodes:" />
+                            <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Nodes}" />
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Evaluations:" />
+                            <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Evaluations}" />
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Time:" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Time}" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
                 <!-- Mode & Difficulty Settings Panel -->
-                <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="6" Padding="12" Margin="0,0,0,12">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="8" Direction="270" ShadowDepth="2" Opacity="0.1" />
                     </Border.Effect>
@@ -287,7 +356,7 @@
                 </Border>
 
                 <!-- Pieces & Score Panel -->
-                <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                <Border Grid.Row="3" Background="#FFFFFF" CornerRadius="6" Padding="12" Margin="0,0,0,12">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="8" Direction="270" ShadowDepth="2" Opacity="0.1" />
                     </Border.Effect>
@@ -326,7 +395,7 @@
                 </Border>
 
                 <!-- Quick Action Buttons -->
-                <Grid Grid.Row="3" Margin="0,0,0,12">
+                <Grid Grid.Row="4" Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
@@ -339,7 +408,7 @@
                 </Grid>
 
                 <!-- Move History -->
-                <Border Grid.Row="4" Background="#FFFFFF" CornerRadius="6" Padding="12">
+                <Border Grid.Row="5" Background="#FFFFFF" CornerRadius="6" Padding="12">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="8" Direction="270" ShadowDepth="2" Opacity="0.1" />
                     </Border.Effect>

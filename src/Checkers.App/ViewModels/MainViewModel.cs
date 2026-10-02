@@ -109,15 +109,34 @@ public sealed partial class MainViewModel : ObservableObject
         _ => "Black"
     };
 
+    public AnalysisViewModel Analysis { get; } = new();
+
+    [ObservableProperty]
+    private bool _isAnalysisVisible = true;
+
+    public bool ShowAnalysis => IsAnalysisVisible && GameMode == GameMode.HumanVsComputer;
+
+    [RelayCommand]
+    public void ToggleAnalysis()
+    {
+        IsAnalysisVisible = !IsAnalysisVisible;
+    }
+
     partial void OnGameModeChanged(GameMode value)
     {
         OnPropertyChanged(nameof(IsHumanVsComputer));
         OnPropertyChanged(nameof(IsHumanVsHuman));
         OnPropertyChanged(nameof(IsAiDifficultyEnabled));
+        OnPropertyChanged(nameof(ShowAnalysis));
         OnPropertyChanged(nameof(GameModeBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
         OnPropertyChanged(nameof(WhitePlayerLabel));
         OnPropertyChanged(nameof(BlackPlayerLabel));
+    }
+
+    partial void OnIsAnalysisVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowAnalysis));
     }
 
     partial void OnDifficultyChanged(AiDifficulty value)
@@ -267,6 +286,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         CancelAi();
         ClearSelection();
+        Analysis.Reset();
         Session.StartNewGame();
         RefreshBoard();
     }
@@ -584,6 +604,11 @@ public sealed partial class MainViewModel : ObservableObject
             await Task.Delay(250, token);
 
             var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, token), token);
+
+            if (ai.LastAnalysis != null)
+            {
+                Analysis.Update(ai.LastAnalysis);
+            }
 
             if (!token.IsCancellationRequested && Session.Status == GameStatus.InProgress)
             {

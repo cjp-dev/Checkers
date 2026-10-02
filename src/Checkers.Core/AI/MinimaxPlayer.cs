@@ -18,6 +18,8 @@ public sealed class MinimaxPlayer : IPlayer
     public string Name { get; }
     public int Depth { get; }
     public long NodesEvaluated { get; private set; }
+    public long LeafEvaluations { get; private set; }
+    public SearchAnalysis? LastAnalysis { get; private set; }
 
     public MinimaxPlayer(
         int depth = 4,
@@ -47,10 +49,23 @@ public sealed class MinimaxPlayer : IPlayer
         // If only 1 move is legal, play it immediately
         if (legalMoves.Count == 1)
         {
-            return ValueTask.FromResult(legalMoves[0]);
+            var singleMove = legalMoves[0];
+            LastAnalysis = new SearchAnalysis
+            {
+                Move = singleMove.Notation,
+                Depth = $"{Depth} plies (Forced)",
+                Value = "Forced",
+                BestMove = singleMove.Notation,
+                Nodes = "1",
+                Evaluations = "0",
+                Time = "0:00.0"
+            };
+            return ValueTask.FromResult(singleMove);
         }
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         NodesEvaluated = 0;
+        LeafEvaluations = 0;
 
         var orderedMoves = OrderMoves(legalMoves);
         int alpha = -200_000;
@@ -80,9 +95,32 @@ public sealed class MinimaxPlayer : IPlayer
             alpha = Math.Max(alpha, score);
         }
 
+        sw.Stop();
+
         // Among moves tied for the best score, choose uniformly at random
         int selectedIndex = _rng.Next(bestMoves.Count);
-        return ValueTask.FromResult(bestMoves[selectedIndex]);
+        var chosenMove = bestMoves[selectedIndex];
+
+        string valueStr = bestScore switch
+        {
+            >= 90_000 => $"+Win in {WinScore - bestScore} plies",
+            <= -90_000 => $"-Loss in {bestScore - LossScore} plies",
+            > 0 => $"+{bestScore}",
+            _ => bestScore.ToString()
+        };
+
+        LastAnalysis = new SearchAnalysis
+        {
+            Move = chosenMove.Notation,
+            Depth = $"{Depth} plies",
+            Value = valueStr,
+            BestMove = chosenMove.Notation,
+            Nodes = NodesEvaluated.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+            Evaluations = LeafEvaluations.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+            Time = sw.Elapsed.ToString(@"m\:ss\.f")
+        };
+
+        return ValueTask.FromResult(chosenMove);
     }
 
     private int NegaMax(
@@ -108,6 +146,7 @@ public sealed class MinimaxPlayer : IPlayer
 
         if (depth == 0)
         {
+            LeafEvaluations++;
             return _evaluator.Evaluate(state);
         }
 

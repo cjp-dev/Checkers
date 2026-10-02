@@ -10,6 +10,7 @@ public sealed class RandomPlayer : IPlayer
     private readonly Random _random;
 
     public string Name { get; }
+    public SearchAnalysis? LastAnalysis { get; private set; }
 
     public RandomPlayer(string name = "Random AI", int? seed = null)
     {
@@ -28,6 +29,19 @@ public sealed class RandomPlayer : IPlayer
             throw new InvalidOperationException("No legal moves available.");
 
         int index = _random.Next(legalMoves.Count);
-        return ValueTask.FromResult(legalMoves[index]);
+        var move = legalMoves[index];
+
+        LastAnalysis = new SearchAnalysis
+        {
+            Move = move.Notation,
+            Depth = "1 ply",
+            Value = "0",
+            BestMove = move.Notation,
+            Nodes = legalMoves.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+            Evaluations = "0",
+            Time = "0:00.0"
+        };
+
+        return ValueTask.FromResult(move);
     }
 }

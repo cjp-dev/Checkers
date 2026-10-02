@@ -10,6 +10,11 @@ public interface IPlayer
     string Name { get; }
 
     /// <summary>
+    /// Search and evaluation analysis from the player's last completed move.
+    /// </summary>
+    SearchAnalysis? LastAnalysis => null;
+
+    /// <summary>
     /// Chooses a move from the available legal moves for the given state.
     /// </summary>
     ValueTask<Move> GetMoveAsync(
