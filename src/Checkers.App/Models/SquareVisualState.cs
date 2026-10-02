@@ -8,5 +8,7 @@ public enum SquareVisualState : byte
     ValidTarget = 1 << 1,
     LastMoveFrom = 1 << 2,
     LastMoveTo = 1 << 3,
-    MandatoryCaptureSource = 1 << 4
+    MandatoryCaptureSource = 1 << 4,
+    Movable = 1 << 5
 }
+

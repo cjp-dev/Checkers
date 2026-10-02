@@ -1,4 +1,5 @@
 <UserControl x:Class="Checkers.Wpf.Views.BoardView"
+             x:Name="Root"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -33,6 +34,7 @@
         <SolidColorBrush x:Key="TargetDotBrush" Color="#2ECC71" />
         <SolidColorBrush x:Key="MandatoryBrush" Color="#E74C3C" />
         <SolidColorBrush x:Key="LastMoveBrush" Color="#F39C12" />
+        <SolidColorBrush x:Key="MovableRingBrush" Color="#2ECC71" />
 
         <!-- Boolean To Visibility -->
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -44,7 +46,8 @@
                 <DropShadowEffect BlurRadius="15" Direction="315" ShadowDepth="4" Opacity="0.4" />
             </Border.Effect>
 
-            <Grid Width="560" Height="560">
+            <Grid Width="560" Height="560"
+                  PreviewMouseLeftButtonUp="OnBoardPreviewMouseLeftButtonUp">
                 <ItemsControl ItemsSource="{Binding BoardSquares}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -54,10 +57,20 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:SquareViewModel}">
-                            <Button Command="{Binding DataContext.SquareClickedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}"
-                                    Cursor="Hand"
+                            <Button Click="OnSquareButtonClick"
+                                    PreviewMouseLeftButtonDown="OnSquarePreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="OnSquarePreviewMouseMove"
                                     Focusable="False">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Cursor" Value="Arrow" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CanInteract}" Value="True">
+                                                <Setter Property="Cursor" Value="Hand" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Grid x:Name="SquareRoot" Width="70" Height="70">
@@ -98,14 +111,19 @@
                                             <!-- Valid Target Marker (when selected piece can land here) -->
                                             <Grid Visibility="{Binding IsValidTarget, Converter={StaticResource BoolToVis}}"
                                                   IsHitTestVisible="False">
-                                                <!-- Small dot if empty square -->
-                                                <Ellipse Width="22" Height="22"
-                                                         Fill="{StaticResource TargetDotBrush}"
-                                                         Opacity="0.85">
+                                                <!-- Outer ring -->
+                                                <Ellipse Width="34" Height="34"
+                                                         Stroke="{StaticResource TargetDotBrush}"
+                                                         StrokeThickness="2"
+                                                         Opacity="0.7">
                                                     <Ellipse.Effect>
                                                         <DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#2ECC71" Opacity="0.8" />
                                                     </Ellipse.Effect>
                                                 </Ellipse>
+                                                <!-- Center target dot -->
+                                                <Ellipse Width="18" Height="18"
+                                                         Fill="{StaticResource TargetDotBrush}"
+                                                         Opacity="0.95" />
                                             </Grid>
 
                                             <!-- Piece Visual -->
@@ -116,6 +134,18 @@
                                                 <Ellipse Margin="2,4,0,0" Fill="#40000000">
                                                     <Ellipse.Effect>
                                                         <BlurEffect Radius="4" />
+                                                    </Ellipse.Effect>
+                                                </Ellipse>
+
+                                                <!-- Movable Glow Ring -->
+                                                <Ellipse Margin="-2"
+                                                         Stroke="{StaticResource MovableRingBrush}"
+                                                         StrokeThickness="2.5"
+                                                         StrokeDashArray="3,2"
+                                                         Visibility="{Binding IsMovable, Converter={StaticResource BoolToVis}}"
+                                                         IsHitTestVisible="False">
+                                                    <Ellipse.Effect>
+                                                        <DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#2ECC71" Opacity="0.9" />
                                                     </Ellipse.Effect>
                                                 </Ellipse>
 
@@ -161,6 +191,15 @@
                                                 <Setter TargetName="PieceDisc" Property="Fill" Value="{StaticResource BlackPieceBrush}" />
                                                 <Setter TargetName="PieceDisc" Property="Stroke" Value="{StaticResource BlackPieceBorderBrush}" />
                                             </DataTrigger>
+
+                                            <!-- Hover effect for interactive squares -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True" />
+                                                    <Condition Binding="{Binding CanInteract}" Value="True" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter TargetName="SquareBg" Property="Opacity" Value="0.82" />
+                                            </MultiDataTrigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>

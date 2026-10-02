@@ -168,4 +168,74 @@ public class MainViewModelTests
         vm.Session.MoveHistory.Should().HaveCountGreaterThanOrEqualTo(2);
         vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.White);
     }
+
+    [Fact]
+    public void InitialBoard_MarksOnlyRow5AsMovable()
+    {
+        var vm = new MainViewModel();
+
+        // Row 5 pieces (draughts 21, 22, 23, 24) are the only ones with forward quiet moves
+        vm.Squares[5, 0].IsMovable.Should().BeTrue();
+        vm.Squares[5, 0].CanInteract.Should().BeTrue();
+        vm.Squares[5, 2].IsMovable.Should().BeTrue();
+        vm.Squares[5, 4].IsMovable.Should().BeTrue();
+        vm.Squares[5, 6].IsMovable.Should().BeTrue();
+
+        // Row 6 and 7 pieces are blocked by friendly pieces at the start
+        vm.Squares[6, 1].IsMovable.Should().BeFalse();
+        vm.Squares[6, 1].CanInteract.Should().BeFalse();
+        vm.Squares[7, 0].IsMovable.Should().BeFalse();
+        vm.Squares[7, 0].CanInteract.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SquareClicked_BlockedPiece_DisplaysInformativeBlockedMessage()
+    {
+        var vm = new MainViewModel();
+
+        // Click on blocked piece (6, 1) (draughts 25)
+        vm.SquareClickedCommand.Execute(vm.Squares[6, 1]);
+
+        vm.StatusText.Should().Contain("blocked");
+        vm.Squares[6, 1].IsSelected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SquareClicked_OpponentPiece_DisplaysOpponentWarning()
+    {
+        var vm = new MainViewModel();
+
+        // Click on black piece (0, 1) during White's turn
+        vm.SquareClickedCommand.Execute(vm.Squares[0, 1]);
+
+        vm.StatusText.Should().Contain("Black piece");
+        vm.Squares[0, 1].IsSelected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryDragMove_ValidMove_ExecutesMoveAndUpdatesTurn()
+    {
+        var vm = new MainViewModel();
+
+        // Drag (5, 0) to (4, 1)
+        bool result = vm.TryDragMove(vm.Squares[5, 0], vm.Squares[4, 1]);
+
+        result.Should().BeTrue();
+        vm.Squares[5, 0].HasPiece.Should().BeFalse();
+        vm.Squares[4, 1].HasPiece.Should().BeTrue();
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+    }
+
+    [Fact]
+    public void TryDragMove_InvalidMove_SelectsSourcePieceIfMovable()
+    {
+        var vm = new MainViewModel();
+
+        // Drag (5, 0) to invalid square (6, 1)
+        bool result = vm.TryDragMove(vm.Squares[5, 0], vm.Squares[6, 1]);
+
+        result.Should().BeFalse();
+        vm.Squares[5, 0].IsSelected.Should().BeTrue();
+        vm.Squares[4, 1].IsValidTarget.Should().BeTrue();
+    }
 }

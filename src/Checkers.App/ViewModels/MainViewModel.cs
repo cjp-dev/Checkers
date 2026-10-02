@@ -102,21 +102,8 @@ public sealed partial class MainViewModel : ObservableObject
 
             if (matchingMove != null)
             {
-                bool success = Session.TryMakeMove(matchingMove);
-                if (success)
-                {
-                    // Play move audio
-                    if (matchingMove.IsPromotion)
-                        _soundService.Play(SoundType.King);
-                    else if (matchingMove.IsCapture)
-                        _soundService.Play(SoundType.Capture);
-                    else
-                        _soundService.Play(SoundType.Move);
-
-                    ClearSelection();
-                    HighlightLastMove(matchingMove);
-                    return;
-                }
+                ExecutePlayerMove(matchingMove);
+                return;
             }
         }
 
@@ -124,6 +111,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (_selectedPosition.HasValue && square.Position == _selectedPosition.Value)
         {
             ClearSelection();
+            UpdateStatusText();
             return;
         }
 
@@ -136,10 +124,72 @@ public sealed partial class MainViewModel : ObservableObject
                 SelectPiece(square.Position, movesForPiece);
                 return;
             }
+            else
+            {
+                // Friendly piece has no legal moves (blocked or forced capture elsewhere)
+                var sqNum = square.DraughtsNumber.HasValue ? $"#{square.DraughtsNumber.Value}" : $"({square.Row},{square.Col})";
+                if (Session.LegalMoves.Any(m => m.IsCapture))
+                {
+                    StatusText = $"{TurnIndicatorText} — Mandatory jump! Select a red-outlined piece.";
+                }
+                else
+                {
+                    StatusText = $"Piece on square {sqNum} has no legal moves (blocked). Select a highlighted piece.";
+                }
+                ClearSelection();
+                return;
+            }
         }
 
-        // 4. Clicked elsewhere -> Deselect
+        // 4. Clicked on opponent piece
+        if (square.HasPiece && square.Piece!.Value.Color != Session.CurrentState.ActivePlayer)
+        {
+            var opponent = square.Piece!.Value.Color == PieceColor.White ? "White" : "Black";
+            StatusText = $"That is a {opponent} piece. It is {TurnIndicatorText}!";
+            ClearSelection();
+            return;
+        }
+
+        // 5. Clicked on empty non-target square -> Deselect
         ClearSelection();
+        UpdateStatusText();
+    }
+
+    public bool ExecutePlayerMove(Move move)
+    {
+        bool success = Session.TryMakeMove(move);
+        if (success)
+        {
+            if (move.IsPromotion)
+                _soundService.Play(SoundType.King);
+            else if (move.IsCapture)
+                _soundService.Play(SoundType.Capture);
+            else
+                _soundService.Play(SoundType.Move);
+
+            ClearSelection();
+            HighlightLastMove(move);
+            return true;
+        }
+        return false;
+    }
+
+    public bool TryDragMove(SquareViewModel fromSquare, SquareViewModel toSquare)
+    {
+        if (IsAiThinking || Session.Status != GameStatus.InProgress || !IsHumanTurn())
+            return false;
+
+        var matchingMove = Session.LegalMoves.FirstOrDefault(m =>
+            m.From == fromSquare.Position && m.To == toSquare.Position);
+
+        if (matchingMove != null)
+        {
+            return ExecutePlayerMove(matchingMove);
+        }
+
+        // If not a legal move, select the source piece if it can move
+        SquareClicked(fromSquare);
+        return false;
     }
 
     [RelayCommand]
@@ -231,7 +281,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _selectedPosition = pos;
 
-        // Clear previous visual states (preserving last move)
+        // Clear previous visual states (preserving last move & mandatory capture)
         foreach (var sq in BoardSquares)
         {
             sq.VisualState &= ~(SquareVisualState.Selected | SquareVisualState.ValidTarget);
@@ -245,6 +295,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Squares[move.To.Row, move.To.Col].VisualState |= SquareVisualState.ValidTarget;
         }
+
+        var sqNum = Squares[pos.Row, pos.Col].DraughtsNumber?.ToString() ?? $"{pos.Row},{pos.Col}";
+        StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
     }
 
     private void ClearSelection()
@@ -302,14 +355,29 @@ public sealed partial class MainViewModel : ObservableObject
             MoveHistoryList.Add(m);
         }
 
-        // Highlight mandatory capture sources if captures are forced
+        // Highlight mandatory capture sources and movable pieces
         bool hasCaptures = Session.LegalMoves.Any(m => m.IsCapture);
+        bool isHuman = IsHumanTurn() && Session.Status == GameStatus.InProgress && !IsAiThinking;
+
         foreach (var sq in BoardSquares)
         {
             sq.VisualState &= ~SquareVisualState.MandatoryCaptureSource;
             if (hasCaptures && Session.LegalMoves.Any(m => m.From == sq.Position))
             {
                 sq.VisualState |= SquareVisualState.MandatoryCaptureSource;
+            }
+
+            bool canMove = isHuman && sq.HasPiece &&
+                           sq.Piece!.Value.Color == state.ActivePlayer &&
+                           Session.LegalMoves.Any(m => m.From == sq.Position);
+            sq.IsMovable = canMove;
+            if (canMove)
+            {
+                sq.VisualState |= SquareVisualState.Movable;
+            }
+            else
+            {
+                sq.VisualState &= ~SquareVisualState.Movable;
             }
         }
 
@@ -346,11 +414,11 @@ public sealed partial class MainViewModel : ObservableObject
         }
         else if (Session.LegalMoves.Any(m => m.IsCapture))
         {
-            StatusText = $"{TurnIndicatorText} (Mandatory Jump!)";
+            StatusText = $"{TurnIndicatorText} (Mandatory Jump! Select a red-outlined piece)";
         }
         else
         {
-            StatusText = TurnIndicatorText;
+            StatusText = $"{TurnIndicatorText} — Click or drag a highlighted piece to move";
         }
     }
 

@@ -18,6 +18,9 @@ public sealed partial class SquareViewModel : ObservableObject
     [ObservableProperty]
     private SquareVisualState _visualState;
 
+    [ObservableProperty]
+    private bool _isMovable;
+
     public bool HasPiece => Piece.HasValue;
     public bool IsWhitePiece => Piece.HasValue && Piece.Value.Color == PieceColor.White;
     public bool IsBlackPiece => Piece.HasValue && Piece.Value.Color == PieceColor.Black;
@@ -27,6 +30,8 @@ public sealed partial class SquareViewModel : ObservableObject
     public bool IsValidTarget => (VisualState & SquareVisualState.ValidTarget) != 0;
     public bool IsLastMove => (VisualState & (SquareVisualState.LastMoveFrom | SquareVisualState.LastMoveTo)) != 0;
     public bool IsMandatoryCaptureSource => (VisualState & SquareVisualState.MandatoryCaptureSource) != 0;
+
+    public bool CanInteract => IsMovable || IsValidTarget || IsSelected;
 
     public SquareViewModel(int row, int col)
     {
@@ -39,6 +44,7 @@ public sealed partial class SquareViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWhitePiece));
         OnPropertyChanged(nameof(IsBlackPiece));
         OnPropertyChanged(nameof(IsKing));
+        OnPropertyChanged(nameof(CanInteract));
     }
 
     partial void OnVisualStateChanged(SquareVisualState value)
@@ -47,5 +53,11 @@ public sealed partial class SquareViewModel : ObservableObject
         OnPropertyChanged(nameof(IsValidTarget));
         OnPropertyChanged(nameof(IsLastMove));
         OnPropertyChanged(nameof(IsMandatoryCaptureSource));
+        OnPropertyChanged(nameof(CanInteract));
+    }
+
+    partial void OnIsMovableChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanInteract));
     }
 }
