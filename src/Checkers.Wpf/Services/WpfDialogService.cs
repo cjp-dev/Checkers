@@ -36,21 +36,14 @@ public sealed class WpfDialogService : IDialogService
 
     public void ShowAbout()
     {
-        string message = 
-            "Checkers (Draughts)\n" +
-            "Version 1.0 (.NET 10 WPF)\n\n" +
-            "Rules implemented:\n" +
-            "• 8x8 Board with 12 pieces per player\n" +
-            "• International Flying Kings (long-distance slides & jumps)\n" +
-            "• Strict Mandatory Captures (Forced Jumps)\n" +
-            "• Free Choice among valid capture lines\n" +
-            "• Crown-row promotion ends turn immediately\n\n" +
-            "Built with Clean Architecture & CommunityToolkit.Mvvm.";
+        string message = $"{AboutInfo.Version}\n\n" +
+            string.Join("\n\n", AboutInfo.Paragraphs) +
+            $"\n\n{AboutInfo.PictureCaption}";
 
         if (Owner != null)
-            MessageBox.Show(Owner, message, "About Checkers", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Owner, message, AboutInfo.Title, MessageBoxButton.OK, MessageBoxImage.Information);
         else
-            MessageBox.Show(message, "About Checkers", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(message, AboutInfo.Title, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     public Task<GameSettings?> EditSettingsAsync(GameSettings current)

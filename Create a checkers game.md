@@ -242,7 +242,7 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 | **Phase 2** | **Shared App Layer & WPF Desktop GUI** | • `Checkers.App` shared ViewModels & game coordinator<br>• `Checkers.Wpf` desktop application<br>• Responsive 8x8 checkerboard with piece rendering<br>• Click-to-move, drag-and-drop & visual move indicator highlights<br>• Flying King capture path preview & target crosshairs<br>• Turn management, Undo/Redo, and sound effects | **COMPLETED** |
 | **Phase 3** | **AI Opponent, Analysis & Game Records** | • `IPlayer` abstraction & `MinimaxPlayer` with heuristics<br>• Non-blocking asynchronous AI turns with cancellation<br>• Real-time **Analysis Pane** (Move, Depth, Score, Best Move, Nodes, Time) matching Stello<br>• Full **Save & Load** system (PDN-compatible format and tags)<br>• Document chapters `05-evaluation.md`, `06-move-ordering.md`, `07-search.md` | **COMPLETED** |
 | **Phase 4** | **Computer Settings, Time Controls & Engine Polish** | • **Computer Settings Dialog** matching Stello & Connect-4 (Fixed depth, Time per move, Time per game)<br>• **Chess clock / time management** with iterative deepening & clock countdown/refund on undo<br>• **Transposition table** (64-bit Zobrist hashing, replacement scheme, entry flags)<br>• **40-position empirical benchmark** (71.9% node reduction, 2.88x speedup)<br>• **Quiescence search** & capture chain extension<br>• Document chapters `08-transposition-table.md`, `10-time-control.md` | **COMPLETED** |
-| **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs/brain` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | Planned |
+| **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs/brain` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | **COMPLETED** |
 
 ---
 
@@ -250,6 +250,6 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 
 - **Platform:** .NET 10 (C# 13)
 - **Compiler Warnings:** 0 warnings across all projects (Debug & Release builds)
-- **Total Automated Unit Tests:** 96 tests (100% pass rate)
-  - `Checkers.Core.Tests`: 64 passing tests
-  - `Checkers.App.Tests`: 32 passing tests
+- **Total Automated Unit Tests:** 100 tests (100% pass rate)
+  - `Checkers.Core.Tests`: 66 passing tests
+  - `Checkers.App.Tests`: 34 passing tests

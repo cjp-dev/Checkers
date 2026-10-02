@@ -10,6 +10,7 @@ public sealed partial class SquareViewModel : ObservableObject
     public int Row => Position.Row;
     public int Col => Position.Col;
     public bool IsDark => Position.IsDarkSquare;
+    public bool IsDarkSquare => Position.IsDarkSquare;
     public int? DraughtsNumber => Position.ToDraughtsIndex();
 
     [ObservableProperty]
@@ -29,6 +30,8 @@ public sealed partial class SquareViewModel : ObservableObject
     public bool IsSelected => (VisualState & SquareVisualState.Selected) != 0;
     public bool IsValidTarget => (VisualState & SquareVisualState.ValidTarget) != 0;
     public bool IsLastMove => (VisualState & (SquareVisualState.LastMoveFrom | SquareVisualState.LastMoveTo)) != 0;
+    public bool IsLastMoveFrom => (VisualState & SquareVisualState.LastMoveFrom) != 0;
+    public bool IsLastMoveTo => (VisualState & SquareVisualState.LastMoveTo) != 0;
     public bool IsMandatoryCaptureSource => (VisualState & SquareVisualState.MandatoryCaptureSource) != 0;
     public bool IsCapturedTarget => (VisualState & SquareVisualState.CapturedTarget) != 0;
 
@@ -53,6 +56,8 @@ public sealed partial class SquareViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSelected));
         OnPropertyChanged(nameof(IsValidTarget));
         OnPropertyChanged(nameof(IsLastMove));
+        OnPropertyChanged(nameof(IsLastMoveFrom));
+        OnPropertyChanged(nameof(IsLastMoveTo));
         OnPropertyChanged(nameof(IsMandatoryCaptureSource));
         OnPropertyChanged(nameof(IsCapturedTarget));
         OnPropertyChanged(nameof(CanInteract));

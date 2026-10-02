@@ -1,0 +1,101 @@
+@using Checkers.App.ViewModels
+@using Checkers.Core.Models
+
+<div class="checkerboard-container">
+    <div class="checkerboard" role="grid" aria-label="Checkers Board">
+        @for (int r = 0; r < 8; r++)
+        {
+            @for (int c = 0; c < 8; c++)
+            {
+                var sq = Squares[r, c];
+                bool isDark = sq.IsDarkSquare;
+                string squareClass = GetSquareClasses(sq);
+
+                <div class="square @squareClass"
+                     role="gridcell"
+                     aria-label="@GetSquareAriaLabel(sq)"
+                     @onclick="() => OnSquareClick.InvokeAsync(sq)"
+                     @ondragover:preventDefault
+                     @ondrop="() => HandleDrop(sq)">
+
+                    @if (isDark && sq.DraughtsNumber.HasValue)
+                    {
+                        <span class="square-number">@sq.DraughtsNumber.Value</span>
+                    }
+
+                    @if (sq.HasPiece)
+                    {
+                        var piece = sq.Piece!.Value;
+                        string pieceClass = piece.Color == PieceColor.White ? "piece piece-white" : "piece piece-black";
+                        if (piece.IsKing) pieceClass += " piece-king";
+                        if (sq.IsSelected) pieceClass += " piece-selected";
+                        if (sq.IsMovable) pieceClass += " piece-movable";
+
+                        <div class="@pieceClass"
+                             draggable="@(sq.IsMovable ? "true" : "false")"
+                             @ondragstart="() => _draggedSquare = sq">
+                            @if (piece.IsKing)
+                            {
+                                <span class="crown">👑</span>
+                            }
+                        </div>
+                    }
+
+                    @if (sq.IsValidTarget)
+                    {
+                        <div class="target-indicator"></div>
+                    }
+                    @if (sq.IsCapturedTarget)
+                    {
+                        <div class="capture-target-indicator"></div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private SquareViewModel? _draggedSquare;
+
+    [Parameter, EditorRequired]
+    public SquareViewModel[,] Squares { get; set; } = new SquareViewModel[8, 8];
+
+    [Parameter]
+    public EventCallback<SquareViewModel> OnSquareClick { get; set; }
+
+    [Parameter]
+    public EventCallback<(SquareViewModel From, SquareViewModel To)> OnSquareDragDrop { get; set; }
+
+    private async Task HandleDrop(SquareViewModel target)
+    {
+        if (_draggedSquare != null && _draggedSquare != target)
+        {
+            await OnSquareDragDrop.InvokeAsync((_draggedSquare, target));
+            _draggedSquare = null;
+        }
+    }
+
+    private static string GetSquareClasses(SquareViewModel sq)
+    {
+        var classes = new List<string> { sq.IsDarkSquare ? "dark" : "light" };
+
+        if (sq.IsSelected) classes.Add("selected");
+        if (sq.IsValidTarget) classes.Add("valid-target");
+        if (sq.IsCapturedTarget) classes.Add("captured-target");
+        if (sq.IsLastMoveFrom) classes.Add("last-from");
+        if (sq.IsLastMoveTo) classes.Add("last-to");
+        if (sq.IsMandatoryCaptureSource) classes.Add("mandatory-capture");
+        if (sq.IsMovable) classes.Add("movable");
+
+        return string.Join(" ", classes);
+    }
+
+    private static string GetSquareAriaLabel(SquareViewModel sq)
+    {
+        string pos = sq.DraughtsNumber.HasValue ? $"Square {sq.DraughtsNumber.Value}" : $"Row {sq.Row + 1}, Column {sq.Col + 1}";
+        if (!sq.HasPiece) return pos;
+        var p = sq.Piece!.Value;
+        return $"{pos}, {p.Color} {(p.IsKing ? "King" : "Man")}";
+    }
+}

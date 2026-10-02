@@ -1,0 +1,41 @@
+name: Deploy web version
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/Checkers.Web/**'
+      - 'src/Checkers.App/**'
+      - 'src/Checkers.Core/**'
+      - 'docs/brain/**'
+      - 'Images/**'
+      - '.github/workflows/azure-static-web-apps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install WebAssembly build tools
+        run: dotnet workload install wasm-tools
+
+      - name: Publish (AOT)
+        run: dotnet publish src/Checkers.Web/Checkers.Web.csproj -c Release -o publish
+
+      # The app is already built, so the action only uploads the static files.
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: publish/wwwroot
+          skip_app_build: true

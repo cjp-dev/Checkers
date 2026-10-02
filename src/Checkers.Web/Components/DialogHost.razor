@@ -1,0 +1,110 @@
+@implements IDisposable
+@inject BrowserDialogService Dialogs
+
+@if (Dialogs.Current is { } dialog)
+{
+    <div class="dialog-backdrop">
+        <div class="dialog @(dialog.Picture is null ? null : "dialog-with-picture")" role="dialog" aria-modal="true" aria-labelledby="dialog-title" @onkeydown="e => OnKeyDown(dialog, e)">
+            <h2 id="dialog-title">@dialog.Title</h2>
+            @if (dialog.Picture is not null)
+            {
+                <figure class="dialog-picture">
+                    <img src="@dialog.Picture" alt="@dialog.PictureCaption" />
+                    <figcaption>@dialog.PictureCaption</figcaption>
+                </figure>
+            }
+            <div class="dialog-body">
+                @if (dialog.Heading is not null)
+                {
+                    <p class="dialog-heading">@dialog.Heading</p>
+                }
+                @if (dialog.Message is not null)
+                {
+                    <p class="dialog-message">@dialog.Message</p>
+                }
+                @foreach (string paragraph in dialog.Paragraphs)
+                {
+                    <p>@paragraph</p>
+                }
+            </div>
+            @if (dialog.Text is not null)
+            {
+                <input class="dialog-text" type="text" aria-label="@dialog.Message" @ref="_textInput"
+                       @bind="dialog.Text" @bind:event="oninput" @onkeydown="e => OnTextKeyDown(dialog, e)" />
+            }
+            @if (dialog.Settings is { } settings)
+            {
+                <fieldset class="settings">
+                    <legend>How long may the computer think?</legend>
+
+                    <label><input type="radio" name="mode" checked="@settings.IsFixedDepth" @onchange="() => { settings.IsFixedDepth = true; }" /> Fixed depth</label>
+                    <input type="range" min="1" max="@settings.MaxDepth" aria-label="Depth" disabled="@(!settings.IsFixedDepth)"
+                           @bind="settings.Depth" @bind:event="oninput" />
+                    <span>@settings.Depth plies</span>
+
+                    <label><input type="radio" name="mode" checked="@settings.IsTimePerMove" @onchange="() => { settings.IsTimePerMove = true; }" /> Time per move</label>
+                    <input type="range" min="1" max="@settings.MaxSecondsPerMove" aria-label="Seconds per move" disabled="@(!settings.IsTimePerMove)"
+                           @bind="settings.SecondsPerMove" @bind:event="oninput" />
+                    <span>@settings.SecondsPerMove seconds</span>
+
+                    <label><input type="radio" name="mode" checked="@settings.IsTimePerGame" @onchange="() => { settings.IsTimePerGame = true; }" /> Time per game</label>
+                    <input type="range" min="1" max="@settings.MaxMinutesPerGame" aria-label="Minutes per game" disabled="@(!settings.IsTimePerGame)"
+                           @bind="settings.MinutesPerGame" @bind:event="oninput" />
+                    <span>@settings.MinutesPerGame minutes</span>
+                </fieldset>
+            }
+            <div class="dialog-buttons">
+                @for (int i = 0; i < dialog.Buttons.Count; i++)
+                {
+                    int button = i;
+                    if (button == 0)
+                    {
+                        <button class="default" @ref="_defaultButton" @onclick="() => Dialogs.Close(dialog, button)">@dialog.Buttons[button]</button>
+                    }
+                    else
+                    {
+                        <button @onclick="() => Dialogs.Close(dialog, button)">@dialog.Buttons[button]</button>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference _defaultButton;
+    private ElementReference _textInput;
+    private DialogRequest? _focused;
+
+    protected override void OnInitialized() => Dialogs.Changed += OnChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Focus the default button (or the input box) once per dialog, so Enter chooses it.
+        if (Dialogs.Current is { } dialog && dialog != _focused)
+        {
+            _focused = dialog;
+            await (dialog.Text is null ? _defaultButton : _textInput).FocusAsync();
+        }
+    }
+
+    public void Dispose() => Dialogs.Changed -= OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnKeyDown(DialogRequest dialog, KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Dialogs.Close(dialog, dialog.Buttons.Count - 1);
+        }
+    }
+
+    private void OnTextKeyDown(DialogRequest dialog, KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Dialogs.Close(dialog, 0);
+        }
+    }
+}

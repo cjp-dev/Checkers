@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+
+  <!-- The engine is CPU-bound, so CI publish compiles it to WebAssembly AOT (needs: dotnet workload install wasm-tools). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and ('$(RunAOTCompilation)' == 'true' or '$(GITHUB_ACTIONS)' == 'true')">
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Checkers.App\Checkers.App.csproj" />
+    <ProjectReference Include="..\Checkers.Core\Checkers.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The brain documentation is shown by the Docs pages; copied into wwwroot (git-ignored). -->
+  <Target Name="CopyBrainDocs" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <BrainDocs Include="..\..\docs\brain\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BrainDocs)" DestinationFiles="@(BrainDocs->'wwwroot\content\brain\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <Content Remove="wwwroot\content\brain\**" />
+      <Content Include="wwwroot\content\brain\**" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The picture in the About box, shared with the desktop version (git-ignored copy). -->
+  <Target Name="CopyAboutPicture" BeforeTargets="AssignTargetPaths">
+    <Copy SourceFiles="..\..\Images\2026 Claus Pedersen.jpg" DestinationFiles="wwwroot\images\claus-pedersen.jpg" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <Content Remove="wwwroot\images\claus-pedersen.jpg" />
+      <Content Include="wwwroot\images\claus-pedersen.jpg" />
+    </ItemGroup>
+  </Target>
+
+</Project>

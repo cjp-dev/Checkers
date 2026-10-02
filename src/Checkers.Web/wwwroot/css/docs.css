@@ -1,0 +1,273 @@
+/* The brain documentation (Pages/Docs.razor) */
+
+.docs {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.docs-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1.25rem;
+    background: #2C3E50;
+    color: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+    .docs-header a {
+        color: #fff;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+        .docs-header a:hover, .docs-header a:focus-visible {
+            text-decoration: underline;
+        }
+
+.docs-home {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.docs-play {
+    background: #3498DB;
+    padding: 0.35rem 0.85rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.docs-body {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    flex: 1;
+}
+
+.docs-toc {
+    position: sticky;
+    top: 2.75rem;
+    align-self: start;
+    max-height: calc(100vh - 2.75rem);
+    overflow-y: auto;
+    padding: 1rem 0.5rem 1rem 1rem;
+    border-right: 1px solid #e3e3e3;
+    background: #f8f9fa;
+}
+
+    .docs-toc ol {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .docs-toc a {
+        display: flex;
+        padding: 0.35rem 0.6rem;
+        border-radius: 4px;
+        color: #2C3E50;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+
+        .docs-toc a:hover {
+            background: #e2e8f0;
+        }
+
+        .docs-toc a[aria-current="page"] {
+            background: #2C3E50;
+            color: #fff;
+            font-weight: 600;
+        }
+
+.docs-number {
+    flex: none;
+    width: 1.6rem;
+    color: #718096;
+    font-variant-numeric: tabular-nums;
+}
+
+.docs-toc a[aria-current="page"] .docs-number {
+    color: #cbd5e0;
+}
+
+.docs-content {
+    width: 100%;
+    max-width: 54rem;
+    box-sizing: border-box;
+    padding: 1.5rem 2.5rem 3rem;
+}
+
+.docs-notice {
+    padding: 0.6rem 0.8rem;
+    background: #fff4e5;
+    border: 1px solid #f0c27b;
+    border-radius: 4px;
+}
+
+.docs-pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e3e3e3;
+}
+
+    .docs-pager a {
+        color: #2980B9;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .docs-pager .next {
+        margin-left: auto;
+    }
+
+@media (max-width: 800px) {
+    .docs-body {
+        grid-template-columns: 1fr;
+    }
+
+    .docs-toc {
+        position: static;
+        max-height: none;
+        border-right: 0;
+        border-bottom: 1px solid #e3e3e3;
+    }
+
+        .docs-toc ol {
+            columns: 2 12rem;
+        }
+
+    .docs-content {
+        padding: 1rem;
+    }
+}
+
+/* Rendered Markdown */
+
+.markdown-body {
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-wrap: break-word;
+    color: #2D3748;
+}
+
+    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+        margin: 1.6em 0 0.6em;
+        line-height: 1.25;
+        scroll-margin-top: 3.5rem;
+        color: #1A202C;
+    }
+
+    .markdown-body h1 {
+        margin-top: 0;
+        padding-bottom: 0.3em;
+        font-size: 2em;
+        border-bottom: 1px solid #e3e3e3;
+    }
+
+    .markdown-body h2 {
+        padding-bottom: 0.3em;
+        font-size: 1.45em;
+        border-bottom: 1px solid #eee;
+    }
+
+    .markdown-body h3 {
+        font-size: 1.2em;
+    }
+
+    .markdown-body a {
+        color: #2980B9;
+        text-decoration: none;
+    }
+
+        .markdown-body a:hover {
+            text-decoration: underline;
+        }
+
+    .markdown-body code {
+        padding: 0.15em 0.35em;
+        font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 0.9em;
+        background: #EDF2F7;
+        border-radius: 4px;
+        color: #C53030;
+    }
+
+    .markdown-body pre {
+        padding: 0.8rem 1rem;
+        overflow-x: auto;
+        background: #F7FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        line-height: 1.45;
+    }
+
+        .markdown-body pre code {
+            padding: 0;
+            background: none;
+            color: #2D3748;
+        }
+
+    .markdown-body blockquote {
+        margin: 1em 0;
+        padding: 0 1em;
+        color: #4A5568;
+        border-left: 4px solid #CBD5E0;
+    }
+
+    .markdown-body table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+        border-collapse: collapse;
+        margin: 1em 0;
+    }
+
+    .markdown-body th, .markdown-body td {
+        padding: 0.4em 0.75em;
+        border: 1px solid #E2E8F0;
+        vertical-align: top;
+    }
+
+    .markdown-body th {
+        background: #EDF2F7;
+        font-weight: 600;
+        text-align: left;
+    }
+
+    .markdown-body tr:nth-child(even) td {
+        background: #F7FAFC;
+    }
+
+    .markdown-body img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .markdown-body .math-display {
+        display: block;
+        margin: 1em 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .markdown-body .mermaid {
+        margin: 1em 0;
+        overflow-x: auto;
+        text-align: center;
+    }
+
+    .markdown-body hr {
+        height: 1px;
+        margin: 2em 0;
+        background: #E2E8F0;
+        border: 0;
+    }
