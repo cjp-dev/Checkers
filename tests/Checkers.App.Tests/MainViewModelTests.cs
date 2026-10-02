@@ -238,4 +238,49 @@ public class MainViewModelTests
         vm.Squares[5, 0].IsSelected.Should().BeTrue();
         vm.Squares[4, 1].IsValidTarget.Should().BeTrue();
     }
+
+    [Fact]
+    public void GameMode_PropertiesReflectActiveSelection()
+    {
+        var vm = new MainViewModel();
+
+        // Default mode is HumanVsHuman
+        vm.IsHumanVsHuman.Should().BeTrue();
+        vm.IsHumanVsComputer.Should().BeFalse();
+        vm.IsAiDifficultyEnabled.Should().BeFalse();
+        vm.GameModeBadgeText.Should().Be("vs Human");
+
+        // Switch to HumanVsComputer
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.IsHumanVsComputer.Should().BeTrue();
+        vm.IsHumanVsHuman.Should().BeFalse();
+        vm.IsAiDifficultyEnabled.Should().BeTrue();
+        vm.GameModeBadgeText.Should().Be("vs Computer");
+        vm.WhitePlayerLabel.Should().Contain("You");
+        vm.BlackPlayerLabel.Should().Contain("Computer");
+    }
+
+    [Fact]
+    public void Difficulty_PropertiesReflectActiveSelection()
+    {
+        var vm = new MainViewModel();
+
+        // Default is Medium
+        vm.IsMediumDifficulty.Should().BeTrue();
+        vm.IsEasyDifficulty.Should().BeFalse();
+        vm.IsHardDifficulty.Should().BeFalse();
+        vm.DifficultyBadgeText.Should().Contain("Medium");
+
+        // Set to Easy
+        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy);
+        vm.IsEasyDifficulty.Should().BeTrue();
+        vm.IsMediumDifficulty.Should().BeFalse();
+        vm.DifficultyBadgeText.Should().Contain("Easy");
+
+        // Set to Hard
+        vm.SetDifficultyCommand.Execute(AiDifficulty.Hard);
+        vm.IsHardDifficulty.Should().BeTrue();
+        vm.IsEasyDifficulty.Should().BeFalse();
+        vm.DifficultyBadgeText.Should().Contain("Hard");
+    }
 }

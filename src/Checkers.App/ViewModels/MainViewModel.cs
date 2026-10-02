@@ -60,6 +60,76 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private AiDifficulty _difficulty = AiDifficulty.Medium;
 
+    public bool IsHumanVsComputer => GameMode == GameMode.HumanVsComputer;
+    public bool IsHumanVsHuman => GameMode == GameMode.HumanVsHuman;
+
+    public bool IsEasyDifficulty => Difficulty == AiDifficulty.Easy;
+    public bool IsMediumDifficulty => Difficulty == AiDifficulty.Medium;
+    public bool IsHardDifficulty => Difficulty == AiDifficulty.Hard;
+
+    public bool IsAiDifficultyEnabled => GameMode == GameMode.HumanVsComputer;
+
+    public string GameModeBadgeText => GameMode switch
+    {
+        GameMode.HumanVsComputer => "vs Computer",
+        GameMode.HumanVsHuman => "vs Human",
+        GameMode.ComputerVsComputer => "Computer vs Computer",
+        _ => "Checkers"
+    };
+
+    public string DifficultyBadgeText => Difficulty switch
+    {
+        AiDifficulty.Easy => "Easy (Random)",
+        AiDifficulty.Medium => "Medium (Minimax 3)",
+        AiDifficulty.Hard => "Hard (Minimax 6)",
+        _ => Difficulty.ToString()
+    };
+
+    public string GameModeDescription => GameMode switch
+    {
+        GameMode.HumanVsComputer => $"vs Computer ({DifficultyBadgeText})",
+        GameMode.HumanVsHuman => "Human vs Human",
+        GameMode.ComputerVsComputer => "Computer vs Computer",
+        _ => string.Empty
+    };
+
+    public string WhitePlayerLabel => GameMode switch
+    {
+        GameMode.HumanVsComputer => "Human (You)",
+        GameMode.HumanVsHuman => "Player 1",
+        GameMode.ComputerVsComputer => "Computer 1",
+        _ => "White"
+    };
+
+    public string BlackPlayerLabel => GameMode switch
+    {
+        GameMode.HumanVsComputer => $"Computer ({DifficultyBadgeText})",
+        GameMode.HumanVsHuman => "Player 2",
+        GameMode.ComputerVsComputer => "Computer 2",
+        _ => "Black"
+    };
+
+    partial void OnGameModeChanged(GameMode value)
+    {
+        OnPropertyChanged(nameof(IsHumanVsComputer));
+        OnPropertyChanged(nameof(IsHumanVsHuman));
+        OnPropertyChanged(nameof(IsAiDifficultyEnabled));
+        OnPropertyChanged(nameof(GameModeBadgeText));
+        OnPropertyChanged(nameof(GameModeDescription));
+        OnPropertyChanged(nameof(WhitePlayerLabel));
+        OnPropertyChanged(nameof(BlackPlayerLabel));
+    }
+
+    partial void OnDifficultyChanged(AiDifficulty value)
+    {
+        OnPropertyChanged(nameof(IsEasyDifficulty));
+        OnPropertyChanged(nameof(IsMediumDifficulty));
+        OnPropertyChanged(nameof(IsHardDifficulty));
+        OnPropertyChanged(nameof(DifficultyBadgeText));
+        OnPropertyChanged(nameof(GameModeDescription));
+        OnPropertyChanged(nameof(BlackPlayerLabel));
+    }
+
     public string Title => "Checkers (Draughts)";
 
     public MainViewModel(
