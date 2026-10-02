@@ -283,4 +283,34 @@ public class MainViewModelTests
         vm.IsEasyDifficulty.Should().BeFalse();
         vm.DifficultyBadgeText.Should().Contain("Hard");
     }
+
+    [Fact]
+    public void SelectPiece_WithCapture_HighlightsCapturedEnemyTargetsAndUpdatesStatus()
+    {
+        var session = new GameSession();
+        var custom = BoardState.CreateEmpty(PieceColor.White);
+        // White at (4,3) can capture Black at (3,2) -> (2,1)
+        custom.SetPiece(new Position(4, 3), new Piece(PieceColor.White, PieceType.Man));
+        custom.SetPiece(new Position(3, 2), new Piece(PieceColor.Black, PieceType.Man));
+        session.StartFromState(custom);
+
+        var vm = new MainViewModel(session: session);
+
+        // Select piece at (4, 3)
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 3]);
+
+        vm.Squares[4, 3].IsSelected.Should().BeTrue();
+        vm.Squares[2, 1].IsValidTarget.Should().BeTrue();
+        // The jumped enemy at (3, 2) should be highlighted as CapturedTarget
+        vm.Squares[3, 2].IsCapturedTarget.Should().BeTrue();
+        vm.StatusText.Should().Contain("captures 1 piece");
+
+        // Hover over landing target (2, 1) shows route preview
+        vm.HoverSquare(vm.Squares[2, 1]);
+        vm.StatusText.Should().Contain("Route:");
+
+        // Unhover restores status text
+        vm.UnhoverSquare(vm.Squares[2, 1]);
+        vm.StatusText.Should().Contain("captures 1 piece");
+    }
 }

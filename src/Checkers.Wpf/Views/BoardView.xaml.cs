@@ -29,6 +29,22 @@ public partial class BoardView : UserControl
         }
     }
 
+    private void OnSquareMouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is Button { DataContext: SquareViewModel sq } && DataContext is MainViewModel vm)
+        {
+            vm.HoverSquare(sq);
+        }
+    }
+
+    private void OnSquareMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is Button { DataContext: SquareViewModel sq } && DataContext is MainViewModel vm)
+        {
+            vm.UnhoverSquare(sq);
+        }
+    }
+
     private void OnSquarePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is Button { DataContext: SquareViewModel sq })

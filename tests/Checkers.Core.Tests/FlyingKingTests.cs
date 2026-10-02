@@ -165,4 +165,35 @@ public class FlyingKingTests
         nextState.GetPiece(black2).Should().BeNull();
         nextState.BlackPiecesCount.Should().Be(0);
     }
+
+    [Fact]
+    public void ScreenshotBoard_AnalyzeLegalMoves()
+    {
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(Position.FromDraughtsIndex(2), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(Position.FromDraughtsIndex(20), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(Position.FromDraughtsIndex(28), new Piece(PieceColor.White, PieceType.Man));
+        board.SetPiece(Position.FromDraughtsIndex(29), new Piece(PieceColor.White, PieceType.Man));
+        board.SetPiece(Position.FromDraughtsIndex(31), new Piece(PieceColor.White, PieceType.Man));
+
+        board.SetPiece(Position.FromDraughtsIndex(1), new Piece(PieceColor.Black, PieceType.Man));
+        board.SetPiece(Position.FromDraughtsIndex(11), new Piece(PieceColor.Black, PieceType.Man));
+        board.SetPiece(Position.FromDraughtsIndex(14), new Piece(PieceColor.Black, PieceType.King));
+        board.SetPiece(Position.FromDraughtsIndex(19), new Piece(PieceColor.Black, PieceType.Man));
+        board.SetPiece(Position.FromDraughtsIndex(22), new Piece(PieceColor.Black, PieceType.Man));
+
+        var moves = _engine.GetLegalMoves(board);
+        var movesFrom2 = moves.Where(m => m.From == Position.FromDraughtsIndex(2)).ToList();
+        var movesFrom20 = moves.Where(m => m.From == Position.FromDraughtsIndex(20)).ToList();
+
+        // All legal moves are captures (strict mandatory capture)
+        moves.Should().AllSatisfy(m => m.IsCapture.Should().BeTrue());
+
+        // Piece 2 has 5 terminal landing squares across its capture paths: 3, 5, 7, 9, 10
+        movesFrom2.Select(m => m.To.ToDraughtsIndex()).Distinct().Should().BeEquivalentTo(new int?[] { 3, 5, 7, 9, 10 });
+
+        // Piece 20 has 2 terminal landing squares: 12, 16
+        movesFrom20.Select(m => m.To.ToDraughtsIndex()).Distinct().Should().BeEquivalentTo(new int?[] { 12, 16 });
+    }
 }
+

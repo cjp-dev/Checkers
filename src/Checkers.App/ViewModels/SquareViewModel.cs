@@ -30,6 +30,7 @@ public sealed partial class SquareViewModel : ObservableObject
     public bool IsValidTarget => (VisualState & SquareVisualState.ValidTarget) != 0;
     public bool IsLastMove => (VisualState & (SquareVisualState.LastMoveFrom | SquareVisualState.LastMoveTo)) != 0;
     public bool IsMandatoryCaptureSource => (VisualState & SquareVisualState.MandatoryCaptureSource) != 0;
+    public bool IsCapturedTarget => (VisualState & SquareVisualState.CapturedTarget) != 0;
 
     public bool CanInteract => IsMovable || IsValidTarget || IsSelected;
 
@@ -53,6 +54,7 @@ public sealed partial class SquareViewModel : ObservableObject
         OnPropertyChanged(nameof(IsValidTarget));
         OnPropertyChanged(nameof(IsLastMove));
         OnPropertyChanged(nameof(IsMandatoryCaptureSource));
+        OnPropertyChanged(nameof(IsCapturedTarget));
         OnPropertyChanged(nameof(CanInteract));
     }
 

@@ -60,6 +60,8 @@
                             <Button Click="OnSquareButtonClick"
                                     PreviewMouseLeftButtonDown="OnSquarePreviewMouseLeftButtonDown"
                                     PreviewMouseMove="OnSquarePreviewMouseMove"
+                                    MouseEnter="OnSquareMouseEnter"
+                                    MouseLeave="OnSquareMouseLeave"
                                     Focusable="False">
                                 <Button.Style>
                                     <Style TargetType="Button">
@@ -96,6 +98,25 @@
                                                     BorderThickness="3.5"
                                                     CornerRadius="2"
                                                     Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
+
+                                            <!-- Enemy Piece Captured Target Crosshair Indicator -->
+                                            <Grid Visibility="{Binding IsCapturedTarget, Converter={StaticResource BoolToVis}}"
+                                                  IsHitTestVisible="False">
+                                                <!-- Red Pulsing Target Ring -->
+                                                <Ellipse Width="46" Height="46"
+                                                         Stroke="#E74C3C"
+                                                         StrokeThickness="2.5"
+                                                         StrokeDashArray="3,2">
+                                                    <Ellipse.Effect>
+                                                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#E74C3C" Opacity="0.9" />
+                                                    </Ellipse.Effect>
+                                                </Ellipse>
+                                                <!-- Red Crosshair lines -->
+                                                <Line X1="35" Y1="6" X2="35" Y2="14" Stroke="#E74C3C" StrokeThickness="2" />
+                                                <Line X1="35" Y1="56" X2="35" Y2="64" Stroke="#E74C3C" StrokeThickness="2" />
+                                                <Line X1="6" Y1="35" X2="14" Y2="35" Stroke="#E74C3C" StrokeThickness="2" />
+                                                <Line X1="56" Y1="35" X2="64" Y2="35" Stroke="#E74C3C" StrokeThickness="2" />
+                                            </Grid>
 
                                             <!-- Draughts Square Number (1..32) -->
                                             <TextBlock Text="{Binding DraughtsNumber}"

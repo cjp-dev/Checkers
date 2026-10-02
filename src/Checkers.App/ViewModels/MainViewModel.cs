@@ -354,7 +354,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Clear previous visual states (preserving last move & mandatory capture)
         foreach (var sq in BoardSquares)
         {
-            sq.VisualState &= ~(SquareVisualState.Selected | SquareVisualState.ValidTarget);
+            sq.VisualState &= ~(SquareVisualState.Selected | SquareVisualState.ValidTarget | SquareVisualState.CapturedTarget);
         }
 
         // Highlight selected
@@ -366,8 +366,34 @@ public sealed partial class MainViewModel : ObservableObject
             Squares[move.To.Row, move.To.Col].VisualState |= SquareVisualState.ValidTarget;
         }
 
+        // Highlight enemy pieces that will be captured
+        bool isCapture = validMoves.Any(m => m.IsCapture);
+        if (isCapture)
+        {
+            foreach (var move in validMoves)
+            {
+                foreach (var capPos in move.CapturedPositions)
+                {
+                    Squares[capPos.Row, capPos.Col].VisualState |= SquareVisualState.CapturedTarget;
+                }
+            }
+        }
+
         var sqNum = Squares[pos.Row, pos.Col].DraughtsNumber?.ToString() ?? $"{pos.Row},{pos.Col}";
-        StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
+        var piece = Squares[pos.Row, pos.Col].Piece;
+        bool isKing = piece.HasValue && piece.Value.IsKing;
+
+        if (isCapture)
+        {
+            int maxCaps = validMoves.Max(m => m.CapturedPositions.Count);
+            string kingPrefix = isKing ? "Flying King " : "";
+            string capPlural = maxCaps > 1 ? $"{maxCaps} pieces" : "1 piece";
+            StatusText = $"{TurnIndicatorText} — Selected #{sqNum} ({kingPrefix}Multi-Jump captures {capPlural}!). Click a green landing circle.";
+        }
+        else
+        {
+            StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
+        }
     }
 
     private void ClearSelection()
@@ -375,7 +401,50 @@ public sealed partial class MainViewModel : ObservableObject
         _selectedPosition = null;
         foreach (var sq in BoardSquares)
         {
-            sq.VisualState &= ~(SquareVisualState.Selected | SquareVisualState.ValidTarget);
+            sq.VisualState &= ~(SquareVisualState.Selected | SquareVisualState.ValidTarget | SquareVisualState.CapturedTarget);
+        }
+    }
+
+    public void HoverSquare(SquareViewModel? square)
+    {
+        if (square == null || !_selectedPosition.HasValue || !square.IsValidTarget)
+            return;
+
+        var matchingMove = Session.LegalMoves.FirstOrDefault(m =>
+            m.From == _selectedPosition.Value && m.To == square.Position);
+
+        if (matchingMove != null && matchingMove.IsCapture)
+        {
+            var pathIndices = string.Join(" ➔ ", matchingMove.Path.Select(p => p.ToDraughtsIndex()?.ToString() ?? $"({p.Row},{p.Col})"));
+            var capIndices = string.Join(", ", matchingMove.CapturedPositions.Select(p => p.ToDraughtsIndex()?.ToString() ?? $"({p.Row},{p.Col})"));
+            var fromIdx = _selectedPosition.Value.ToDraughtsIndex()?.ToString() ?? $"{_selectedPosition.Value.Row},{_selectedPosition.Value.Col}";
+            StatusText = $"Route: {fromIdx} ➔ {pathIndices} (Capturing #{capIndices})";
+        }
+    }
+
+    public void UnhoverSquare(SquareViewModel? square)
+    {
+        if (_selectedPosition.HasValue)
+        {
+            var movesForPiece = Session.LegalMoves.Where(m => m.From == _selectedPosition.Value).ToList();
+            if (movesForPiece.Count > 0)
+            {
+                var sqNum = Squares[_selectedPosition.Value.Row, _selectedPosition.Value.Col].DraughtsNumber?.ToString() ?? "";
+                var piece = Squares[_selectedPosition.Value.Row, _selectedPosition.Value.Col].Piece;
+                bool isKing = piece.HasValue && piece.Value.IsKing;
+                bool isCapture = movesForPiece.Any(m => m.IsCapture);
+                if (isCapture)
+                {
+                    int maxCaps = movesForPiece.Max(m => m.CapturedPositions.Count);
+                    string kingPrefix = isKing ? "Flying King " : "";
+                    string capPlural = maxCaps > 1 ? $"{maxCaps} pieces" : "1 piece";
+                    StatusText = $"{TurnIndicatorText} — Selected #{sqNum} ({kingPrefix}Multi-Jump captures {capPlural}!). Click a green landing circle.";
+                }
+                else
+                {
+                    StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
+                }
+            }
         }
     }
 
