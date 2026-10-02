@@ -130,4 +130,42 @@ public class MainViewModelTests
         vm.Squares[4, 3].IsMandatoryCaptureSource.Should().BeTrue();
         vm.StatusText.Should().Contain("Mandatory Jump!");
     }
+
+    [Fact]
+    public void SetDifficulty_UpdatesAiPlayerType()
+    {
+        var vm = new MainViewModel();
+
+        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy);
+        vm.Difficulty.Should().Be(AiDifficulty.Easy);
+        vm.CreateAiPlayer().Should().BeOfType<Checkers.Core.AI.RandomPlayer>();
+
+        vm.SetDifficultyCommand.Execute(AiDifficulty.Hard);
+        vm.Difficulty.Should().Be(AiDifficulty.Hard);
+        var hardAi = vm.CreateAiPlayer().Should().BeOfType<Checkers.Core.AI.MinimaxPlayer>().Subject;
+        hardAi.Depth.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task HumanVsComputer_TriggersAiTurnAfterHumanMove()
+    {
+        var vm = new MainViewModel();
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.SetDifficultyCommand.Execute(AiDifficulty.Easy); // fast for testing
+
+        // Human plays (5,0) -> (4,1)
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        // Wait up to 1 second for background AI to execute move
+        for (int i = 0; i < 20; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 2)
+                break;
+            await Task.Delay(50);
+        }
+
+        vm.Session.MoveHistory.Should().HaveCountGreaterThanOrEqualTo(2);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.White);
+    }
 }

@@ -51,9 +51,9 @@ flowchart TD
 | 02 | [Board and coordinates](02-board-and-coordinates.md) | **Available** | 8x8 grid geometry, 1..32 Draughts notation, and Zobrist hashing |
 | 03 | [Rules and move generation](03-rules-and-move-generation.md) | **Available** | Slides, short jumps, flying kings, multi-jumps, forced captures, promotion |
 | 04 | [Game record](04-game-record.md) | **Available** | Move notation, GameSession coordinator, Undo/Redo, win and draw detection |
-| 05 | Evaluation | *Phase 3* | Static heuristic scoring: material weights, center control, advancement |
-| 06 | Move ordering | *Phase 3* | Sorting captures, promotions, and killer moves for alpha-beta cutoffs |
-| 07 | Search | *Phase 3* | Minimax search, alpha-beta pruning, quiescence search |
+| 05 | [Evaluation](05-evaluation.md) | **Available** | Static heuristic scoring: material weights, center control, advancement |
+| 06 | [Move ordering](06-move-ordering.md) | **Available** | Sorting captures, promotions, and multi-jumps for alpha-beta cutoffs |
+| 07 | [Search](07-search.md) | **Available** | Minimax search, alpha-beta pruning, async execution, distance-to-mate |
 | 08 | Transposition table | *Phase 4* | 64-bit Zobrist hash table, entry flags, and replacement policies |
 | 09 | Endgame solver | *Phase 4* | Solved endgame databases / heuristics for small-piece positions |
 | 10 | Time control | *Phase 4* | Soft and hard move timers, dynamic depth allocation |

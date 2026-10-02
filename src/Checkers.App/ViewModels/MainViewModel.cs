@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Checkers.App.Models;
 using Checkers.App.Services;
+using Checkers.Core.AI;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,6 +14,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ISoundService _soundService;
     private readonly IDialogService? _dialogService;
     private Position? _selectedPosition;
+    private CancellationTokenSource? _aiCts;
 
     public GameSession Session { get; }
     public SquareViewModel[,] Squares { get; } = new SquareViewModel[8, 8];
@@ -50,7 +52,13 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isSoundOn = true;
 
     [ObservableProperty]
+    private bool _isAiThinking;
+
+    [ObservableProperty]
     private GameMode _gameMode = GameMode.HumanVsHuman;
+
+    [ObservableProperty]
+    private AiDifficulty _difficulty = AiDifficulty.Medium;
 
     public string Title => "Checkers (Draughts)";
 
@@ -74,7 +82,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
         }
 
-        Session.MoveExecuted += (s, e) => RefreshBoard();
+        Session.MoveExecuted += (s, e) => OnMoveExecuted();
         Session.GameOver += (s, e) => HandleGameOver(e);
 
         RefreshBoard();
@@ -83,7 +91,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void SquareClicked(SquareViewModel? square)
     {
-        if (square == null || Session.Status != GameStatus.InProgress)
+        if (IsAiThinking || square == null || Session.Status != GameStatus.InProgress)
             return;
 
         // 1. Clicked on a valid target square for the currently selected piece
@@ -119,8 +127,8 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // 3. Clicked on a friendly piece
-        if (square.HasPiece && square.Piece!.Value.Color == Session.CurrentState.ActivePlayer)
+        // 3. Clicked on a friendly piece (only if human player controls current turn)
+        if (IsHumanTurn() && square.HasPiece && square.Piece!.Value.Color == Session.CurrentState.ActivePlayer)
         {
             var movesForPiece = Session.LegalMoves.Where(m => m.From == square.Position).ToList();
             if (movesForPiece.Count > 0)
@@ -137,6 +145,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void NewGame()
     {
+        CancelAi();
         ClearSelection();
         Session.StartNewGame();
         RefreshBoard();
@@ -147,8 +156,16 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (Session.CanUndo)
         {
+            CancelAi();
             ClearSelection();
             Session.Undo();
+            
+            // If in HumanVsComputer and it is now the computer's turn, undo one more step to return to Human
+            if (GameMode == GameMode.HumanVsComputer && Session.CurrentState.ActivePlayer == PieceColor.Black && Session.CanUndo)
+            {
+                Session.Undo();
+            }
+
             RefreshBoard();
         }
     }
@@ -158,6 +175,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (Session.CanRedo)
         {
+            CancelAi();
             ClearSelection();
             Session.Redo();
             RefreshBoard();
@@ -172,9 +190,41 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void SetGameMode(GameMode mode)
+    {
+        if (GameMode != mode)
+        {
+            CancelAi();
+            GameMode = mode;
+            RefreshBoard();
+        }
+    }
+
+    [RelayCommand]
+    public void SetDifficulty(AiDifficulty difficulty)
+    {
+        if (Difficulty != difficulty)
+        {
+            Difficulty = difficulty;
+            RefreshBoard();
+        }
+    }
+
+    [RelayCommand]
     public void About()
     {
         _dialogService?.ShowAbout();
+    }
+
+    private bool IsHumanTurn()
+    {
+        return GameMode switch
+        {
+            GameMode.HumanVsHuman => true,
+            GameMode.HumanVsComputer => Session.CurrentState.ActivePlayer == PieceColor.White,
+            GameMode.ComputerVsComputer => false,
+            _ => true
+        };
     }
 
     private void SelectPiece(Position pos, List<Move> validMoves)
@@ -218,6 +268,11 @@ public sealed partial class MainViewModel : ObservableObject
         Squares[move.To.Row, move.To.Col].VisualState |= SquareVisualState.LastMoveTo;
     }
 
+    private void OnMoveExecuted()
+    {
+        RefreshBoard();
+    }
+
     public void RefreshBoard()
     {
         var state = Session.CurrentState;
@@ -235,8 +290,8 @@ public sealed partial class MainViewModel : ObservableObject
         WhiteKingsCount = state.WhiteKingsCount;
         BlackKingsCount = state.BlackKingsCount;
 
-        CanUndo = Session.CanUndo;
-        CanRedo = Session.CanRedo;
+        CanUndo = Session.CanUndo && !IsAiThinking;
+        CanRedo = Session.CanRedo && !IsAiThinking;
 
         MoveCountText = $"Move {state.FullMoveNumber}";
 
@@ -259,20 +314,116 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         UpdateStatusText();
+
+        // Check if an AI turn needs to be triggered
+        CheckAndTriggerAiTurn();
     }
 
     private void UpdateStatusText()
     {
+        if (Session.Status == GameStatus.WhiteWon)
+        {
+            StatusText = "Game Over — White Won!";
+            return;
+        }
+        if (Session.Status == GameStatus.BlackWon)
+        {
+            StatusText = "Game Over — Black Won!";
+            return;
+        }
+        if (Session.Status == GameStatus.Draw)
+        {
+            StatusText = $"Game Drawn ({FormatDrawReason(Session.GameOverReason)})";
+            return;
+        }
+
         var active = Session.CurrentState.ActivePlayer;
         TurnIndicatorText = active == PieceColor.White ? "White's Turn" : "Black's Turn";
 
-        StatusText = Session.Status switch
+        if (IsAiThinking)
         {
-            GameStatus.WhiteWon => "Game Over — White Won!",
-            GameStatus.BlackWon => "Game Over — Black Won!",
-            GameStatus.Draw => $"Game Drawn ({FormatDrawReason(Session.GameOverReason)})",
-            _ => (Session.LegalMoves.Any(m => m.IsCapture) ? $"{TurnIndicatorText} (Mandatory Jump!)" : TurnIndicatorText)
-        };
+            StatusText = $"{TurnIndicatorText} (AI Thinking...)";
+        }
+        else if (Session.LegalMoves.Any(m => m.IsCapture))
+        {
+            StatusText = $"{TurnIndicatorText} (Mandatory Jump!)";
+        }
+        else
+        {
+            StatusText = TurnIndicatorText;
+        }
+    }
+
+    private async void CheckAndTriggerAiTurn()
+    {
+        if (Session.Status != GameStatus.InProgress || IsHumanTurn())
+            return;
+
+        CancelAi();
+        _aiCts = new CancellationTokenSource();
+        var token = _aiCts.Token;
+
+        IsAiThinking = true;
+        CanUndo = false;
+        CanRedo = false;
+        UpdateStatusText();
+
+        try
+        {
+            var ai = CreateAiPlayer();
+            var legalMoves = Session.LegalMoves;
+
+            // Small delay for natural feel
+            await Task.Delay(250, token);
+
+            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, token), token);
+
+            if (!token.IsCancellationRequested && Session.Status == GameStatus.InProgress)
+            {
+                bool success = Session.TryMakeMove(move);
+                if (success)
+                {
+                    if (move.IsPromotion)
+                        _soundService.Play(SoundType.King);
+                    else if (move.IsCapture)
+                        _soundService.Play(SoundType.Capture);
+                    else
+                        _soundService.Play(SoundType.Move);
+
+                    HighlightLastMove(move);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when reset or undone
+        }
+        finally
+        {
+            IsAiThinking = false;
+            CanUndo = Session.CanUndo;
+            CanRedo = Session.CanRedo;
+            UpdateStatusText();
+        }
+    }
+
+    public IPlayer CreateAiPlayer() => Difficulty switch
+    {
+        AiDifficulty.Easy => new RandomPlayer("Easy AI"),
+        AiDifficulty.Medium => new MinimaxPlayer(depth: 3, name: "Medium AI"),
+        AiDifficulty.Hard => new MinimaxPlayer(depth: 6, name: "Hard AI"),
+        _ => new MinimaxPlayer(depth: 3)
+    };
+
+    public void CancelAi()
+    {
+        if (_aiCts != null)
+        {
+            _aiCts.Cancel();
+            _aiCts.Dispose();
+            _aiCts = null;
+        }
+        IsAiThinking = false;
     }
 
     private void HandleGameOver(GameOverEventArgs e)
