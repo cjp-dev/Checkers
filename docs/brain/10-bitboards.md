@@ -555,3 +555,45 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 | 40 | Blockade/Tension | 11 plies | 249,157 | 249,157 | 375 ms | 16 ms | **23.44x** | 7,761 | Yes |
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|:---:|
 | **Total** | **All 40** | **9–14 plies** | **9,974,305** | **9,974,305** | **16,342 ms** | **638 ms** | **25.61x** | **495,206** | **100%** |
+
+---
+
+## Phased Engine Improvements Progression (`Checkers-Engine-main` Audit)
+
+Following our audit of [`Checkers-Engine-main/src/engine`](file:///c:/Udvikling/Spil/Checkers/Checkers-Engine-main/src/engine), we are benchmarking each phase of engine improvements against the **Phase 0 Bitboard Baseline** using:
+1. **Part A — 40-Position Deep Fixed-Depth Suite (7–14 Plies):** Evaluates exact node counts, wall-clock execution time, and throughput (`M nodes/s`) across both International and English Checkers.
+2. **Part B — 5-Position Timed Suite (5.0s Budget / Position, 16M TT, International):** Evaluates completed search depth, best move, score, total nodes, and throughput on 5 representative positions (`#1 Opening`, `#13 Middlegame`, `#20 Middlegame`, `#32 Endgame`, `#40 Blockade/Tension`).
+
+To reproduce this benchmark at any phase, run:
+
+```powershell
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --phase-bench
+```
+
+### Phase 1: Engine Speed Improvements (Move Generation & Data Structures)
+
+- **Set-Wise $O(1)$ `BitboardMoveGenerator.HasAnyCapture` Fast-Path:** Uses 4 bitwise shift-and-mask tests across all pieces simultaneously (plus fast ray-rejection for Flying Kings) so `MinimaxPlayer.Quiescence` immediately returns `standPat` on quiet leaf nodes without slicing move buffers or invoking `GenerateCaptures`.
+- **Flying King Ray Fast-Rejection (`(ray & unjumpedEnemy) == 0UL` + `StepTarget` pre-check):** Skips `LeadingZeroCount`/`TrailingZeroCount` and landing-mask computation whenever a diagonal ray has no unjumped enemy piece or the square immediately behind the first blocker is blocked.
+- **Redundant `HasAnyLegalMove` Elimination:** Avoids calling `HasAnyLegalMove` on interior nodes (`depth > 0` with `HalfMoveClock < 80`, where `Generate` already detects `moveCount == 0`) and on the initial `depth == 0` entry into `Quiescence` (already verified in `NegaMax`).
+- **Packed `ushort` Move Identifier (`BitMove.PackedMove`) & `4095` Timer Check Mask:** Reduces TT move matching in `OrderBitMoves` to a single 16-bit equality check and cuts `Stopwatch.ElapsedMilliseconds` OS queries by $4\times$.
+
+#### Part A: 40-Position Deep Fixed-Depth Comparison (Phase 0 vs. Phase 1)
+
+| Variant | Mode | Phase 0 Nodes | Phase 1 Nodes | Node Equivalence | Phase 0 Time | Phase 1 Time | Phase 0 NPS | Phase 1 NPS | Throughput Gain |
+|---|---|---:|---:|:---:|---:|---:|---:|---:|---:|
+| **International** | **No-TT** | 95,811,314 | 95,811,314 | **100% (40/40)** | 2,951 ms | **2,918 ms** | 32.47M/s | **32.83M/s** | **+1.1%** |
+| **International** | **1M TT** | 10,962,720 | 10,962,720 | **100% (40/40)** | 714 ms | **672 ms** | 15.35M/s | **16.30M/s** | **+6.2%** |
+| **International** | **16M TT** | 10,921,266 | 10,921,266 | **100% (40/40)** | 850 ms | **824 ms** | 12.85M/s | **13.24M/s** | **+3.0%** |
+| **English** | **No-TT** | 94,110,293 | 94,110,293 | **100% (40/40)** | 2,641 ms | **2,567 ms** | 35.63M/s | **36.66M/s** | **+2.9%** |
+| **English** | **1M TT** | 9,974,305 | 9,974,305 | **100% (40/40)** | 638 ms | **575 ms** | 15.63M/s | **17.34M/s** | **+10.9%** |
+| **English** | **16M TT** | 9,944,268 | 9,944,268 | **100% (40/40)** | 720 ms | **708 ms** | 13.81M/s | **14.03M/s** | **+1.6%** |
+
+#### Part B: 5-Position Timed Benchmark (5.0s Budget / Position, 16M TT, International)
+
+| Position | Category | Phase 0 Depth | Phase 1 Depth | Best Move | Score | Phase 1 Nodes | Phase 1 Time | Phase 0 NPS | Phase 1 NPS |
+|---|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
+| **Pos #1** | Opening | 17 plies | **17 plies** | `9-14` | `+5` | 60,440,576 | 5,000 ms | 11.02M/s | **12.09M/s** |
+| **Pos #13** | Middlegame | 16 plies | **17 plies (+1)** | `28-24` | `-3` | 50,385,840 | 4,508 ms | 9.84M/s | **11.17M/s** |
+| **Pos #20** | Middlegame | 18 plies | **18 plies** | `5-9` | `+12` | 55,496,704 | 5,000 ms | 10.07M/s | **11.10M/s** |
+| **Pos #32** | Endgame | 20 plies | **20 plies** | `18-14` | `+439` | 51,732,793 | 4,311 ms | 10.53M/s | **12.00M/s** |
+| **Pos #40** | Blockade/Tension | 18 plies | **18 plies** | `29x8` | `+765` | 37,892,371 | 3,352 ms | 10.85M/s | **11.30M/s** |

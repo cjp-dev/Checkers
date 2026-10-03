@@ -135,7 +135,7 @@ public sealed class MinimaxPlayer : IPlayer
 
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
-        int maxTargetDepth = Limits.Mode == TimeControlMode.FixedDepth ? Limits.Depth : 20;
+        int maxTargetDepth = Limits.Mode == TimeControlMode.FixedDepth ? Limits.Depth : 48;
 
         if (Limits.Mode == TimeControlMode.TimePerMove)
         {
@@ -313,7 +313,7 @@ public sealed class MinimaxPlayer : IPlayer
     {
         aborted = false;
 
-        if ((NodesEvaluated & 1023) == 0)
+        if ((NodesEvaluated & 4095) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sw.ElapsedMilliseconds >= hardLimitMs)
@@ -340,9 +340,11 @@ public sealed class MinimaxPlayer : IPlayer
 
         NodesEvaluated++;
 
-        // Fast terminal status check matching RuleEngine.EvaluateGameStatus
+        // Fast terminal status check matching RuleEngine.EvaluateGameStatus.
+        // At depth > 0 with HalfMoveClock < 80, BitboardMoveGenerator.Generate below will catch 0 legal moves,
+        // avoiding a redundant HasAnyLegalMove call on every interior node.
         ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
-        if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
+        if (ownPieces == 0UL || ((depth == 0 || pos.HalfMoveClock >= 80) && !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant)))
         {
             return LossScore + ply;
         }
@@ -355,8 +357,7 @@ public sealed class MinimaxPlayer : IPlayer
         Position ttFrom = default;
         Position ttTo = default;
         bool hasTtMove = false;
-        byte ttFromSq = 0;
-        byte ttToSq = 0;
+        ushort ttPackedMove = 0;
 
         // Transposition Table Probe
         if (TranspositionTable != null &&
@@ -369,8 +370,9 @@ public sealed class MinimaxPlayer : IPlayer
             if (ttFrom.IsValid && ttTo.IsValid)
             {
                 hasTtMove = true;
-                ttFromSq = (byte)BitboardMasks.ToSquareIndex(ttFrom);
-                ttToSq = (byte)BitboardMasks.ToSquareIndex(ttTo);
+                byte ttFromSq = (byte)BitboardMasks.ToSquareIndex(ttFrom);
+                byte ttToSq = (byte)BitboardMasks.ToSquareIndex(ttTo);
+                ttPackedMove = (ushort)((ttFromSq << 8) | ttToSq);
             }
         }
 
@@ -379,7 +381,7 @@ public sealed class MinimaxPlayer : IPlayer
         {
             if (UseQuiescence)
             {
-                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, out aborted);
+                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, out aborted);
             }
             LeafEvaluations++;
             return EvaluatePosition(in pos);
@@ -393,7 +395,7 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         Span<BitMove> moves = moveBuffer.Slice(0, moveCount);
-        OrderBitMoves(moves, ttFromSq, ttToSq, hasTtMove);
+        OrderBitMoves(moves, ttPackedMove, hasTtMove);
 
         BitMove bestMoveThisNode = default;
         bool hasBestMove = false;
@@ -472,11 +474,12 @@ public sealed class MinimaxPlayer : IPlayer
         Stopwatch sw,
         long hardLimitMs,
         CancellationToken cancellationToken,
+        bool legalMovesVerified,
         out bool aborted)
     {
         aborted = false;
 
-        if ((NodesEvaluated & 1023) == 0)
+        if ((NodesEvaluated & 4095) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sw.ElapsedMilliseconds >= hardLimitMs)
@@ -488,14 +491,17 @@ public sealed class MinimaxPlayer : IPlayer
 
         NodesEvaluated++;
 
-        ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
-        if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
+        if (!legalMovesVerified)
         {
-            return LossScore + ply;
-        }
-        if (pos.HalfMoveClock >= 80)
-        {
-            return 0;
+            ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
+            if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
+            {
+                return LossScore + ply;
+            }
+            if (pos.HalfMoveClock >= 80)
+            {
+                return 0;
+            }
         }
 
         int standPat = EvaluatePosition(in pos);
@@ -511,7 +517,7 @@ public sealed class MinimaxPlayer : IPlayer
             alpha = standPat;
         }
 
-        if (ply >= 24)
+        if (ply >= 24 || !BitboardMoveGenerator.HasAnyCapture(in pos, _variant))
         {
             return alpha;
         }
@@ -524,12 +530,12 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         Span<BitMove> captures = moveBuffer.Slice(0, captureCount);
-        OrderBitMoves(captures, 0, 0, hasTtMove: false);
+        OrderBitMoves(captures, 0, hasTtMove: false);
 
         for (int i = 0; i < captures.Length; i++)
         {
             BitPosition nextPos = pos.Apply(in captures[i]);
-            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
+            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, out aborted);
 
             if (aborted)
                 return 0;
@@ -549,7 +555,7 @@ public sealed class MinimaxPlayer : IPlayer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void OrderBitMoves(Span<BitMove> moves, byte ttFrom, byte ttTo, bool hasTtMove)
+    private static void OrderBitMoves(Span<BitMove> moves, ushort ttPackedMove, bool hasTtMove)
     {
         for (int i = 1; i < moves.Length; i++)
         {
@@ -574,7 +580,7 @@ public sealed class MinimaxPlayer : IPlayer
         {
             for (int i = 0; i < moves.Length; i++)
             {
-                if (moves[i].From == ttFrom && moves[i].To == ttTo)
+                if (moves[i].PackedMove == ttPackedMove)
                 {
                     if (i > 0)
                     {

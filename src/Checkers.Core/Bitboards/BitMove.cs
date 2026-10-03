@@ -51,6 +51,15 @@ public readonly struct BitMove
         get => BitOperations.PopCount(Captured);
     }
 
+    /// <summary>
+    /// Packed 16-bit origin/destination identifier ((From &lt;&lt; 8) | To) for fast move matching.
+    /// </summary>
+    public ushort PackedMove
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (ushort)((From << 8) | To);
+    }
+
     public static BitMove FromMove(Move move)
     {
         ulong capturedMask = 0UL;

@@ -101,9 +101,81 @@ public static class BitboardMoveGenerator
     }
 
     /// <summary>
+    /// Fast set-wise check whether the active player has at least one legal capture jump.
+    /// Avoids generating capture move lists on quiet nodes (used in Quiescence, MoveGen, and LMR/RFP).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool HasAnyCapture(in BitPosition pos, CheckersVariant variant)
+    {
+        ulong empty = pos.Empty;
+        ulong ownMen, ownKings, enemy;
+
+        if (pos.SideToMove == PieceColor.White)
+        {
+            enemy = pos.Black;
+            if (enemy == 0UL)
+                return false;
+
+            ownMen = pos.WhiteMen;
+            if ((ownMen & (
+                    (BitboardMasks.NotColAB & (enemy << 9) & (empty << 18)) |
+                    (BitboardMasks.NotColGH & (enemy << 7) & (empty << 14)))) != 0UL)
+            {
+                return true;
+            }
+            ownKings = pos.WhiteKings;
+        }
+        else
+        {
+            enemy = pos.White;
+            if (enemy == 0UL)
+                return false;
+
+            ownMen = pos.BlackMen;
+            if ((ownMen & (
+                    (BitboardMasks.NotColAB & (enemy >> 7) & (empty >> 14)) |
+                    (BitboardMasks.NotColGH & (enemy >> 9) & (empty >> 18)))) != 0UL)
+            {
+                return true;
+            }
+            ownKings = pos.BlackKings;
+        }
+
+        if (ownKings == 0UL)
+            return false;
+
+        // 1-hop King captures (valid in both English and International)
+        if ((ownKings & (
+                (BitboardMasks.NotColAB & (enemy << 9) & (empty << 18)) |
+                (BitboardMasks.NotColGH & (enemy << 7) & (empty << 14)) |
+                (BitboardMasks.NotColAB & (enemy >> 7) & (empty >> 14)) |
+                (BitboardMasks.NotColGH & (enemy >> 9) & (empty >> 18)))) != 0UL)
+        {
+            return true;
+        }
+
+        if (variant == CheckersVariant.English)
+            return false;
+
+        // International Flying Kings: check long-range captures
+        ulong occupied = pos.Occupied;
+        ulong kings = ownKings;
+        while (kings != 0UL)
+        {
+            int sq = BitOperations.TrailingZeroCount(kings);
+            kings &= kings - 1;
+            if (HasFlyingKingCaptureFrom(sq, sq, occupied, enemy, 0UL))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Generates all legal <see cref="BitMove"/>s into the caller-supplied span without heap allocations.
     /// Returns the number of moves written to <paramref name="buffer"/>.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int Generate(in BitPosition pos, CheckersVariant variant, Span<BitMove> buffer)
     {
         int count = GenerateCaptures(in pos, variant, buffer);
@@ -398,16 +470,20 @@ public static class BitboardMoveGenerator
         for (int d = 0; d < 4; d++)
         {
             ulong ray = BitboardMasks.Rays[d, currentSq];
-            ulong blockers = ray & occupied;
-            if (blockers == 0UL)
+            if ((ray & unjumpedEnemy) == 0UL)
                 continue;
 
+            ulong blockers = ray & occupied;
             int firstBlockerSq = d < 2
                 ? 63 - BitOperations.LeadingZeroCount(blockers)
                 : BitOperations.TrailingZeroCount(blockers);
 
             ulong jumpBit = 1UL << firstBlockerSq;
             if ((unjumpedEnemy & jumpBit) == 0UL)
+                continue;
+
+            sbyte nextSq = BitboardMasks.StepTarget[d, firstBlockerSq];
+            if (nextSq < 0 || (occupiedExceptInitial & (1UL << nextSq)) != 0UL)
                 continue;
 
             ulong rayBeyond = BitboardMasks.Rays[d, firstBlockerSq];
@@ -426,9 +502,6 @@ public static class BitboardMoveGenerator
                     ? rayBeyond & ((1UL << BitOperations.TrailingZeroCount(blockersBeyond)) - 1UL)
                     : rayBeyond;
             }
-
-            if (landingMask == 0UL)
-                continue;
 
             ulong nextCaptured = capturedSoFar | jumpBit;
             int countBeforeRay = count;
@@ -483,6 +556,7 @@ public static class BitboardMoveGenerator
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasFlyingKingCaptureFrom(
         int initialFrom,
         int currentSq,
@@ -496,10 +570,10 @@ public static class BitboardMoveGenerator
         for (int d = 0; d < 4; d++)
         {
             ulong ray = BitboardMasks.Rays[d, currentSq];
-            ulong blockers = ray & occupied;
-            if (blockers == 0UL)
+            if ((ray & unjumpedEnemy) == 0UL)
                 continue;
 
+            ulong blockers = ray & occupied;
             int firstBlockerSq = d < 2
                 ? 63 - BitOperations.LeadingZeroCount(blockers)
                 : BitOperations.TrailingZeroCount(blockers);
@@ -507,15 +581,8 @@ public static class BitboardMoveGenerator
             if ((unjumpedEnemy & (1UL << firstBlockerSq)) == 0UL)
                 continue;
 
-            ulong rayBeyond = BitboardMasks.Rays[d, firstBlockerSq];
-            if (rayBeyond == 0UL)
-                continue;
-
-            int nextSq = d < 2
-                ? 63 - BitOperations.LeadingZeroCount(rayBeyond)
-                : BitOperations.TrailingZeroCount(rayBeyond);
-
-            if ((occupiedExceptInitial & (1UL << nextSq)) == 0UL)
+            sbyte nextSq = BitboardMasks.StepTarget[d, firstBlockerSq];
+            if (nextSq >= 0 && (occupiedExceptInitial & (1UL << nextSq)) == 0UL)
                 return true;
         }
 
