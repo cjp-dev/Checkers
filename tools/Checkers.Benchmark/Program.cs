@@ -1,10 +1,11 @@
 using Checkers.Core.AI.Benchmark;
 
-Console.WriteLine("===================================================================");
-Console.WriteLine("    Checkers Transposition Table Empirical Benchmark (40 Positions) ");
-Console.WriteLine("===================================================================");
+Console.WriteLine("=========================================================================");
+Console.WriteLine("  Checkers Transposition Table Empirical Benchmark (40 Positions)        ");
+Console.WriteLine("  Comparing: Baseline vs Default TT (1,048,576) vs Max TT (16,777,216)   ");
+Console.WriteLine("=========================================================================");
 Console.WriteLine("Methodology: Baseline search depth calibrated so search completes in <= 10s.");
-Console.WriteLine("Then each position is tested with Transposition Table enabled at identical depth.");
+Console.WriteLine("Then each position is tested at identical depth with Default TT (2^20) and Max TT (2^24).");
 Console.WriteLine();
 
 var positions = BenchmarkSuite.GetPositions();
@@ -16,24 +17,30 @@ var results = await TranspositionBenchmarkRunner.RunBenchmarkAsync(
     progressCallback: (current, total, result) =>
     {
         Console.WriteLine(
-            $"[{current:D2}/{total:D2}] {result.Category,-12} Depth {result.CalibratedDepth} plies: " +
-            $"Baseline {result.BaselineNodes,7:N0} nodes ({result.BaselineTimeMs,4} ms) -> " +
-            $"TT {result.TtNodes,7:N0} nodes ({result.TtTimeMs,4} ms) " +
-            $"[{result.NodeReductionPercent,5:F1}% node reduction, {result.SpeedupFactor,4:F2}x speedup, {result.TtCutoffs,5:N0} cutoffs]");
+            $"[{current:D2}/{total:D2}] {result.Category,-16} Depth {result.CalibratedDepth}: " +
+            $"Base {result.BaselineNodes,7:N0} ({result.BaselineTimeMs,3}ms) | " +
+            $"1M TT {result.TtNodes,6:N0} ({result.TtTimeMs,3}ms, {result.TtCollisions,3} coll) | " +
+            $"16M TT {result.MaxTtNodes,6:N0} ({result.MaxTtTimeMs,3}ms, {result.MaxTtCollisions,2} coll)");
     });
 
-Console.WriteLine("\n===================================================================");
-Console.WriteLine("                     BENCHMARK COMPLETE                            ");
-Console.WriteLine("===================================================================\n");
+Console.WriteLine("\n=========================================================================");
+Console.WriteLine("          TABLE 1: BASELINE vs DEFAULT TT (1,048,576 ENTRIES)            ");
+Console.WriteLine("=========================================================================\n");
 
 string markdown = TranspositionBenchmarkRunner.FormatMarkdownTable(results);
 Console.WriteLine(markdown);
+
+Console.WriteLine("\n=========================================================================");
+Console.WriteLine("   TABLE 2: DEFAULT TT (1,048,576) vs MAX TT (16,777,216 ENTRIES)        ");
+Console.WriteLine("=========================================================================\n");
+
+string sizeComparisonMarkdown = TranspositionBenchmarkRunner.FormatSizeComparisonMarkdownTable(results);
+Console.WriteLine(sizeComparisonMarkdown);
 
 string json = TranspositionBenchmarkRunner.ToJson(results);
 string outputDir = Path.Combine(Directory.GetCurrentDirectory(), "docs", "brain");
 if (!Directory.Exists(outputDir))
 {
-    // Try navigating from tools/Checkers.Benchmark
     outputDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "docs", "brain"));
 }
 

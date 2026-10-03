@@ -40,7 +40,7 @@
                     <label><input type="radio" name="variant" checked="@settings.IsEnglish" @onchange="() => { settings.IsEnglish = true; }" /> English Checkers (1-step Kings)</label>
                 </fieldset>
 
-                <fieldset class="settings">
+                <fieldset class="settings" style="margin-bottom: 1rem;">
                     <legend>How long may the computer think?</legend>
 
                     <label><input type="radio" name="mode" checked="@settings.IsFixedDepth" @onchange="() => { settings.IsFixedDepth = true; }" /> Fixed depth</label>
@@ -57,6 +57,14 @@
                     <input type="range" min="1" max="@settings.MaxMinutesPerGame" aria-label="Minutes per game" disabled="@(!settings.IsTimePerGame)"
                            @bind="settings.MinutesPerGame" @bind:event="oninput" />
                     <span>@settings.MinutesPerGame minutes</span>
+                </fieldset>
+
+                <fieldset class="settings">
+                    <legend>Transposition Table Size</legend>
+                    <label>Table capacity</label>
+                    <input type="range" min="@settings.MinTranspositionTablePower" max="@settings.MaxTranspositionTablePower" step="1" aria-label="Transposition table size"
+                           @bind="settings.TranspositionTablePower" @bind:event="oninput" />
+                    <span>@settings.TranspositionTableEntriesText</span>
                 </fieldset>
             }
             <div class="dialog-buttons">

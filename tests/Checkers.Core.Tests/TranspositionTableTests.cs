@@ -146,4 +146,21 @@ public class TranspositionTableTests
             out _, out _, out _, out bool cutoff);
         cutoff.Should().BeFalse();
     }
+
+    [Fact]
+    public void TranspositionEntry_IsCompact16Bytes()
+    {
+        int size = System.Runtime.CompilerServices.Unsafe.SizeOf<TranspositionEntry>();
+        size.Should().Be(16);
+    }
+
+    [Fact]
+    public void FromEntries_DefaultAndMaxCapacities_AllocatesExpectedEntries()
+    {
+        var defaultTt = TranspositionTable.FromEntries(TranspositionTable.DefaultEntries);
+        defaultTt.Capacity.Should().Be(1_048_576);
+
+        var maxTt = TranspositionTable.FromEntries(TranspositionTable.MaxEntries);
+        maxTt.Capacity.Should().Be(16_777_216);
+    }
 }

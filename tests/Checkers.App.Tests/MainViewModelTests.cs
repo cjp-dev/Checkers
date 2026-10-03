@@ -789,4 +789,46 @@ public class MainViewModelTests
         vm.Move.Should().Be("-");
         vm.Depth.Should().Be("-");
     }
+
+    [Fact]
+    public void SettingsViewModel_TranspositionTablePower_UpdatesEntriesAndText()
+    {
+        var vm = new SettingsViewModel(GameSettings.Default);
+        vm.TranspositionTablePower.Should().Be(20);
+        vm.TranspositionTableEntries.Should().Be(1_048_576);
+        vm.TranspositionTableEntriesText.Should().Be("1,048,576 entries");
+
+        // Move slider to max (2^24 = 16,777,216)
+        vm.TranspositionTablePower = 24;
+        vm.TranspositionTableEntries.Should().Be(16_777_216);
+        vm.TranspositionTableEntriesText.Should().Be("16,777,216 entries");
+
+        var settings = vm.ToSettings();
+        settings.TranspositionTableEntries.Should().Be(16_777_216);
+    }
+
+    [Fact]
+    public async Task EditSettings_TranspositionTableSizeChanged_UpdatesAiPlayerTableCapacity()
+    {
+        var dialogService = new TestDialogService
+        {
+            SettingsToReturn = new GameSettings(
+                TimeControlMode.TimePerGame,
+                8,
+                5,
+                5,
+                CheckersVariant.International,
+                16_777_216)
+        };
+
+        var vm = new MainViewModel(dialogService: dialogService);
+        var initialAi = (MinimaxPlayer)vm.CreateAiPlayer();
+        initialAi.TranspositionTable!.Capacity.Should().Be(1_048_576);
+
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        vm.Settings.TranspositionTableEntries.Should().Be(16_777_216);
+        var updatedAi = (MinimaxPlayer)vm.CreateAiPlayer();
+        updatedAi.TranspositionTable!.Capacity.Should().Be(16_777_216);
+    }
 }

@@ -19,19 +19,62 @@ public enum TranspositionBound : byte
 }
 
 /// <summary>
-/// An individual cached entry in the transposition table.
+/// An individual cached entry in the transposition table (compact 16-byte layout).
 /// </summary>
 public struct TranspositionEntry
 {
     public ulong Key;
     public int Score;
-    public int Depth;
-    public TranspositionBound Bound;
-    public byte Age;
-    public Position BestMoveFrom;
-    public Position BestMoveTo;
+    private sbyte _depth;
+    private byte _boundAndAge;
+    private byte _from;
+    private byte _to;
 
-    public readonly bool HasMove => BestMoveFrom.IsValid && BestMoveTo.IsValid;
+    public int Depth
+    {
+        readonly get => _depth;
+        set => _depth = (sbyte)Math.Clamp(value, sbyte.MinValue, sbyte.MaxValue);
+    }
+
+    public TranspositionBound Bound
+    {
+        readonly get => (TranspositionBound)(_boundAndAge & 0x03);
+        set => _boundAndAge = (byte)((_boundAndAge & 0xFC) | ((byte)value & 0x03));
+    }
+
+    public byte Age
+    {
+        readonly get => (byte)(_boundAndAge >> 2);
+        set => _boundAndAge = (byte)((_boundAndAge & 0x03) | ((value & 0x3F) << 2));
+    }
+
+    public Position BestMoveFrom
+    {
+        readonly get => DecodePosition(_from);
+        set => _from = EncodePosition(value);
+    }
+
+    public Position BestMoveTo
+    {
+        readonly get => DecodePosition(_to);
+        set => _to = EncodePosition(value);
+    }
+
+    public readonly bool HasMove => (_from & 0x40) != 0 && (_to & 0x40) != 0;
+
+    private static byte EncodePosition(Position pos)
+    {
+        if (!pos.IsValid) return 0xFF;
+        if (pos.Row == 0 && pos.Col == 0) return 0;
+        return (byte)(0x40 | ((pos.Row & 7) << 3) | (pos.Col & 7));
+    }
+
+    private static Position DecodePosition(byte code)
+    {
+        if (code == 0xFF) return new Position(-1, -1);
+        if ((code & 0x40) == 0) return default;
+        return new Position((code >> 3) & 7, code & 7);
+    }
 }
 
 /// <summary>
@@ -40,6 +83,9 @@ public struct TranspositionEntry
 /// </summary>
 public sealed class TranspositionTable
 {
+    public const int DefaultEntries = 1_048_576; // 2^20 entries
+    public const int MaxEntries = 16_777_216;    // 2^24 entries (matching Connect-4)
+
     private const int WinThreshold = 90_000;
 
     private readonly TranspositionEntry[] _entries;
@@ -54,6 +100,7 @@ public sealed class TranspositionTable
     public long Stores { get; private set; }
 
     public int Capacity => _entries.Length;
+    public bool UsesFallbackCapacity { get; }
 
     public int OccupiedEntries
     {
@@ -73,26 +120,63 @@ public sealed class TranspositionTable
     /// <summary>
     /// Initializes a transposition table sized to the nearest power-of-two number of entries.
     /// </summary>
-    /// <param name="megabytes">Approximate memory capacity in megabytes (default: 32 MB).</param>
+    /// <param name="megabytes">Approximate memory capacity in megabytes (default: 32 -> 1,048,576 entries).</param>
     public TranspositionTable(int megabytes = 32)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(megabytes, 1);
 
-        // Approximate 32 bytes per entry
         long desiredEntries = (long)megabytes * 1024 * 1024 / 32;
         int count = (int)BitOperations.RoundUpToPowerOf2((ulong)Math.Clamp(desiredEntries, 1024, 67_108_864));
 
-        _entries = new TranspositionEntry[count];
+        try
+        {
+            _entries = new TranspositionEntry[count];
+            UsesFallbackCapacity = false;
+        }
+        catch (OutOfMemoryException) when (count > DefaultEntries)
+        {
+            count = DefaultEntries;
+            _entries = new TranspositionEntry[count];
+            UsesFallbackCapacity = true;
+        }
+
         _mask = (ulong)(count - 1);
         _age = 0;
     }
+
+    private TranspositionTable(int entries, bool isEntryCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(entries, 1024);
+
+        int count = (int)BitOperations.RoundUpToPowerOf2((ulong)Math.Clamp(entries, 1024, 67_108_864));
+
+        try
+        {
+            _entries = new TranspositionEntry[count];
+            UsesFallbackCapacity = false;
+        }
+        catch (OutOfMemoryException) when (count > DefaultEntries)
+        {
+            count = DefaultEntries;
+            _entries = new TranspositionEntry[count];
+            UsesFallbackCapacity = true;
+        }
+
+        _mask = (ulong)(count - 1);
+        _age = 0;
+    }
+
+    /// <summary>
+    /// Creates a transposition table with the specified number of entries (rounded to the nearest power of two).
+    /// </summary>
+    public static TranspositionTable FromEntries(int entries) => new(entries, isEntryCount: true);
 
     /// <summary>
     /// Increments search age so entries from previous searches can be prioritized for replacement.
     /// </summary>
     public void NewSearch()
     {
-        _age++;
+        _age = (byte)((_age + 1) & 0x3F);
     }
 
     /// <summary>

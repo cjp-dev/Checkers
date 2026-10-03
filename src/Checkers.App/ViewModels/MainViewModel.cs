@@ -68,6 +68,8 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private GameSettings _settings = GameSettings.Default;
 
+    private TranspositionTable _transpositionTable = TranspositionTable.FromEntries(GameSettings.DefaultTranspositionTableEntries);
+
     private TimeSpan _computerTimeLeft;
     private readonly Dictionary<int, TimeSpan> _timeLeftAtPly = [];
 
@@ -152,6 +154,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSettingsChanged(GameSettings value)
     {
+        if (_transpositionTable.Capacity != value.TranspositionTableEntries)
+        {
+            _transpositionTable = TranspositionTable.FromEntries(value.TranspositionTableEntries);
+        }
+
         OnPropertyChanged(nameof(SettingsBadgeText));
         OnPropertyChanged(nameof(VariantBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
@@ -333,6 +340,7 @@ public sealed partial class MainViewModel : ObservableObject
         ClearSelection();
         Analysis.Reset();
         ResetClock();
+        _transpositionTable.Clear();
         FileName = string.Empty;
         Session.StartNewGame();
         RefreshBoard();
@@ -363,6 +371,7 @@ public sealed partial class MainViewModel : ObservableObject
         CancelAi();
         ClearSelection();
         Analysis.Reset();
+        _transpositionTable.Clear();
 
         if (loaded.Tags.TryGetValue("GameMode", out var gmStr) &&
             Enum.TryParse<GameMode>(gmStr, true, out var gm))
@@ -400,6 +409,12 @@ public sealed partial class MainViewModel : ObservableObject
             Settings = Settings with { Variant = loaded.Session.RuleEngine.Variant };
         }
 
+        if (loaded.Tags.TryGetValue("TranspositionTableEntries", out var ttStr) &&
+            int.TryParse(ttStr, out var parsedTtEntries))
+        {
+            Settings = (Settings with { TranspositionTableEntries = parsedTtEntries }).Normalize();
+        }
+
         AttachSession(loaded.Session);
         FileName = file.Path;
         RefreshBoard();
@@ -428,7 +443,8 @@ public sealed partial class MainViewModel : ObservableObject
             ["TimeControlMode"] = Settings.Mode.ToString(),
             ["Depth"] = Settings.Depth.ToString(),
             ["SecondsPerMove"] = Settings.SecondsPerMove.ToString(),
-            ["MinutesPerGame"] = Settings.MinutesPerGame.ToString()
+            ["MinutesPerGame"] = Settings.MinutesPerGame.ToString(),
+            ["TranspositionTableEntries"] = Settings.TranspositionTableEntries.ToString()
         };
 
         string recordText = GameRecordFormat.Format(Session, tags);
@@ -535,6 +551,7 @@ public sealed partial class MainViewModel : ObservableObject
                 CancelAi();
                 ClearSelection();
                 Analysis.Reset();
+                _transpositionTable.Clear();
                 FileName = string.Empty;
                 AttachSession(new GameSession(new RuleEngine(Settings.Variant)));
             }
@@ -869,7 +886,8 @@ public sealed partial class MainViewModel : ObservableObject
         AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(
             Settings.ToLimits(_computerTimeLeft),
             ruleEngine: new RuleEngine(Settings.Variant),
-            evaluator: new EvaluationFunction(Settings.Variant));
+            evaluator: new EvaluationFunction(Settings.Variant),
+            transpositionTable: _transpositionTable);
 
     public void CancelAi()
     {
