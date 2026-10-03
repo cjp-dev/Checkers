@@ -22,6 +22,9 @@ public sealed class MinimaxPlayer : IPlayer
     private readonly CheckersVariant _variant;
     private readonly IEvaluationFunction? _customEvaluator;
     private readonly BitMove[][] _moveBuffers;
+    private readonly ushort[] _killers = new ushort[MaxPly * 2];
+    private readonly int[] _history = new int[2 * 64 * 64];
+    private readonly DrawTable _drawTable = new();
 
     public string Name { get; }
     public SearchLimits Limits { get; }
@@ -92,12 +95,20 @@ public sealed class MinimaxPlayer : IPlayer
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         CancellationToken cancellationToken = default) =>
-        GetMoveAsync(state, legalMoves, progress: null, cancellationToken);
+        GetMoveAsync(state, legalMoves, progress: null, stateHashHistory: null, cancellationToken);
+
+    public ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
+        CancellationToken cancellationToken = default) =>
+        GetMoveAsync(state, legalMoves, progress, stateHashHistory: null, cancellationToken);
 
     public async ValueTask<Move> GetMoveAsync(
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         IProgress<SearchAnalysis>? progress,
+        IReadOnlyList<ulong>? stateHashHistory,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -132,6 +143,8 @@ public sealed class MinimaxPlayer : IPlayer
         long lastReportMs = 0;
 
         TranspositionTable?.NewSearch();
+        Array.Clear(_killers);
+        Array.Clear(_history);
 
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
@@ -152,6 +165,7 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         BitPosition rootPos = state.BitPosition;
+        _drawTable.Reset(in rootPos, stateHashHistory);
 
         var currentOrder = legalMoves
             .OrderByDescending(m => m.CapturedPositions.Count)
@@ -354,6 +368,13 @@ public sealed class MinimaxPlayer : IPlayer
             return 0;
         }
 
+        // In-search repetition check BEFORE probing the Transposition Table so cached
+        // static/subtree scores never mask a repetition draw along the active search line.
+        if (_drawTable.IsRepetition(in pos, ply))
+        {
+            return 0;
+        }
+
         int originalAlpha = alpha;
         bool hasTtMove = false;
         ushort ttPackedMove = 0;
@@ -407,7 +428,8 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         Span<BitMove> moves = moveBuffer.Slice(0, moveCount);
-        OrderBitMoves(moves, ttPackedMove, hasTtMove);
+        OrderBitMoves(moves, ttPackedMove, hasTtMove, ply, pos.SideToMove);
+        _drawTable.Record(ply, pos.Hash);
 
         BitMove bestMoveThisNode = default;
         bool hasBestMove = false;
@@ -418,22 +440,66 @@ public sealed class MinimaxPlayer : IPlayer
             BitPosition nextPos = pos.Apply(in moves[i]);
             TranspositionTable?.Prefetch(nextPos.Hash);
 
-            int score = -NegaMax(
-                in nextPos,
-                depth - 1,
-                -beta,
-                -alpha,
-                ply + 1,
-                sw,
-                hardLimitMs,
-                cancellationToken,
-                progress,
-                ref lastReportMs,
-                currentIterDepth,
-                currentRootMove,
-                bestRootMoveOverall,
-                bestScoreOverall,
-                out aborted);
+            int score;
+            if (i == 0 || beta <= alpha + 1)
+            {
+                score = -NegaMax(
+                    in nextPos,
+                    depth - 1,
+                    -beta,
+                    -alpha,
+                    ply + 1,
+                    sw,
+                    hardLimitMs,
+                    cancellationToken,
+                    progress,
+                    ref lastReportMs,
+                    currentIterDepth,
+                    currentRootMove,
+                    bestRootMoveOverall,
+                    bestScoreOverall,
+                    out aborted);
+            }
+            else
+            {
+                // Principal Variation Search (PVS): test subsequent moves with a zero-width window first
+                score = -NegaMax(
+                    in nextPos,
+                    depth - 1,
+                    -alpha - 1,
+                    -alpha,
+                    ply + 1,
+                    sw,
+                    hardLimitMs,
+                    cancellationToken,
+                    progress,
+                    ref lastReportMs,
+                    currentIterDepth,
+                    currentRootMove,
+                    bestRootMoveOverall,
+                    bestScoreOverall,
+                    out aborted);
+
+                if (!aborted && score > alpha && score < beta)
+                {
+                    score = -NegaMax(
+                        in nextPos,
+                        depth - 1,
+                        -beta,
+                        -alpha,
+                        ply + 1,
+                        sw,
+                        hardLimitMs,
+                        cancellationToken,
+                        progress,
+                        ref lastReportMs,
+                        currentIterDepth,
+                        currentRootMove,
+                        bestRootMoveOverall,
+                        bestScoreOverall,
+                        out aborted);
+                }
+            }
 
             if (aborted)
                 return 0;
@@ -452,6 +518,10 @@ public sealed class MinimaxPlayer : IPlayer
 
             if (alpha >= beta)
             {
+                if (!moves[i].IsCapture && !moves[i].IsPromotion)
+                {
+                    RecordKillerAndHistory(in moves[i], ply, depth, pos.SideToMove);
+                }
                 break;
             }
         }
@@ -554,7 +624,7 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         Span<BitMove> captures = moveBuffer.Slice(0, captureCount);
-        OrderBitMoves(captures, 0, hasTtMove: false);
+        OrderCaptureMoves(captures);
 
         for (int i = 0; i < captures.Length; i++)
         {
@@ -579,45 +649,115 @@ public sealed class MinimaxPlayer : IPlayer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void OrderBitMoves(Span<BitMove> moves, ushort ttPackedMove, bool hasTtMove)
+    private void RecordKillerAndHistory(in BitMove move, int ply, int depth, PieceColor sideToMove)
     {
-        for (int i = 1; i < moves.Length; i++)
+        if ((uint)ply < MaxPly)
         {
-            BitMove current = moves[i];
-            int currentKey = (current.CaptureCount << 1) | (current.IsPromotion ? 1 : 0);
-            if (currentKey == 0)
+            ushort packed = move.PackedMove;
+            int killerIdx = ply << 1;
+            if (_killers[killerIdx] != packed)
+            {
+                _killers[killerIdx + 1] = _killers[killerIdx];
+                _killers[killerIdx] = packed;
+            }
+        }
+
+        int histIdx = ((int)sideToMove << 12) | (move.From << 6) | move.To;
+        int updated = _history[histIdx] + (depth * depth);
+        _history[histIdx] = updated > 70_000 ? 70_000 : updated;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void OrderBitMoves(
+        Span<BitMove> moves,
+        ushort ttPackedMove,
+        bool hasTtMove,
+        int ply,
+        PieceColor sideToMove)
+    {
+        int count = moves.Length;
+        if (count <= 1)
+            return;
+
+        Span<int> scores = stackalloc int[count];
+        ushort killer1 = 0;
+        ushort killer2 = 0;
+        if ((uint)ply < MaxPly)
+        {
+            int killerIdx = ply << 1;
+            killer1 = _killers[killerIdx];
+            killer2 = _killers[killerIdx + 1];
+        }
+        int sideOffset = (int)sideToMove << 12;
+
+        for (int i = 0; i < count; i++)
+        {
+            ref readonly BitMove m = ref moves[i];
+            ushort packed = m.PackedMove;
+            int score;
+            if (hasTtMove && packed == ttPackedMove)
+            {
+                score = 10_000_000;
+            }
+            else if (m.IsCapture)
+            {
+                score = 1_000_000 + (m.CaptureCount * 10_000) + (m.IsPromotion ? 1_000 : 0);
+            }
+            else if (m.IsPromotion)
+            {
+                score = 500_000;
+            }
+            else if (packed == killer1)
+            {
+                score = 90_000;
+            }
+            else if (packed == killer2)
+            {
+                score = 80_000;
+            }
+            else
+            {
+                score = _history[sideOffset | (m.From << 6) | m.To];
+            }
+            scores[i] = score;
+        }
+
+        for (int i = 1; i < count; i++)
+        {
+            int currentScore = scores[i];
+            if (currentScore == 0)
                 continue;
 
+            BitMove currentMove = moves[i];
+            int j = i - 1;
+            while (j >= 0 && scores[j] < currentScore)
+            {
+                moves[j + 1] = moves[j];
+                scores[j + 1] = scores[j];
+                j--;
+            }
+            moves[j + 1] = currentMove;
+            scores[j + 1] = currentScore;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OrderCaptureMoves(Span<BitMove> captures)
+    {
+        for (int i = 1; i < captures.Length; i++)
+        {
+            BitMove current = captures[i];
+            int currentKey = (current.CaptureCount << 1) | (current.IsPromotion ? 1 : 0);
             int j = i - 1;
             while (j >= 0)
             {
-                int prevKey = (moves[j].CaptureCount << 1) | (moves[j].IsPromotion ? 1 : 0);
+                int prevKey = (captures[j].CaptureCount << 1) | (captures[j].IsPromotion ? 1 : 0);
                 if (prevKey >= currentKey)
                     break;
-                moves[j + 1] = moves[j];
+                captures[j + 1] = captures[j];
                 j--;
             }
-            moves[j + 1] = current;
-        }
-
-        if (hasTtMove)
-        {
-            for (int i = 0; i < moves.Length; i++)
-            {
-                if (moves[i].PackedMove == ttPackedMove)
-                {
-                    if (i > 0)
-                    {
-                        BitMove ttMove = moves[i];
-                        for (int j = i; j > 0; j--)
-                        {
-                            moves[j] = moves[j - 1];
-                        }
-                        moves[0] = ttMove;
-                    }
-                    break;
-                }
-            }
+            captures[j + 1] = current;
         }
     }
 

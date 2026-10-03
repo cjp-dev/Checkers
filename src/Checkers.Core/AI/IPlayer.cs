@@ -32,4 +32,16 @@ public interface IPlayer
         IProgress<SearchAnalysis>? progress,
         CancellationToken cancellationToken = default) =>
         GetMoveAsync(state, legalMoves, cancellationToken);
+
+    /// <summary>
+    /// Chooses a move from the available legal moves for the given state,
+    /// seeding in-search repetition detection with the game's Zobrist hash history.
+    /// </summary>
+    ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
+        IReadOnlyList<ulong>? stateHashHistory,
+        CancellationToken cancellationToken = default) =>
+        GetMoveAsync(state, legalMoves, progress, cancellationToken);
 }

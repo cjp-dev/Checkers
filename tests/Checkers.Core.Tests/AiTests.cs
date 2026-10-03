@@ -141,4 +141,105 @@ public class AiTests
         reports[0].Value.Should().Be("Forced");
         reports[0].BestMove.Should().Be(legalMoves[0].Notation);
     }
+
+    [Fact]
+    public void DrawTable_DetectsSearchPathAndSeededHistoryRepetitions()
+    {
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(new Position(4, 3), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(new Position(1, 2), new Piece(PieceColor.Black, PieceType.King));
+        board.RecalculateHash();
+
+        var rootPos = board.BitPosition;
+        var drawTable = new DrawTable();
+
+        ulong repeatedGameHash = 0xCAFEBABE12345678UL;
+        drawTable.Reset(in rootPos, [repeatedGameHash, 0x1111UL, repeatedGameHash, rootPos.Hash]);
+
+        // 1. Seeded 2-fold hash triggers immediately at ply 1
+        var seededPos = rootPos;
+        seededPos.SideToMove = PieceColor.Black;
+        seededPos.HalfMoveClock = 1;
+        seededPos.Hash = repeatedGameHash;
+        drawTable.IsRepetition(in seededPos, ply: 1).Should().BeTrue();
+
+        // 2. Search-path repetition at ply 4 (returning to rootPos with HalfMoveClock >= 4)
+        drawTable.Record(1, 0xAAA1UL);
+        drawTable.Record(2, 0xAAA2UL);
+        drawTable.Record(3, 0xAAA3UL);
+
+        var cyclePos = rootPos;
+        cyclePos.HalfMoveClock = 4;
+        drawTable.IsRepetition(in cyclePos, ply: 4).Should().BeTrue();
+
+        // 3. If a capture reset HalfMoveClock to 1, ply 4 is NOT a repetition
+        var postCapturePos = rootPos;
+        postCapturePos.HalfMoveClock = 1;
+        drawTable.IsRepetition(in postCapturePos, ply: 4).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MinimaxPlayer_WhenWinning_AvoidsThreefoldRepetitionDraw()
+    {
+        // White has 2 Kings vs 1 Black King (clearly winning ~ +300)
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(new Position(5, 2), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(new Position(6, 5), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(new Position(0, 7), new Piece(PieceColor.Black, PieceType.King));
+        board.RecalculateHash();
+
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+        legalMoves.Count.Should().BeGreaterThan(1);
+
+        var ai = new MinimaxPlayer(depth: 4, variant: CheckersVariant.English);
+
+        // First find the move White normally prefers without repetition history
+        var preferredMove = await ai.GetMoveAsync(board, legalMoves);
+        var repeatedTargetState = _ruleEngine.ApplyMove(board, preferredMove);
+
+        // Now pretend repeatedTargetState has ALREADY occurred twice in the game history!
+        // Playing preferredMove would immediately draw by threefold repetition (score = 0).
+        var history = new List<ulong>
+        {
+            repeatedTargetState.ZobristHash,
+            board.ZobristHash,
+            repeatedTargetState.ZobristHash,
+            board.ZobristHash
+        };
+
+        var moveAvoidingDraw = await ai.GetMoveAsync(board, legalMoves, progress: null, stateHashHistory: history);
+        moveAvoidingDraw.Should().NotBe(preferredMove, "Winning AI should avoid walking into a 3-fold repetition draw when other winning moves exist");
+    }
+
+    [Fact]
+    public async Task MinimaxPlayer_WhenLosing_SeeksThreefoldRepetitionDraw()
+    {
+        // White has 1 Man vs 3 Black Kings (heavily losing ~ -800)
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(new Position(6, 3), new Piece(PieceColor.White, PieceType.Man));
+        board.SetPiece(new Position(1, 2), new Piece(PieceColor.Black, PieceType.King));
+        board.SetPiece(new Position(1, 6), new Piece(PieceColor.Black, PieceType.King));
+        board.SetPiece(new Position(3, 6), new Piece(PieceColor.Black, PieceType.King));
+        board.RecalculateHash();
+
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+        legalMoves.Should().HaveCount(2); // (6,3)->(5,2) and (6,3)->(5,4)
+
+        var ai = new MinimaxPlayer(depth: 4, variant: CheckersVariant.English);
+        var normalMove = await ai.GetMoveAsync(board, legalMoves);
+        var otherMove = legalMoves.First(m => m != normalMove);
+        var drawTargetState = _ruleEngine.ApplyMove(board, otherMove);
+
+        // Seed history so that otherMove immediately triggers a 3-fold repetition draw (score = 0 > -800)
+        var history = new List<ulong>
+        {
+            drawTargetState.ZobristHash,
+            board.ZobristHash,
+            drawTargetState.ZobristHash,
+            board.ZobristHash
+        };
+
+        var salvagedMove = await ai.GetMoveAsync(board, legalMoves, progress: null, stateHashHistory: history);
+        salvagedMove.Should().Be(otherMove, "Losing AI should choose the move that immediately claims a 0.00 threefold repetition draw");
+    }
 }

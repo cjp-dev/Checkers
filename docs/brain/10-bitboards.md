@@ -626,3 +626,33 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 | **Pos #20** | Middlegame | 18 plies | 18 plies | **18 plies** | `5-9` | `+12` | 49,897,472 | 5,000 ms | **9.98M/s** |
 | **Pos #32** | Endgame | 20 plies | 20 plies | **20 plies** | `18-14` | `+439` | 54,060,293 | **4,145 ms** | **13.04M/s** |
 | **Pos #40** | Blockade/Tension | 18 plies | 18 plies | **18 plies** | `29x8` | `+760` | 60,432,384 | 5,000 ms | **12.09M/s** |
+
+---
+
+### Phase 3: Search Improvements — Stage A: Exact Node Reduction (PVS, Killer Moves, History Heuristic & `DrawTable`)
+
+- **Killer Move Heuristic (2 Slots per Ply) & History Heuristic (`[2][64][64]`):** Maintains `ushort _killers[MaxPly * 2]` and `int _history[2 * 64 * 64]` (`+ depth * depth` bonus on quiet $\beta$-cutoffs, clamped to `70,000`). Pre-scores moves once into `Span<int> scores = stackalloc int[count]` (`TT = 10M`, `Captures = 1M+`, `Promotions = 500k`, `Killer 1 = 90k`, `Killer 2 = 80k`, `History = 0..70k`) before running in-place insertion sort.
+- **Principal Variation Search (PVS / Null-Window Search):** Searches move $i = 0$ at `ply > 0` with the full window $[-\beta, -\alpha]$, and probes all subsequent moves ($i > 0$) with a zero-width window $[-\alpha - 1, -\alpha]$, re-searching with $[-\beta, -\alpha]$ only when $\alpha < \text{score} < \beta$.
+- **In-Search Repetition Detection (`DrawTable`):** Tracks 64-bit Zobrist hashes along the active search path and from pre-root game history (`_twoFoldHashes` and `_oneFoldHashes`), returning `0` (Draw) at `ply > 0` before probing the Transposition Table whenever a repetition occurs.
+
+#### Part A: 40-Position Deep Fixed-Depth Comparison (Phase 0 vs. Phase 2 vs. Phase 3)
+
+| Variant | Mode | Phase 0 Nodes | Phase 2 Nodes | **Phase 3 Nodes** | **Node Reduction** | Phase 0 Time | Phase 2 Time | **Phase 3 Time** | **Time Speedup vs. P0** |
+|---|---|---:|---:|---:|:---:|---:|---:|---:|:---:|
+| **International** | **No-TT** | 95,811,314 | 95,811,314 | **33,933,396** | **-64.58% (2.82x fewer)** | 2,951 ms | 2,870 ms | **1,367 ms** | **2.16x faster (-53.7%)** |
+| **International** | **1M TT** | 10,962,720 | 10,956,192 | **7,840,974** | **-28.48% (1.40x fewer)** | 714 ms | 638 ms | **548 ms** | **1.30x faster (-23.2%)** |
+| **International** | **16M TT** | 10,921,266 | 10,954,812 | **7,840,967** | **-28.42% (1.40x fewer)** | 850 ms | 764 ms | **617 ms** | **1.38x faster (-27.4%)** |
+| **English** | **No-TT** | 94,110,293 | 94,110,293 | **33,065,884** | **-64.86% (2.85x fewer)** | 2,641 ms | 2,566 ms | **1,124 ms** | **2.35x faster (-57.4%)** |
+| **English** | **1M TT** | 9,974,305 | 9,944,217 | **7,324,657** | **-26.56% (1.36x fewer)** | 638 ms | 557 ms | **447 ms** | **1.43x faster (-29.9%)** |
+| **English** | **16M TT** | 9,944,268 | 9,944,060 | **7,324,654** | **-26.34% (1.36x fewer)** | 720 ms | 656 ms | **516 ms** | **1.40x faster (-28.3%)** |
+
+#### Part B: 5-Position Timed Benchmark (5.0s Budget / Position, 16M TT, International)
+
+| Position | Category | Phase 0 Depth | Phase 2 Depth | **Phase 3 Depth** | Best Move | Score | Phase 3 Nodes | Phase 3 Time | Phase 3 NPS |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|
+| **Pos #1** | Opening | 17 plies | 17 plies | **18 plies (+1)** | `12-16` | `+3` | 49,086,464 | 5,000 ms | `9.82M/s` |
+| **Pos #13** | Middlegame | 16 plies | 17 plies | **17 plies (+1 vs P0)** | `28-24` | `-3` | 46,913,456 | **4,721 ms** | `9.94M/s` |
+| **Pos #20** | Middlegame | 18 plies | 18 plies | **20 plies (+2)** | `5-9` | `+15` | 45,441,944 | 4,954 ms | `9.17M/s` |
+| **Pos #32** | Endgame | 20 plies | 20 plies | **20 plies** | `18-14` | `+439` | 50,345,995 | 4,502 ms | `11.18M/s` |
+| **Pos #40** | Blockade/Tension | 18 plies | 18 plies | **19 plies (+1)** | `29x8` | `+762` | 47,138,615 | **4,032 ms** | `11.69M/s` |
+

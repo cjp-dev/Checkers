@@ -838,8 +838,9 @@ public sealed partial class MainViewModel : ObservableObject
                 await Task.Delay(AiDelayMs, token);
             }
 
+            var stateHashes = Session.StateHistory.Select(s => s.ZobristHash).ToList();
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, progress, token), token);
+            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, progress, stateHashes, token), token);
             sw.Stop();
 
             if (Settings.Mode == TimeControlMode.TimePerGame)
