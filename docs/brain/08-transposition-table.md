@@ -8,7 +8,7 @@ Many different move orders lead to the exact same board configuration (a *transp
 
 When the search encounters a position again — either across different branches or during successive iterations of **iterative deepening** — the cached entry provides an immediate cutoff or seeds move ordering by trying the proven best move first.
 
-In our empirical benchmark across 40 diverse positions, the transposition table delivered an overall **71.9% reduction in evaluated nodes** and an average **2.88x speedup** (with peak reductions exceeding **92%** and **10.6x speedup**), with **zero search divergence**.
+In our empirical benchmark across 40 diverse, non-trivial positions, the transposition table delivered an overall **70.8% reduction in evaluated nodes** (from **2,522,691** baseline nodes down to **737,636** TT nodes) and an average **3.09x speedup** (with peak reductions reaching **92.3%** and **12.45x speedup**), with **zero search divergence**.
 
 ---
 
@@ -78,62 +78,63 @@ This preserves exact mate-in-$N$ distance invariant across all search depths and
 
 ## Empirical benchmark (40 diverse positions)
 
-To scientifically quantify the performance gains of the Transposition Table, an automated empirical benchmark was run across 40 diverse positions sampled from self-play under the International Flying Kings rules.
+To scientifically quantify the performance gains of the Transposition Table, an automated empirical benchmark was run across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules.
 
 ### Methodology
-1. **Baseline calibration:** For each position, search depth was calibrated so that the baseline search completed within $\le 10$ seconds.
-2. **Comparative run:** The exact same position was searched at identical depth with the Transposition Table enabled.
-3. **Verification:** Best moves and evaluation scores were compared to ensure 100% search consistency.
+1. **Non-trivial position filtering:** Every position is verified to have a unique 64-bit Zobrist hash, at least 2 legal moves (excluding 0-node forced moves), and genuine multi-ply branching ($\ge 300$ nodes at 5 plies without immediate mate).
+2. **Baseline calibration:** For each position, search depth (7 to 9 plies) was calibrated so that the baseline search completed within $\le 10$ seconds.
+3. **Comparative run:** The exact same position was searched at identical depth with the Transposition Table enabled.
+4. **Verification:** Best moves and evaluation scores were compared to ensure 100% search consistency.
 
 ### Benchmark results
 
 | # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Opening | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 2 | Opening | 7 plies | 10,821 | 7,876 | **27.2%** | 107 ms | 80 ms | **1.34x** | 82 |
-| 3 | Opening | 7 plies | 5,700 | 2,318 | **59.3%** | 53 ms | 31 ms | **1.71x** | 18 |
-| 4 | Opening | 7 plies | 7,885 | 4,069 | **48.4%** | 14 ms | 8 ms | **1.75x** | 64 |
-| 5 | Opening | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 6 | Opening | 7 plies | 23,714 | 9,175 | **61.3%** | 37 ms | 18 ms | **2.06x** | 205 |
-| 7 | Opening | 7 plies | 87,714 | 6,766 | **92.3%** | 138 ms | 13 ms | **10.62x** | 41 |
-| 8 | Opening | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 9 | Opening | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 10 | Opening | 7 plies | 18,678 | 5,294 | **71.7%** | 32 ms | 9 ms | **3.56x** | 49 |
-| 11 | Middlegame | 7 plies | 8,636 | 3,093 | **64.2%** | 12 ms | 5 ms | **2.40x** | 71 |
-| 12 | Middlegame | 7 plies | 53,188 | 11,666 | **78.1%** | 89 ms | 18 ms | **4.94x** | 263 |
-| 13 | Middlegame | 7 plies | 134,182 | 35,519 | **73.5%** | 187 ms | 56 ms | **3.34x** | 496 |
-| 14 | Middlegame | 7 plies | 56,142 | 10,008 | **82.2%** | 80 ms | 14 ms | **5.71x** | 345 |
-| 15 | Middlegame | 7 plies | 69,640 | 31,815 | **54.3%** | 103 ms | 51 ms | **2.02x** | 807 |
-| 16 | Middlegame | 7 plies | 3,712 | 2,388 | **35.7%** | 5 ms | 3 ms | **1.67x** | 56 |
-| 17 | Middlegame | 7 plies | 15,470 | 5,410 | **65.0%** | 23 ms | 8 ms | **2.88x** | 52 |
-| 18 | Middlegame | 7 plies | 41,710 | 6,496 | **84.4%** | 60 ms | 11 ms | **5.45x** | 137 |
-| 19 | Middlegame | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 20 | Middlegame | 7 plies | 31,400 | 14,145 | **55.0%** | 44 ms | 21 ms | **2.10x** | 268 |
-| 21 | Middlegame | 7 plies | 18,803 | 7,682 | **59.1%** | 25 ms | 11 ms | **2.27x** | 115 |
-| 22 | Middlegame | 7 plies | 9,033 | 6,482 | **28.2%** | 12 ms | 8 ms | **1.50x** | 244 |
-| 23 | Middlegame | 7 plies | 61,587 | 12,579 | **79.6%** | 91 ms | 20 ms | **4.55x** | 314 |
-| 24 | Middlegame | 7 plies | 36,218 | 8,757 | **75.8%** | 56 ms | 14 ms | **4.00x** | 110 |
-| 25 | Middlegame | 7 plies | 26,460 | 8,655 | **67.3%** | 42 ms | 16 ms | **2.62x** | 150 |
-| 26 | Endgame | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 27 | Endgame | 7 plies | 1,500 | 1,342 | **10.5%** | 2 ms | 1 ms | **2.00x** | 76 |
-| 28 | Endgame | 7 plies | 25,455 | 8,443 | **66.8%** | 40 ms | 13 ms | **3.08x** | 115 |
-| 29 | Endgame | 7 plies | 25,455 | 8,443 | **66.8%** | 38 ms | 14 ms | **2.71x** | 115 |
-| 30 | Endgame | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 31 | Endgame | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 32 | Endgame | 7 plies | 14,413 | 8,263 | **42.7%** | 26 ms | 17 ms | **1.53x** | 262 |
-| 33 | Endgame | 7 plies | 25,455 | 8,443 | **66.8%** | 37 ms | 16 ms | **2.31x** | 115 |
-| 34 | Endgame | 7 plies | 10,384 | 5,179 | **50.1%** | 14 ms | 6 ms | **2.33x** | 678 |
-| 35 | Endgame | 7 plies | 4,829 | 4,119 | **14.7%** | 7 ms | 5 ms | **1.40x** | 356 |
-| 36 | Blockade/Tension | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 37 | Blockade/Tension | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 38 | Blockade/Tension | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
-| 39 | Blockade/Tension | 7 plies | 85,130 | 12,022 | **85.9%** | 101 ms | 17 ms | **5.94x** | 333 |
-| 40 | Blockade/Tension | 7 plies | 0 | 0 | **0.0%** | 1 ms | 1 ms | **1.00x** | 0 |
+| 1 | Opening | 8 plies | 38,305 | 21,086 | **45.0%** | 79 ms | 44 ms | **1.80x** | 197 |
+| 2 | Opening | 8 plies | 58,204 | 24,096 | **58.6%** | 96 ms | 45 ms | **2.13x** | 222 |
+| 3 | Opening | 7 plies | 44,913 | 6,195 | **86.2%** | 69 ms | 12 ms | **5.75x** | 42 |
+| 4 | Opening | 7 plies | 67,449 | 17,927 | **73.4%** | 111 ms | 35 ms | **3.17x** | 321 |
+| 5 | Opening | 7 plies | 69,129 | 9,540 | **86.2%** | 106 ms | 18 ms | **5.89x** | 175 |
+| 6 | Opening | 8 plies | 70,060 | 25,735 | **63.3%** | 108 ms | 43 ms | **2.51x** | 610 |
+| 7 | Opening | 7 plies | 87,714 | 6,766 | **92.3%** | 137 ms | 11 ms | **12.45x** | 41 |
+| 8 | Opening | 7 plies | 48,374 | 7,890 | **83.7%** | 74 ms | 13 ms | **5.69x** | 64 |
+| 9 | Opening | 7 plies | 59,062 | 13,974 | **76.3%** | 92 ms | 23 ms | **4.00x** | 213 |
+| 10 | Opening | 7 plies | 46,247 | 8,585 | **81.4%** | 68 ms | 13 ms | **5.23x** | 62 |
+| 11 | Middlegame | 8 plies | 42,472 | 16,203 | **61.9%** | 58 ms | 27 ms | **2.15x** | 652 |
+| 12 | Middlegame | 7 plies | 53,188 | 11,666 | **78.1%** | 84 ms | 21 ms | **4.00x** | 263 |
+| 13 | Middlegame | 7 plies | 134,182 | 35,519 | **73.5%** | 187 ms | 61 ms | **3.07x** | 496 |
+| 14 | Middlegame | 7 plies | 56,142 | 10,008 | **82.2%** | 81 ms | 16 ms | **5.06x** | 345 |
+| 15 | Middlegame | 7 plies | 69,640 | 31,815 | **54.3%** | 104 ms | 52 ms | **2.00x** | 807 |
+| 16 | Middlegame | 8 plies | 11,328 | 7,462 | **34.1%** | 16 ms | 12 ms | **1.33x** | 116 |
+| 17 | Middlegame | 8 plies | 36,601 | 10,266 | **72.0%** | 58 ms | 17 ms | **3.41x** | 153 |
+| 18 | Middlegame | 7 plies | 41,710 | 6,496 | **84.4%** | 59 ms | 10 ms | **5.90x** | 137 |
+| 19 | Middlegame | 8 plies | 55,338 | 22,599 | **59.2%** | 80 ms | 34 ms | **2.35x** | 651 |
+| 20 | Middlegame | 8 plies | 118,841 | 32,487 | **72.7%** | 166 ms | 48 ms | **3.46x** | 818 |
+| 21 | Middlegame | 8 plies | 43,885 | 12,158 | **72.3%** | 61 ms | 18 ms | **3.39x** | 314 |
+| 22 | Middlegame | 8 plies | 17,425 | 11,383 | **34.7%** | 23 ms | 18 ms | **1.28x** | 565 |
+| 23 | Middlegame | 7 plies | 61,587 | 12,579 | **79.6%** | 92 ms | 24 ms | **3.83x** | 314 |
+| 24 | Middlegame | 8 plies | 150,178 | 34,847 | **76.8%** | 217 ms | 63 ms | **3.44x** | 492 |
+| 25 | Middlegame | 8 plies | 67,300 | 24,042 | **64.3%** | 115 ms | 43 ms | **2.67x** | 506 |
+| 26 | Endgame | 8 plies | 48,927 | 23,148 | **52.7%** | 49 ms | 25 ms | **1.96x** | 1,083 |
+| 27 | Endgame | 7 plies | 46,614 | 16,010 | **65.7%** | 72 ms | 27 ms | **2.67x** | 254 |
+| 28 | Endgame | 9 plies | 8,892 | 6,222 | **30.0%** | 13 ms | 8 ms | **1.62x** | 326 |
+| 29 | Endgame | 7 plies | 51,929 | 16,865 | **67.5%** | 92 ms | 29 ms | **3.17x** | 728 |
+| 30 | Endgame | 8 plies | 48,050 | 15,962 | **66.8%** | 53 ms | 18 ms | **2.94x** | 643 |
+| 31 | Endgame | 8 plies | 95,291 | 20,585 | **78.4%** | 84 ms | 21 ms | **4.00x** | 1,550 |
+| 32 | Endgame | 7 plies | 78,917 | 20,366 | **74.2%** | 105 ms | 35 ms | **3.00x** | 574 |
+| 33 | Endgame | 8 plies | 75,185 | 31,368 | **58.3%** | 118 ms | 58 ms | **2.03x** | 714 |
+| 34 | Endgame | 7 plies | 90,965 | 16,121 | **82.3%** | 138 ms | 26 ms | **5.31x** | 608 |
+| 35 | Endgame | 8 plies | 29,293 | 13,406 | **54.2%** | 35 ms | 18 ms | **1.94x** | 355 |
+| 36 | Blockade/Tension | 8 plies | 43,113 | 17,679 | **59.0%** | 65 ms | 27 ms | **2.41x** | 409 |
+| 37 | Blockade/Tension | 8 plies | 25,695 | 10,331 | **59.8%** | 38 ms | 16 ms | **2.38x** | 581 |
+| 38 | Blockade/Tension | 8 plies | 33,991 | 13,149 | **61.3%** | 42 ms | 18 ms | **2.33x** | 350 |
+| 39 | Blockade/Tension | 8 plies | 160,896 | 61,520 | **61.8%** | 272 ms | 106 ms | **2.57x** | 3,171 |
+| 40 | Blockade/Tension | 8 plies | 135,659 | 33,580 | **75.2%** | 209 ms | 54 ms | **3.87x** | 1,146 |
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| **Total** | **All 40** | **7 plies** | **913,314** | **256,447** | **71.9%** | **1,487 ms** | **516 ms** | **2.88x** | **5,937** |
+| **Total** | **All 40** | **7–9 plies** | **2,522,691** | **737,636** | **70.8%** | **3,726 ms** | **1,207 ms** | **3.09x** | **21,068** |
 
 ### Key observations
-1. **Forced moves (0 nodes):** In positions where only 1 legal capture or move exists (such as positions 1, 5, 8, 9, 19, 26, 30, 31, 36–38, 40), the engine immediately plays the forced move in 1 ms without launching full search.
-2. **Massive pruning in branching positions:** Across complex tactical middlegames (positions 13, 14, 18, 23, 39), the transposition table eliminated between **73% and 86%** of all search nodes.
-3. **Top speedup factor:** In position 7, the search achieved a **10.62x speedup** (from 138 ms down to 13 ms), converting an 87,714-node search into just 6,766 nodes.
-4. **Consistency:** In 100% of tested positions, both search runs selected identical optimal moves and matching scores.
+1. **100% Non-trivial search trees:** All 40 positions have multiple legal moves ($\ge 2$) and unique Zobrist hashes, evaluating between **8,892 and 160,896 baseline nodes** per position (totaling **2.52 million baseline nodes**).
+2. **Consistent pruning across all game phases:** Every single position in the 40-position suite achieved substantial node reductions (ranging from **30.0% to 92.3%**, averaging **70.8%**) and recorded **21,068 direct hash cutoffs**.
+3. **Top speedup factor:** In position 7, the search achieved a **12.45x speedup** (from 137 ms down to 11 ms), converting an 87,714-node search into just 6,766 nodes.
+4. **Search consistency:** In 100% of tested positions, both search runs selected identical optimal moves and matching evaluation scores.

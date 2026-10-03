@@ -105,14 +105,13 @@ public static class TranspositionBenchmarkRunner
     }
 
     /// <summary>
-    /// Calibrates search depth so baseline completes in &lt;= 10 seconds (targeting ~1 to 5 seconds).
+    /// Calibrates search depth so baseline completes in &lt;= 10 seconds (targeting ~50 ms to 2 seconds).
     /// </summary>
     private static int CalibrateDepth(Models.BoardState state, IReadOnlyList<Models.Move> legalMoves)
     {
-        int depth = 1;
-        long elapsedMs = 0;
+        int depth = 5;
 
-        while (depth < 12)
+        while (depth < 9)
         {
             var testPlayer = new MinimaxPlayer(
                 limits: SearchLimits.FixedDepth(depth),
@@ -122,10 +121,11 @@ public static class TranspositionBenchmarkRunner
             var sw = Stopwatch.StartNew();
             testPlayer.GetMoveAsync(state, legalMoves).AsTask().GetAwaiter().GetResult();
             sw.Stop();
-            elapsedMs = sw.ElapsedMilliseconds;
+            long elapsedMs = sw.ElapsedMilliseconds;
 
-            // If depth took >= 800 ms, the next depth will take ~3x to 6x (~2.5s to 5s), so stop calibration here
-            if (elapsedMs >= 800 || depth >= 7)
+            if (elapsedMs >= 600 ||
+                (depth >= 7 && elapsedMs >= 60) ||
+                (depth >= 8 && elapsedMs >= 15))
             {
                 break;
             }
@@ -141,6 +141,7 @@ public static class TranspositionBenchmarkRunner
     /// </summary>
     public static string FormatMarkdownTable(IReadOnlyList<BenchmarkResult> results)
     {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
         sb.AppendLine("| # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |");
         sb.AppendLine("|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -159,17 +160,16 @@ public static class TranspositionBenchmarkRunner
             totalTtTime += r.TtTimeMs;
             totalCutoffs += r.TtCutoffs;
 
-            string reductionStr = $"{r.NodeReductionPercent:F1}%";
-            string speedupStr = $"{r.SpeedupFactor:F2}x";
-
-            sb.AppendLine($"| {r.PositionId} | {r.Category} | {r.CalibratedDepth} plies | {r.BaselineNodes:N0} | {r.TtNodes:N0} | **{reductionStr}** | {r.BaselineTimeMs:N0} ms | {r.TtTimeMs:N0} ms | **{speedupStr}** | {r.TtCutoffs:N0} |");
+            sb.AppendLine(string.Create(inv,
+                $"| {r.PositionId} | {r.Category} | {r.CalibratedDepth} plies | {r.BaselineNodes:N0} | {r.TtNodes:N0} | **{r.NodeReductionPercent:F1}%** | {r.BaselineTimeMs:N0} ms | {r.TtTimeMs:N0} ms | **{r.SpeedupFactor:F2}x** | {r.TtCutoffs:N0} |"));
         }
 
         double overallReduction = totalBaseNodes > 0 ? (double)(totalBaseNodes - totalTtNodes) / totalBaseNodes * 100.0 : 0;
         double overallSpeedup = totalTtTime > 0 ? (double)totalBaseTime / totalTtTime : 1.0;
 
         sb.AppendLine("|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|");
-        sb.AppendLine($"| **Total** | **All 40** | **Avg** | **{totalBaseNodes:N0}** | **{totalTtNodes:N0}** | **{overallReduction:F1}%** | **{totalBaseTime:N0} ms** | **{totalTtTime:N0} ms** | **{overallSpeedup:F2}x** | **{totalCutoffs:N0}** |");
+        sb.AppendLine(string.Create(inv,
+            $"| **Total** | **All 40** | **7–9 plies** | **{totalBaseNodes:N0}** | **{totalTtNodes:N0}** | **{overallReduction:F1}%** | **{totalBaseTime:N0} ms** | **{totalTtTime:N0} ms** | **{overallSpeedup:F2}x** | **{totalCutoffs:N0}** |"));
 
         return sb.ToString();
     }
