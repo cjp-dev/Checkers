@@ -18,6 +18,7 @@ public static class TranspositionBenchmarkRunner
     public static async Task<List<BenchmarkResult>> RunBenchmarkAsync(
         IReadOnlyList<BenchmarkPosition>? customPositions = null,
         Action<int, int, BenchmarkResult>? progressCallback = null,
+        bool deepCalibration = false,
         CancellationToken cancellationToken = default)
     {
         var positions = customPositions ?? BenchmarkSuite.GetPositions();
@@ -31,7 +32,13 @@ public static class TranspositionBenchmarkRunner
             cancellationToken.ThrowIfCancellationRequested();
             var pos = positions[i];
 
-            var result = await BenchmarkSinglePositionAsync(pos, ruleEngine, defaultTt, maxTt, cancellationToken);
+            var result = await BenchmarkSinglePositionAsync(
+                pos,
+                ruleEngine,
+                defaultTt,
+                maxTt,
+                deepCalibration,
+                cancellationToken);
             results.Add(result);
             progressCallback?.Invoke(i + 1, positions.Count, result);
         }
@@ -47,6 +54,7 @@ public static class TranspositionBenchmarkRunner
         IRuleEngine ruleEngine,
         TranspositionTable? defaultTt = null,
         TranspositionTable? maxTt = null,
+        bool deepCalibration = false,
         CancellationToken cancellationToken = default)
     {
         var legalMoves = ruleEngine.GetLegalMoves(pos.State);
@@ -55,21 +63,36 @@ public static class TranspositionBenchmarkRunner
             throw new InvalidOperationException($"Position {pos.Id} has no legal moves.");
         }
 
-        // 1. Calibrate baseline search depth (<= 10 seconds)
-        int calibratedDepth = CalibrateDepth(pos.State, legalMoves);
+        int calibratedDepth;
+        long baselineTimeMs;
+        long baselineNodes;
+        string baselineMove;
+        string baselineScore;
 
-        // 2. Run Baseline (Without Transposition Table)
-        var baselinePlayer = new MinimaxPlayer(
-            limits: SearchLimits.FixedDepth(calibratedDepth),
-            useTranspositionTable: false,
-            useQuiescence: true);
+        if (deepCalibration)
+        {
+            (calibratedDepth, baselineNodes, baselineTimeMs, baselineMove, baselineScore) =
+                await CalibrateAndRunDeepBaselineAsync(pos.State, legalMoves, cancellationToken);
+        }
+        else
+        {
+            // 1. Calibrate standard baseline search depth
+            calibratedDepth = CalibrateDepth(pos.State, legalMoves);
 
-        var baselineSw = Stopwatch.StartNew();
-        var baselineMove = await baselinePlayer.GetMoveAsync(pos.State, legalMoves, cancellationToken);
-        baselineSw.Stop();
-        long baselineTimeMs = Math.Max(1, baselineSw.ElapsedMilliseconds);
-        long baselineNodes = baselinePlayer.NodesEvaluated;
-        string baselineScore = baselinePlayer.LastAnalysis?.Value ?? "-";
+            // 2. Run Baseline (Without Transposition Table)
+            var baselinePlayer = new MinimaxPlayer(
+                limits: SearchLimits.FixedDepth(calibratedDepth),
+                useTranspositionTable: false,
+                useQuiescence: true);
+
+            var baselineSw = Stopwatch.StartNew();
+            var move = await baselinePlayer.GetMoveAsync(pos.State, legalMoves, cancellationToken);
+            baselineSw.Stop();
+            baselineTimeMs = Math.Max(1, baselineSw.ElapsedMilliseconds);
+            baselineNodes = baselinePlayer.NodesEvaluated;
+            baselineMove = move.Notation;
+            baselineScore = baselinePlayer.LastAnalysis?.Value ?? "-";
+        }
 
         // 3. Run with Default Transposition Table (1,048,576 entries)
         var tt = defaultTt ?? TranspositionTable.FromEntries(TranspositionTable.DefaultEntries);
@@ -118,7 +141,7 @@ public static class TranspositionBenchmarkRunner
 
             BaselineNodes = baselineNodes,
             BaselineTimeMs = baselineTimeMs,
-            BaselineMove = baselineMove.Notation,
+            BaselineMove = baselineMove,
             BaselineScore = baselineScore,
 
             TtNodes = ttNodes,
@@ -140,7 +163,80 @@ public static class TranspositionBenchmarkRunner
     }
 
     /// <summary>
-    /// Calibrates search depth so baseline completes in &lt;= 10 seconds (targeting ~50 ms to 2 seconds).
+    /// Calibrates deeper search depth targeting ~3 to 7 seconds per position (strictly &lt;= 8.5s ceiling)
+    /// and returns the completed baseline run metrics directly.
+    /// </summary>
+    private static async Task<(int Depth, long Nodes, long TimeMs, string Move, string Score)> CalibrateAndRunDeepBaselineAsync(
+        Models.BoardState state,
+        IReadOnlyList<Models.Move> legalMoves,
+        CancellationToken cancellationToken)
+    {
+        int bestDepth = 7;
+        long bestNodes = 0;
+        long bestTimeMs = 1;
+        string bestMove = legalMoves[0].Notation;
+        string bestScore = "-";
+        long prevTimeMs = 0;
+
+        for (int depth = 7; depth <= 15; depth++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var testPlayer = new MinimaxPlayer(
+                limits: SearchLimits.FixedDepth(depth),
+                useTranspositionTable: false,
+                useQuiescence: true);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(7500));
+
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var move = await testPlayer.GetMoveAsync(state, legalMoves, timeoutCts.Token);
+                sw.Stop();
+
+                long elapsedMs = Math.Max(1, sw.ElapsedMilliseconds);
+                bestDepth = depth;
+                bestNodes = testPlayer.NodesEvaluated;
+                bestTimeMs = elapsedMs;
+                bestMove = move.Notation;
+                bestScore = testPlayer.LastAnalysis?.Value ?? "-";
+
+                // Stop if we reached a forced win/loss or reached the ~2.2s - 7.5s target window
+                if (bestScore.Contains("Win", StringComparison.OrdinalIgnoreCase) ||
+                    bestScore.Contains("Loss", StringComparison.OrdinalIgnoreCase) ||
+                    elapsedMs >= 2200)
+                {
+                    break;
+                }
+
+                // Predict whether the next ply will exceed the 8.0s ceiling
+                if (prevTimeMs >= 50 && elapsedMs >= 700)
+                {
+                    double branchingRatio = Math.Clamp((double)elapsedMs / prevTimeMs, 2.0, 10.0);
+                    double predictedNextMs = elapsedMs * branchingRatio;
+                    if (predictedNextMs > 8000)
+                    {
+                        break;
+                    }
+                }
+
+                prevTimeMs = elapsedMs;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Depth attempt exceeded the 7.5s ceiling; keep the previous completed depth
+                sw.Stop();
+                break;
+            }
+        }
+
+        return (bestDepth, bestNodes, bestTimeMs, bestMove, bestScore);
+    }
+
+    /// <summary>
+    /// Calibrates standard search depth so baseline completes in ~50–250 ms (7–9 plies).
     /// </summary>
     private static int CalibrateDepth(Models.BoardState state, IReadOnlyList<Models.Move> legalMoves)
     {
@@ -201,10 +297,12 @@ public static class TranspositionBenchmarkRunner
 
         double overallReduction = totalBaseNodes > 0 ? (double)(totalBaseNodes - totalTtNodes) / totalBaseNodes * 100.0 : 0;
         double overallSpeedup = totalTtTime > 0 ? (double)totalBaseTime / totalTtTime : 1.0;
+        int minDepth = results.Count > 0 ? results.Min(r => r.CalibratedDepth) : 0;
+        int maxDepth = results.Count > 0 ? results.Max(r => r.CalibratedDepth) : 0;
 
         sb.AppendLine("|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|");
         sb.AppendLine(string.Create(inv,
-            $"| **Total** | **All 40** | **7–9 plies** | **{totalBaseNodes:N0}** | **{totalTtNodes:N0}** | **{overallReduction:F1}%** | **{totalBaseTime:N0} ms** | **{totalTtTime:N0} ms** | **{overallSpeedup:F2}x** | **{totalCutoffs:N0}** |"));
+            $"| **Total** | **All 40** | **{minDepth}–{maxDepth} plies** | **{totalBaseNodes:N0}** | **{totalTtNodes:N0}** | **{overallReduction:F1}%** | **{totalBaseTime:N0} ms** | **{totalTtTime:N0} ms** | **{overallSpeedup:F2}x** | **{totalCutoffs:N0}** |"));
 
         return sb.ToString();
     }
@@ -241,9 +339,12 @@ public static class TranspositionBenchmarkRunner
                 $"| {r.PositionId} | {r.Category} | {r.CalibratedDepth} plies | {r.BaselineNodes:N0} | {r.TtNodes:N0} | {r.MaxTtNodes:N0} | {r.TtTimeMs:N0} ms | {r.MaxTtTimeMs:N0} ms | {r.TtCollisions:N0} | {r.MaxTtCollisions:N0} |"));
         }
 
+        int minDepth = results.Count > 0 ? results.Min(r => r.CalibratedDepth) : 0;
+        int maxDepth = results.Count > 0 ? results.Max(r => r.CalibratedDepth) : 0;
+
         sb.AppendLine("|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|");
         sb.AppendLine(string.Create(inv,
-            $"| **Total** | **All 40** | **7–9 plies** | **{totalBaseNodes:N0}** | **{totalDefNodes:N0}** | **{totalMaxNodes:N0}** | **{totalDefTime:N0} ms** | **{totalMaxTime:N0} ms** | **{totalDefCollisions:N0}** | **{totalMaxCollisions:N0}** |"));
+            $"| **Total** | **All 40** | **{minDepth}–{maxDepth} plies** | **{totalBaseNodes:N0}** | **{totalDefNodes:N0}** | **{totalMaxNodes:N0}** | **{totalDefTime:N0} ms** | **{totalMaxTime:N0} ms** | **{totalDefCollisions:N0}** | **{totalMaxCollisions:N0}** |"));
 
         return sb.ToString();
     }

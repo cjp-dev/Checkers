@@ -8,7 +8,9 @@ Many different move orders lead to the exact same board configuration (a *transp
 
 When the search encounters a position again — either across different branches or during successive iterations of **iterative deepening** — the cached entry provides an immediate cutoff or seeds move ordering by trying the proven best move first.
 
-In our empirical benchmark across 40 diverse, non-trivial positions, the transposition table delivered an overall **70.5% reduction in evaluated nodes** (from **2,408,731** baseline nodes down to **711,546** TT nodes) and an average **3.22x speedup** (with peak reductions reaching **92.3%** and **12.25x speedup**), with **zero search divergence**. Comparing the default **$1,048,576$ entries ($2^{20}$)** against the maximum **$16,777,216$ entries ($2^{24}$)** further reduced hash index collisions by **94.1%** (from **608** down to **36** collisions).
+In our empirical benchmarks across 40 diverse, non-trivial positions:
+- **Standard Benchmark (7–9 plies, ~0.1s/position):** The transposition table delivered a **70.5% reduction in evaluated nodes** (`2,408,731` $\rightarrow$ `711,546` nodes) and a **3.22x speedup** (`3,855 ms` $\rightarrow$ `1,198 ms`).
+- **Deep Benchmark (9–13 plies, ~2.4s/position, up to 6.6s):** Pruning efficiency scaled even higher to an **84.8% reduction in evaluated nodes** (`62,882,064` $\rightarrow$ `9,546,749` nodes in $1\text{M}$ TT / `9,517,400` in $16\text{M}$ TT) and a **6.03x overall speedup** (`96,088 ms` $\rightarrow$ `15,931 ms`), with **492,949 direct hash cutoffs** and **93.8% fewer hash collisions** in the $16,777,216$-entry table (`99,743` $\rightarrow$ `6,151` collisions).
 
 ---
 
@@ -81,20 +83,11 @@ This preserves exact mate-in-$N$ distance invariant across all search depths and
 
 ---
 
-## Empirical benchmark (40 diverse positions)
+## Empirical Benchmark 1: Standard Depth (7–9 Plies, ~0.1s / Position)
 
-To scientifically quantify the performance gains of the Transposition Table and compare the default capacity ($1,048,576$ entries) against the maximum capacity ($16,777,216$ entries), an automated empirical benchmark was run across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules.
+To scientifically quantify the performance gains of the Transposition Table and compare the default capacity ($1,048,576$ entries) against the maximum capacity ($16,777,216$ entries), an automated empirical benchmark was first run at standard interactive depths (7–9 plies) across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules.
 
-### Methodology
-1. **Non-trivial position filtering:** Every position is verified to have a unique 64-bit Zobrist hash, at least 2 legal moves (excluding 0-node forced moves), and genuine multi-ply branching ($\ge 300$ nodes at 5 plies without immediate mate).
-2. **Baseline calibration:** For each position, search depth (7 to 9 plies) was calibrated so that the baseline search completed within $\le 10$ seconds.
-3. **Three-way comparative run:** Each position was searched at identical depth under three configurations:
-   - **Baseline:** No Transposition Table.
-   - **Default TT ($2^{20}$):** $1,048,576$ entries (16 MiB).
-   - **Max TT ($2^{24}$):** $16,777,216$ entries (256 MiB).
-4. **Verification:** Best moves and evaluation scores were compared to ensure 100% search consistency.
-
-### Table 1: Baseline vs Default Transposition Table ($1,048,576$ entries)
+### Table 1A: Baseline vs Default Transposition Table ($1,048,576$ entries) — Standard Depth
 
 | # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
@@ -141,9 +134,7 @@ To scientifically quantify the performance gains of the Transposition Table and 
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
 | **Total** | **All 40** | **7–9 plies** | **2,408,731** | **711,546** | **70.5%** | **3,855 ms** | **1,198 ms** | **3.22x** | **20,686** |
 
----
-
-### Table 2: Default TT ($1,048,576$ entries) vs Max TT ($16,777,216$ entries)
+### Table 1B: Default TT ($1,048,576$) vs Max TT ($16,777,216$) — Standard Depth
 
 | # | Category | Depth | Baseline Nodes | Default TT Nodes (1M) | Max TT Nodes (16M) | Default Time | Max Time | Default Collisions | Max Collisions |
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
@@ -190,11 +181,141 @@ To scientifically quantify the performance gains of the Transposition Table and 
 |---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
 | **Total** | **All 40** | **7–9 plies** | **2,408,731** | **711,546** | **711,485** | **1,198 ms** | **1,214 ms** | **608** | **36** |
 
-### Key observations
-1. **100% Non-trivial search trees:** All 40 positions have multiple legal moves ($\ge 2$) and unique Zobrist hashes, evaluating between **8,892 and 160,896 baseline nodes** per position (totaling **2.41 million baseline nodes**).
-2. **Massive pruning vs Baseline:** Enabling the Transposition Table cut total evaluated nodes from **2,408,731** down to **711,546** (**70.5% overall reduction**, **3.22x speedup**, peak **12.25x speedup** on Position 7).
-3. **Default ($1,048,576$) vs Max ($16,777,216$) Comparison:**
-   - **94.1% fewer hash collisions:** Increasing table capacity $16\times$ (from $2^{20}$ to $2^{24}$ entries) reduced index collisions across the 40 positions by $16.9\times$, from **608 collisions down to just 36 collisions**, saving 61 additional nodes on the largest trees (Positions #13, #15, #19, #25, #27, #33, #36, #39, #40).
-   - **CPU Cache Locality vs Capacity:** At depths 7–9 plies, the $1,048,576$-entry table (16 MiB) fits mostly within CPU L3 cache and finishes in **1,198 ms**, whereas the $16,777,216$-entry table (256 MiB) incurs main-memory DRAM latency (**1,214 ms**). Consequently, **$1,048,576$ entries ($2^{20}$) is the optimal default** for standard play, while larger settings up to **$16,777,216$ entries ($2^{24}$)** are available in the Settings Dialog for long time-control games and deep multi-move persistent analysis.
-4. **Search consistency:** Across all 40 positions, Baseline, Default TT ($1\text{M}$), and Max TT ($16\text{M}$) selected identical optimal moves and matching evaluation scores.
+---
+
+## Empirical Benchmark 2: Extended Deep Search (7–14 Plies, ~4–7 Seconds per Position)
+
+To test how the Transposition Table and its configurable capacities ($1,048,576$ vs $16,777,216$ entries) behave when the search evaluates millions of nodes per position, a second benchmark (`dotnet run --project tools/Checkers.Benchmark -c Release -- --deep`) calibrated each of the 40 positions to deeper search depths (**7 to 14 plies**, averaging **3.86 seconds** per position on baseline and up to **7.23 seconds** / **5.06 million baseline nodes** on single positions, totaling **95,898,151 baseline nodes** and **154.3 seconds** across all 40 positions). Raw JSON output is stored in `docs/brain/tt_deep_benchmark_results.json`.
+
+### Table 2A: Baseline vs Default Transposition Table ($1,048,576$ entries) — Deep Search
+
+| # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |
+|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Opening | 11 plies | 1,364,775 | 292,659 | **78.6%** | 2,376 ms | 536 ms | **4.43x** | 5,515 |
+| 2 | Opening | 12 plies | 2,268,109 | 477,847 | **78.9%** | 3,705 ms | 840 ms | **4.41x** | 8,986 |
+| 3 | Opening | 11 plies | 2,152,631 | 62,373 | **97.1%** | 3,416 ms | 105 ms | **32.53x** | 1,627 |
+| 4 | Opening | 10 plies | 3,862,989 | 483,930 | **87.5%** | 6,365 ms | 864 ms | **7.37x** | 12,810 |
+| 5 | Opening | 10 plies | 2,204,847 | 149,910 | **93.2%** | 3,718 ms | 274 ms | **13.57x** | 4,616 |
+| 6 | Opening | 11 plies | 1,540,643 | 322,604 | **79.1%** | 2,581 ms | 562 ms | **4.59x** | 6,667 |
+| 7 | Opening | 10 plies | 2,267,162 | 269,454 | **88.1%** | 3,951 ms | 494 ms | **8.00x** | 4,910 |
+| 8 | Opening | 10 plies | 1,915,942 | 272,268 | **85.8%** | 3,217 ms | 478 ms | **6.73x** | 5,705 |
+| 9 | Opening | 10 plies | 1,662,035 | 240,271 | **85.5%** | 2,951 ms | 443 ms | **6.66x** | 8,900 |
+| 10 | Opening | 10 plies | 1,742,411 | 138,374 | **92.1%** | 2,916 ms | 249 ms | **11.71x** | 3,073 |
+| 11 | Middlegame | 12 plies | 2,074,281 | 186,845 | **91.0%** | 3,185 ms | 303 ms | **10.51x** | 14,172 |
+| 12 | Middlegame | 10 plies | 2,101,525 | 116,233 | **94.5%** | 3,292 ms | 200 ms | **16.46x** | 3,615 |
+| 13 | Middlegame | 10 plies | 2,763,961 | 337,093 | **87.8%** | 4,374 ms | 574 ms | **7.62x** | 11,016 |
+| 14 | Middlegame | 10 plies | 2,723,163 | 278,835 | **89.8%** | 4,183 ms | 465 ms | **9.00x** | 11,006 |
+| 15 | Middlegame | 10 plies | 2,115,795 | 358,175 | **83.1%** | 3,697 ms | 647 ms | **5.71x** | 13,415 |
+| 16 | Middlegame | 14 plies | 2,595,254 | 382,298 | **85.3%** | 4,089 ms | 672 ms | **6.08x** | 14,591 |
+| 17 | Middlegame | 12 plies | 2,799,308 | 307,907 | **89.0%** | 4,790 ms | 563 ms | **8.51x** | 10,283 |
+| 18 | Middlegame | 11 plies | 4,329,327 | 447,196 | **89.7%** | 6,555 ms | 694 ms | **9.45x** | 19,383 |
+| 19 | Middlegame | 12 plies | 3,506,277 | 533,483 | **84.8%** | 5,152 ms | 843 ms | **6.11x** | 17,763 |
+| 20 | Middlegame | 10 plies | 1,506,054 | 234,959 | **84.4%** | 2,226 ms | 373 ms | **5.97x** | 7,769 |
+| 21 | Middlegame | 13 plies | 2,674,334 | 355,299 | **86.7%** | 4,042 ms | 581 ms | **6.96x** | 15,743 |
+| 22 | Middlegame | 14 plies | 2,560,701 | 601,181 | **76.5%** | 4,035 ms | 953 ms | **4.23x** | 52,526 |
+| 23 | Middlegame | 10 plies | 2,632,773 | 311,310 | **88.2%** | 4,312 ms | 540 ms | **7.99x** | 10,217 |
+| 24 | Middlegame | 11 plies | 3,509,716 | 208,480 | **94.1%** | 5,753 ms | 355 ms | **16.21x** | 7,567 |
+| 25 | Middlegame | 11 plies | 1,757,145 | 216,934 | **87.7%** | 3,081 ms | 401 ms | **7.68x** | 5,486 |
+| 26 | Endgame | 8 plies | 48,927 | 23,148 | **52.7%** | 53 ms | 25 ms | **2.12x** | 1,083 |
+| 27 | Endgame | 10 plies | 1,662,722 | 163,987 | **90.1%** | 2,770 ms | 287 ms | **9.65x** | 10,476 |
+| 28 | Endgame | 7 plies | 8,892 | 6,222 | **30.0%** | 14 ms | 9 ms | **1.56x** | 326 |
+| 29 | Endgame | 10 plies | 2,248,895 | 226,528 | **89.9%** | 3,552 ms | 366 ms | **9.70x** | 14,609 |
+| 30 | Endgame | 11 plies | 980,995 | 202,311 | **79.4%** | 1,451 ms | 314 ms | **4.62x** | 17,962 |
+| 31 | Endgame | 11 plies | 1,622,990 | 154,247 | **90.5%** | 2,079 ms | 198 ms | **10.50x** | 21,131 |
+| 32 | Endgame | 10 plies | 3,057,532 | 551,373 | **82.0%** | 5,821 ms | 1,003 ms | **5.80x** | 54,515 |
+| 33 | Endgame | 11 plies | 3,996,874 | 415,579 | **89.6%** | 7,230 ms | 776 ms | **9.32x** | 24,137 |
+| 34 | Endgame | 10 plies | 4,030,225 | 243,580 | **94.0%** | 6,954 ms | 438 ms | **15.88x** | 16,764 |
+| 35 | Endgame | 12 plies | 1,739,170 | 288,749 | **83.4%** | 2,255 ms | 388 ms | **5.81x** | 16,590 |
+| 36 | Blockade/Tension | 12 plies | 2,714,028 | 149,121 | **94.5%** | 4,156 ms | 248 ms | **16.76x** | 5,415 |
+| 37 | Blockade/Tension | 12 plies | 2,900,280 | 296,991 | **89.8%** | 4,899 ms | 539 ms | **9.09x** | 27,969 |
+| 38 | Blockade/Tension | 13 plies | 5,057,208 | 358,765 | **92.9%** | 7,107 ms | 540 ms | **13.16x** | 23,103 |
+| 39 | Blockade/Tension | 10 plies | 1,543,917 | 209,163 | **86.5%** | 2,678 ms | 376 ms | **7.12x** | 11,267 |
+| 40 | Blockade/Tension | 11 plies | 3,654,338 | 241,440 | **93.4%** | 5,297 ms | 384 ms | **13.79x** | 9,651 |
+|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| **Total** | **All 40** | **7–14 plies** | **95,898,151** | **11,117,122** | **88.4%** | **154,278 ms** | **18,900 ms** | **8.16x** | **532,359** |
+
+---
+
+### Table 2B: Default TT ($1,048,576$ entries) vs Max TT ($16,777,216$ entries) — Deep Search
+
+| # | Category | Depth | Baseline Nodes | Default TT Nodes (1M) | Max TT Nodes (16M) | Default Time | Max Time | Default Collisions | Max Collisions |
+|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Opening | 11 plies | 1,364,775 | 292,659 | 291,704 | 536 ms | 538 ms | 3,573 | 231 |
+| 2 | Opening | 12 plies | 2,268,109 | 477,847 | 476,408 | 840 ms | 845 ms | 8,166 | 522 |
+| 3 | Opening | 11 plies | 2,152,631 | 62,373 | 62,343 | 105 ms | 109 ms | 132 | 7 |
+| 4 | Opening | 10 plies | 3,862,989 | 483,930 | 481,688 | 864 ms | 868 ms | 7,558 | 562 |
+| 5 | Opening | 10 plies | 2,204,847 | 149,910 | 149,197 | 274 ms | 266 ms | 997 | 68 |
+| 6 | Opening | 11 plies | 1,540,643 | 322,604 | 320,520 | 562 ms | 573 ms | 4,264 | 251 |
+| 7 | Opening | 10 plies | 2,267,162 | 269,454 | 268,585 | 494 ms | 491 ms | 2,988 | 157 |
+| 8 | Opening | 10 plies | 1,915,942 | 272,268 | 271,929 | 478 ms | 484 ms | 3,016 | 196 |
+| 9 | Opening | 10 plies | 1,662,035 | 240,271 | 239,878 | 443 ms | 475 ms | 2,359 | 141 |
+| 10 | Opening | 10 plies | 1,742,411 | 138,374 | 137,955 | 249 ms | 264 ms | 891 | 77 |
+| 11 | Middlegame | 12 plies | 2,074,281 | 186,845 | 186,572 | 303 ms | 310 ms | 1,178 | 109 |
+| 12 | Middlegame | 10 plies | 2,101,525 | 116,233 | 116,113 | 200 ms | 198 ms | 369 | 26 |
+| 13 | Middlegame | 10 plies | 2,763,961 | 337,093 | 334,222 | 574 ms | 572 ms | 4,237 | 244 |
+| 14 | Middlegame | 10 plies | 2,723,163 | 278,835 | 277,858 | 465 ms | 468 ms | 3,080 | 160 |
+| 15 | Middlegame | 10 plies | 2,115,795 | 358,175 | 357,057 | 647 ms | 656 ms | 4,669 | 300 |
+| 16 | Middlegame | 14 plies | 2,595,254 | 382,298 | 380,802 | 672 ms | 681 ms | 5,576 | 354 |
+| 17 | Middlegame | 12 plies | 2,799,308 | 307,907 | 307,571 | 563 ms | 571 ms | 3,383 | 221 |
+| 18 | Middlegame | 11 plies | 4,329,327 | 447,196 | 445,009 | 694 ms | 692 ms | 8,967 | 600 |
+| 19 | Middlegame | 12 plies | 3,506,277 | 533,483 | 532,057 | 843 ms | 861 ms | 11,837 | 774 |
+| 20 | Middlegame | 10 plies | 1,506,054 | 234,959 | 234,638 | 373 ms | 383 ms | 2,312 | 152 |
+| 21 | Middlegame | 13 plies | 2,674,334 | 355,299 | 353,902 | 581 ms | 594 ms | 5,727 | 371 |
+| 22 | Middlegame | 14 plies | 2,560,701 | 601,181 | 598,846 | 953 ms | 959 ms | 14,075 | 992 |
+| 23 | Middlegame | 10 plies | 2,632,773 | 311,310 | 310,815 | 540 ms | 542 ms | 3,829 | 163 |
+| 24 | Middlegame | 11 plies | 3,509,716 | 208,480 | 208,095 | 355 ms | 358 ms | 1,681 | 127 |
+| 25 | Middlegame | 11 plies | 1,757,145 | 216,934 | 216,714 | 401 ms | 410 ms | 1,843 | 127 |
+| 26 | Endgame | 8 plies | 48,927 | 23,148 | 23,148 | 25 ms | 25 ms | 14 | 2 |
+| 27 | Endgame | 10 plies | 1,662,722 | 163,987 | 163,769 | 287 ms | 286 ms | 896 | 53 |
+| 28 | Endgame | 7 plies | 8,892 | 6,222 | 6,222 | 9 ms | 9 ms | 2 | 0 |
+| 29 | Endgame | 10 plies | 2,248,895 | 226,528 | 226,468 | 366 ms | 372 ms | 1,326 | 72 |
+| 30 | Endgame | 11 plies | 980,995 | 202,311 | 201,733 | 314 ms | 320 ms | 1,469 | 75 |
+| 31 | Endgame | 11 plies | 1,622,990 | 154,247 | 154,085 | 198 ms | 203 ms | 703 | 21 |
+| 32 | Endgame | 10 plies | 3,057,532 | 551,373 | 549,710 | 1,003 ms | 1,031 ms | 8,248 | 464 |
+| 33 | Endgame | 11 plies | 3,996,874 | 415,579 | 408,390 | 776 ms | 766 ms | 5,200 | 321 |
+| 34 | Endgame | 10 plies | 4,030,225 | 243,580 | 242,593 | 438 ms | 452 ms | 1,835 | 119 |
+| 35 | Endgame | 12 plies | 1,739,170 | 288,749 | 288,578 | 388 ms | 388 ms | 2,424 | 175 |
+| 36 | Blockade/Tension | 12 plies | 2,714,028 | 149,121 | 148,955 | 248 ms | 263 ms | 959 | 190 |
+| 37 | Blockade/Tension | 12 plies | 2,900,280 | 296,991 | 296,307 | 539 ms | 536 ms | 3,096 | 143 |
+| 38 | Blockade/Tension | 13 plies | 5,057,208 | 358,765 | 357,525 | 540 ms | 554 ms | 6,409 | 366 |
+| 39 | Blockade/Tension | 10 plies | 1,543,917 | 209,163 | 208,798 | 376 ms | 382 ms | 1,377 | 68 |
+| 40 | Blockade/Tension | 11 plies | 3,654,338 | 241,440 | 239,979 | 384 ms | 387 ms | 2,116 | 164 |
+|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| **Total** | **All 40** | **7–14 plies** | **95,898,151** | **11,117,122** | **11,076,738** | **18,900 ms** | **19,142 ms** | **142,781** | **9,165** |
+
+---
+
+## Comparative Analysis: Standard (7–9 Plies) vs Deep (7–14 Plies) Benchmarks
+
+| Metric | **Standard Benchmark (7–9 plies)** | **Deep Benchmark (7–14 plies)** | **Scaling Comparison** |
+| :--- | ---: | ---: | :--- |
+| **Total Baseline Nodes (No TT)** | $2,408,731$ | **$95,898,151$** | **$39.8\times$ more baseline nodes** |
+| **Total Default TT Nodes ($1\text{M}$)** | $711,546$ | **$11,117,122$** | $15.6\times$ more TT nodes |
+| **Total Max TT Nodes ($16\text{M}$)** | $711,485$ | **$11,076,738$** | **Saves $40,384$ additional nodes** ($662\times$ larger node savings than at 7–9 plies) |
+| **Overall Node Reduction %** | **70.5%** | **88.4%** ($1\text{M}$) / **88.45%** ($16\text{M}$) | **+17.9 percentage points higher pruning efficiency** |
+| **Peak Single-Position Reduction** | **87.3%** (Pos 3) | **97.1%** (Pos 3: `2,152,631` $\rightarrow$ `62,373` nodes) | **32.53x single-position speedup** (`3,416 ms` $\rightarrow$ `105 ms`) |
+| **Total Baseline Time** | $3,855\text{ ms}$ ($3.86\text{s}$) | **$154,278\text{ ms}$ ($154.28\text{s}$)** | $40.0\times$ longer baseline runtime |
+| **Total Default TT Time ($1\text{M}$)** | $1,198\text{ ms}$ ($1.20\text{s}$) | **$18,900\text{ ms}$ ($18.90\text{s}$)** | Saves **135.4 seconds** across 40 positions |
+| **Total Max TT Time ($16\text{M}$)** | $1,214\text{ ms}$ ($1.21\text{s}$) | **$19,142\text{ ms}$ ($19.14\text{s}$)** | Saves **135.1 seconds** across 40 positions |
+| **Overall Speedup Factor** | **3.22x** | **8.16x** ($1\text{M}$) / **8.06x** ($16\text{M}$) | **Speedup more than doubles ($3.22\text{x} \rightarrow 8.16\text{x}$)** |
+| **Total TT Cutoffs** | $20,686$ | **$532,359$** | **$25.7\times$ more direct hash cutoffs** |
+| **Hash Collisions ($1,048,576$ entries)** | $608$ | **$142,781$** | **$234.8\times$ more collisions** as table load rises |
+| **Hash Collisions ($16,777,216$ entries)** | $36$ | **$9,165$** | **93.6% fewer collisions** ($142,781 \rightarrow 9,165$) |
+
+### Key Conclusions
+1. **Transposition Pruning Efficiency Scales Exponentially with Depth (`70.5%` $\rightarrow$ `88.4%`):**
+   - Increasing search depth by $2\text{–}5$ plies expanded the unpruned baseline search tree by **$39.8\times$** (from `2.41M` to `95.90M` nodes), while the Transposition Table tree grew by only **$15.6\times$** (from `711.5K` to `11.12M` nodes).
+   - Because deeper search trees contain exponentially more transpositions (different move orders converging on the same board configuration), overall node reduction jumped from **70.5% to 88.4%** (pruning **84.78 million nodes**!), and overall speedup more than doubled from **3.22x to 8.16x** (reducing total runtime from **154.3 seconds** down to **18.9 seconds**).
+   - On individual positions with high transposition density, speedup reached **32.53x** (Position 3 at 11 plies: `2,152,631` $\rightarrow$ `62,373` nodes, **97.1% reduction**, `3,416 ms` $\rightarrow$ `105 ms`), **16.76x** (Position 36 at 12 plies), **16.46x** (Position 12 at 10 plies), and **16.21x** (Position 24 at 11 plies).
+2. **Hash Collisions Scale Quadratically (`235x` Growth) and $16\text{M}$ Entries Saves $662\times$ More Nodes:**
+   - While TT nodes grew by $15.6\times$, hash collisions in the $1,048,576$-entry table grew by **$234.8\times$** (from `608` to `142,781`) due to the birthday-paradox load factor as hundreds of thousands of interior nodes were stored per position.
+   - In the shallow benchmark, the $16,777,216$-entry table saved only **61 nodes** over the $1,048,576$-entry table. In the deep benchmark, eliminating **133,616 collisions** (`142,781` $\rightarrow$ `9,165`, a **93.6% reduction**) enabled the $16,777,216$-entry table to save **40,384 evaluated nodes** across the 40 positions — **$662\times$ larger node savings** than in the shallow test.
+   - On individual deep positions, the $16\text{M}$ table saved **7,189 nodes** and **10 ms** on Position 33 (`415,579` $\rightarrow$ `408,390` nodes, `776 ms` $\rightarrow$ `766 ms`), **2,871 nodes** on Position 13 (`337,093` $\rightarrow$ `334,222`), **2,335 nodes** on Position 22 (`601,181` $\rightarrow$ `598,846`), **2,242 nodes** on Position 4 (`483,930` $\rightarrow$ `481,688`), and **2,187 nodes** on Position 18 (`447,196` $\rightarrow$ `445,009`).
+3. **CPU Cache Locality vs Table Capacity Trade-Off:**
+   - Despite evaluating **40,384 fewer nodes**, the $16,777,216$-entry table (**256 MiB**) took **19,142 ms** compared to **18,900 ms** for the $1,048,576$-entry table (**16 MiB**) — a ~1.28% wall-clock difference (`242 ms` over `19s`), though on several individual positions (Positions 5, 7, 12, 13, 18, 27, 33, 37) the $16\text{M}$ table was already faster in wall-clock time.
+   - This occurs because a 16 MiB table fits largely inside modern CPU L3 cache, whereas random Zobrist probes across a 256 MiB array incur main-memory DRAM latency and TLB page misses. At ~250K–600K TT nodes per isolated test position, the node savings and DRAM latency are nearly in equilibrium.
+   - In long time-control games where the persistent table is retained across dozens of moves without clearing, or in ultra-deep searches ($> 2\text{M}$ TT nodes per turn) where the $1\text{M}$ table saturates, increasing the table size via the Settings Dialog ($2\text{M}$–$16\text{M}$ entries) prevents deep transposition thrashing and yields net wall-clock gains.
+4. **100% Search Consistency:** Across both benchmarks and all 40 positions, Baseline, Default TT ($1\text{M}$), and Max TT ($16\text{M}$) produced identical best moves and identical evaluation scores.
+
+
 
