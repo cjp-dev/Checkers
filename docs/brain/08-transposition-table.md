@@ -348,3 +348,30 @@ To test how the Transposition Table and its configurable capacities ($1,048,576$
    - This occurs because a 16 MiB table fits largely inside modern CPU L3 cache, whereas random Zobrist probes across a 256 MiB array incur main-memory DRAM latency and TLB page misses.
    - In long time-control games where the persistent table is retained across dozens of moves without clearing, or in ultra-deep bitboard searches ($> 2\text{M}$ TT nodes per turn) where the $1\text{M}$ table saturates, increasing the table size via the Settings Dialog ($2\text{M}\text{–}16\text{M}$ entries) prevents deep transposition thrashing.
 4. **100% Search Consistency:** Across both benchmarks and all 40 positions, Baseline, Default TT ($1\text{M}$), and Max TT ($16\text{M}$) produced identical best moves and identical evaluation scores.
+
+---
+
+## Phase 2 Upgrade: 4-Way Set-Associative Cache-Line Buckets, `StaticEval` Caching & Hardware Prefetch
+
+In **Phase 2** of the engine improvements roadmap, [`TranspositionTable.cs`](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/AI/TranspositionTable.cs) was upgraded from a direct-mapped (1-slot) table to a **4-way set-associative table with 64-byte CPU cache-line buckets**:
+
+1. **Compact 16-Byte `TranspositionEntry` with `Key32`, `short Score`, `short StaticEval`, and `byte Age`:**
+   - Stores `uint Key32 = (uint)(hash >> 32)` (upper 32 bits of the 64-bit Zobrist hash; combined with the 18–22 lower bucket index bits, this verifies **50–54 bits** of the Zobrist hash).
+   - Stores `short Score` (`int16`, with `WinScore = 30,000` and `WinThreshold = 28,000`) and **`short StaticEval`**, allowing each entry to cache the static heuristic evaluation alongside the search score inside the exact same 16-byte footprint.
+   - Stores `ushort BestMove` (`(fromSq << 8) | toSq`) directly in bitboard square coordinates (`0..63`), eliminating `Position(row, col)` conversions on probe and store.
+2. **4-Way Set-Associative 64-Byte Buckets (`BucketSize = 4`):**
+   - Every 4 consecutive 16-byte entries form a **64-byte bucket** (`baseIndex = (int)(key & _bucketMask) << 2`), matching a single 64-byte L1/L3 CPU cache line.
+   - When all 4 ways in a bucket are occupied by distinct keys, `Store` evicts the lowest-priority slot using an **Age + Depth + Exact-Bound Protection** formula:
+     $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot ((_age - e.\text{Age}) \bmod 256) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$
+3. **Pinned Object Heap (POH) Allocation & `Sse.Prefetch0` Hardware Prefetching:**
+   - The entry array is allocated via `GC.AllocateArray<TranspositionEntry>(count, pinned: true)` on the .NET Pinned Object Heap.
+   - Immediately after `BitPosition nextPos = pos.Apply(in move)` computes `nextPos.Hash`, [`MinimaxPlayer.cs`](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/AI/MinimaxPlayer.cs) calls `TranspositionTable?.Prefetch(nextPos.Hash)` (`Sse.Prefetch0`), fetching the child's 64-byte bucket into L1 cache ahead of the recursive `NegaMax` call.
+
+### Impact on Collisions and Throughput (40 Deep Positions, 7–14 Plies)
+
+| Variant & Table Size | Direct-Mapped Collisions (Phase 1) | 4-Way Bucket Collisions (Phase 2) | Collision Reduction | Phase 0 Time | Phase 1 Time | Phase 2 Time | Phase 2 Throughput |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **International — 1M TT (16 MiB)** | 141,091 | **120** | **-99.91%** | 714 ms | 672 ms | **638 ms** | **17.18M nodes/s (+11.9%)** |
+| **International — 16M TT (256 MiB)** | 9,175 | **0** | **-100.00%** | 850 ms | 824 ms | **764 ms** | **14.34M nodes/s (+11.6%)** |
+| **English — 1M TT (16 MiB)** | 121,868 | **78** | **-99.94%** | 638 ms | 575 ms | **557 ms** | **17.85M nodes/s (+14.2%)** |
+| **English — 16M TT (256 MiB)** | 7,915 | **0** | **-100.00%** | 720 ms | 708 ms | **656 ms** | **15.14M nodes/s (+9.6%)** |

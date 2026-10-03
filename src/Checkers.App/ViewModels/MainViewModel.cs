@@ -152,6 +152,14 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowAnalysis));
     }
 
+    partial void OnSettingsChanging(GameSettings? oldValue, GameSettings newValue)
+    {
+        if (oldValue != null && oldValue.Variant != newValue.Variant && _transpositionTable.Capacity == newValue.TranspositionTableEntries)
+        {
+            _transpositionTable.Clear();
+        }
+    }
+
     partial void OnSettingsChanged(GameSettings value)
     {
         if (_transpositionTable.Capacity != value.TranspositionTableEntries)

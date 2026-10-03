@@ -14,8 +14,8 @@ namespace Checkers.Core.AI;
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
-    private const int WinScore = 100_000;
-    private const int LossScore = -100_000;
+    private const int WinScore = 30_000;
+    private const int LossScore = -30_000;
     private const int MaxPly = 64;
     private const int MaxMovesPerNode = 128;
 
@@ -185,6 +185,7 @@ public sealed class MinimaxPlayer : IPlayer
                 }
 
                 BitPosition nextPos = rootPos.Apply(in entry.BitMove);
+                TranspositionTable?.Prefetch(nextPos.Hash);
                 int score = -NegaMax(
                     in nextPos,
                     d - 1,
@@ -265,7 +266,7 @@ public sealed class MinimaxPlayer : IPlayer
                     await Task.Delay(1, cancellationToken);
                 }
 
-                if (bestScoreOverall >= 90_000)
+                if (bestScoreOverall >= TranspositionTable.WinThreshold)
                     break;
             }
             else
@@ -354,25 +355,32 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         int originalAlpha = alpha;
-        Position ttFrom = default;
-        Position ttTo = default;
         bool hasTtMove = false;
         ushort ttPackedMove = 0;
+        int cachedStaticEval = TranspositionEntry.NoStaticEval;
 
-        // Transposition Table Probe
+        // 4-Way Bucket Transposition Table Probe
         if (TranspositionTable != null &&
-            TranspositionTable.TryProbe(pos.Hash, depth, alpha, beta, ply, out int ttScore, out ttFrom, out ttTo, out bool hasCutoff))
+            TranspositionTable.TryProbe(
+                pos.Hash,
+                depth,
+                alpha,
+                beta,
+                ply,
+                out int ttScore,
+                out ttPackedMove,
+                out hasTtMove,
+                out int probedStaticEval,
+                out bool hasStaticEval,
+                out bool hasCutoff))
         {
             if (hasCutoff)
             {
                 return ttScore;
             }
-            if (ttFrom.IsValid && ttTo.IsValid)
+            if (hasStaticEval)
             {
-                hasTtMove = true;
-                byte ttFromSq = (byte)BitboardMasks.ToSquareIndex(ttFrom);
-                byte ttToSq = (byte)BitboardMasks.ToSquareIndex(ttTo);
-                ttPackedMove = (ushort)((ttFromSq << 8) | ttToSq);
+                cachedStaticEval = probedStaticEval;
             }
         }
 
@@ -381,7 +389,11 @@ public sealed class MinimaxPlayer : IPlayer
         {
             if (UseQuiescence)
             {
-                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, out aborted);
+                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, cachedStaticEval, out aborted);
+            }
+            if (cachedStaticEval != TranspositionEntry.NoStaticEval)
+            {
+                return cachedStaticEval;
             }
             LeafEvaluations++;
             return EvaluatePosition(in pos);
@@ -404,6 +416,8 @@ public sealed class MinimaxPlayer : IPlayer
         for (int i = 0; i < moves.Length; i++)
         {
             BitPosition nextPos = pos.Apply(in moves[i]);
+            TranspositionTable?.Prefetch(nextPos.Hash);
+
             int score = -NegaMax(
                 in nextPos,
                 depth - 1,
@@ -459,8 +473,9 @@ public sealed class MinimaxPlayer : IPlayer
                 maxScore,
                 bound,
                 ply,
-                hasBestMove ? BitboardMasks.Positions[bestMoveThisNode.From] : default,
-                hasBestMove ? BitboardMasks.Positions[bestMoveThisNode.To] : default);
+                hasBestMove ? bestMoveThisNode.PackedMove : (ushort)0,
+                hasBestMove,
+                cachedStaticEval);
         }
 
         return maxScore;
@@ -475,6 +490,7 @@ public sealed class MinimaxPlayer : IPlayer
         long hardLimitMs,
         CancellationToken cancellationToken,
         bool legalMovesVerified,
+        int cachedStaticEval,
         out bool aborted)
     {
         aborted = false;
@@ -504,8 +520,16 @@ public sealed class MinimaxPlayer : IPlayer
             }
         }
 
-        int standPat = EvaluatePosition(in pos);
-        LeafEvaluations++;
+        int standPat;
+        if (cachedStaticEval != TranspositionEntry.NoStaticEval)
+        {
+            standPat = cachedStaticEval;
+        }
+        else
+        {
+            standPat = EvaluatePosition(in pos);
+            LeafEvaluations++;
+        }
 
         if (standPat >= beta)
         {
@@ -535,7 +559,7 @@ public sealed class MinimaxPlayer : IPlayer
         for (int i = 0; i < captures.Length; i++)
         {
             BitPosition nextPos = pos.Apply(in captures[i]);
-            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, out aborted);
+            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, TranspositionEntry.NoStaticEval, out aborted);
 
             if (aborted)
                 return 0;
@@ -599,8 +623,8 @@ public sealed class MinimaxPlayer : IPlayer
 
     private static string FormatValue(int score) => score switch
     {
-        >= 90_000 => $"+Win in {WinScore - score} plies",
-        <= -90_000 => $"-Loss in {score - LossScore} plies",
+        >= TranspositionTable.WinThreshold => $"+Win in {WinScore - score} plies",
+        <= -TranspositionTable.WinThreshold => $"-Loss in {score - LossScore} plies",
         > 0 => $"+{score}",
         _ => score.ToString()
     };

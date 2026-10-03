@@ -597,3 +597,32 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 | **Pos #20** | Middlegame | 18 plies | **18 plies** | `5-9` | `+12` | 55,496,704 | 5,000 ms | 10.07M/s | **11.10M/s** |
 | **Pos #32** | Endgame | 20 plies | **20 plies** | `18-14` | `+439` | 51,732,793 | 4,311 ms | 10.53M/s | **12.00M/s** |
 | **Pos #40** | Blockade/Tension | 18 plies | **18 plies** | `29x8` | `+765` | 37,892,371 | 3,352 ms | 10.85M/s | **11.30M/s** |
+
+---
+
+### Phase 2: Transposition Table Management (4-Way Cache-Line Buckets, `StaticEval` Caching & `Sse.Prefetch0`)
+
+- **4-Way Set-Associative 64-Byte Cache-Line Buckets (`BucketSize = 4`):** Groups every 4 consecutive 16-byte entries into a single 64-byte CPU cache line (`baseIndex = (int)(key & _bucketMask) << 2`) with Age + Depth + Exact-Bound victim selection, eliminating **99.91%–100% of hash collisions** across all 40 deep positions (`141,091 → 120` in 1M TT, `9,175 → 0` in 16M TT).
+- **Compact 16-Byte `TranspositionEntry` Layout:** Stores `uint Key32` (upper 32 bits of Zobrist hash), `short Score`, `short StaticEval` (cached heuristic evaluation), `ushort BestMove` (`(fromSq << 8) | toSq`), `sbyte Depth`, `byte Age`, and `byte Flags` without increasing the 16-byte entry size.
+- **Pinned Object Heap Allocation & `Sse.Prefetch0` Hardware Prefetching:** Allocates `_entries` on the .NET Pinned Object Heap (`GC.AllocateArray<TranspositionEntry>(count, pinned: true)`) and issues `Sse.Prefetch0` immediately after `pos.Apply(in move)` to hide L3/DRAM latency.
+
+#### Part A: 40-Position Deep Fixed-Depth Comparison (Phase 0 vs. Phase 1 vs. Phase 2)
+
+| Variant | Mode | Phase 1 Collisions | Phase 2 Collisions | Phase 2 Nodes | Phase 0 Time | Phase 1 Time | Phase 2 Time | Phase 2 NPS | Total Gain vs. Phase 0 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **International** | **No-TT** | — | — | 95,811,314 | 2,951 ms | 2,918 ms | **2,961 ms** | 32.35M/s | — |
+| **International** | **1M TT** | 141,091 | **120 (-99.91%)** | 10,966,444 | 714 ms | 672 ms | **638 ms** | **17.18M/s** | **+11.9%** |
+| **International** | **16M TT** | 9,175 | **0 (-100%)** | 10,966,438 | 850 ms | 824 ms | **764 ms** | **14.34M/s** | **+11.6%** |
+| **English** | **No-TT** | — | — | 94,110,293 | 2,641 ms | 2,567 ms | **2,531 ms** | **37.18M/s** | **+4.3%** |
+| **English** | **1M TT** | 121,868 | **78 (-99.94%)** | **9,944,217** | 638 ms | 575 ms | **557 ms** | **17.85M/s** | **+14.2%** |
+| **English** | **16M TT** | 7,915 | **0 (-100%)** | **9,944,217** | 720 ms | 708 ms | **656 ms** | **15.14M/s** | **+9.6%** |
+
+#### Part B: 5-Position Timed Benchmark (5.0s Budget / Position, 16M TT, International)
+
+| Position | Category | Phase 0 Depth | Phase 1 Depth | Phase 2 Depth | Best Move | Score | Phase 2 Nodes | Phase 2 Time | Phase 2 NPS |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|
+| **Pos #1** | Opening | 17 plies | 17 plies | **17 plies** | `9-14` | `+5` | 56,889,344 | 5,000 ms | **11.38M/s** |
+| **Pos #13** | Middlegame | 16 plies | 17 plies | **17 plies** | `28-24` | `-3` | 48,537,532 | 4,970 ms | **9.76M/s** |
+| **Pos #20** | Middlegame | 18 plies | 18 plies | **18 plies** | `5-9` | `+12` | 49,897,472 | 5,000 ms | **9.98M/s** |
+| **Pos #32** | Endgame | 20 plies | 20 plies | **20 plies** | `18-14` | `+439` | 54,060,293 | **4,145 ms** | **13.04M/s** |
+| **Pos #40** | Blockade/Tension | 18 plies | 18 plies | **18 plies** | `29x8` | `+760` | 60,432,384 | 5,000 ms | **12.09M/s** |
