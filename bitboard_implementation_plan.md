@@ -1,36 +1,34 @@
 # Bitboard Engine for Checkers (International + English)
 
-Implements the specification in [Implement bitboards.md](file:///c:/Udvikling/Spil/Checkers/Implement%20bitboards.md), using the answers to the clarifying questions:
+Implements the specification in [Implement bitboards.md](file:///c:/Udvikling/Spil/Checkers/Implement%20bitboards.md), incorporating all design decisions:
 
 | Decision | Choice |
 | :--- | :--- |
-| Refactor depth | Bitboard position + move generation + evaluation + incremental Zobrist **plus** compact move struct and allocation-free search |
-| Layout | **64-bit 8×8** like Stermere's engine: 4 × `ulong` (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`) |
-| Comparison | **Both engines live in production code**, selectable, compared in **one benchmark run** |
-| Benchmark columns | **No-TT baseline** and **Default TT (1,048,576)** for each engine |
-
-## Guiding principle: same results, only faster
-
-The bitboard engine must play **exactly the same game** as the array engine. For the same position and depth it must produce identical legal-move lists (same order), identical evaluations, identical `NodesEvaluated` / `LeafEvaluations`, the same best move and the same score. That gives us a strong correctness check: the benchmark itself verifies all 40 positions node for node, and any difference is a bug.
-
-> [!NOTE]
-> A useful fact for this: [Zobrist.cs](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/Engine/Zobrist.cs) already indexes squares as `row * 8 + col`, which is exactly the 64-bit bit index. Both engines therefore produce **identical hashes** and can share the same `TranspositionTable`.
+| **Refactor depth** | Bitboard position + move generation + evaluation + incremental Zobrist **plus** compact move struct (`BitMove`) and allocation-free search (`BitboardMinimaxPlayer`) |
+| **Layout** | **64-bit 8×8** like Stermere's engine: 4 × `ulong` (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`) |
+| **Comparison** | **Both engines (`Array` and `Bitboard`) live in production code**, selectable in code and the benchmark |
+| **GUI / Default Engine** | **Bitboard is the default engine for the GUI** (`GameSession` / `MainViewModel`). **No GUI or PDN changes.** |
+| **Benchmark Variants** | **Both `International` (Flying Kings) and `English` (1-Step Kings)** tested on the shared 40-position suite |
+| **Benchmark Suite** | All 40 positions in `BenchmarkSuite` verified to have $\ge 2$ legal moves and non-trivial branching under **both** `International` and `English` rules |
+| **Benchmark Depth & Columns** | **Both Standard (7–9 plies) and Deep (~5s/pos baseline)** runs, comparing **No-TT baseline** and **Default TT ($1,048,576$ entries)** for each engine and variant |
 
 ---
 
-## Open Questions
+## Guiding Principle: Same Results, Only Faster
 
-> [!IMPORTANT]
-> **1. Engine choice in the Settings dialog?** The plan adds a "Board engine" radio group (**Bitboard** (default) / **Array (classic)**) to WPF `SettingsWindow.xaml` and Blazor `DialogHost.razor`, saves it as a `[Engine "..."]` PDN tag, and applies it to the next computer move. This should only selectable in code and the benchmark. The new bitboard should be the default implementation for the GUT. There should not be any changes in the GUI.
+The bitboard engine must play **exactly the same game** as the array engine under both `International` and `English` rules. For the same position, variant, and depth it must produce:
+- identical legal-move lists (in the exact same order),
+- identical static evaluations,
+- identical `NodesEvaluated` and `LeafEvaluations`,
+- the exact same best move and search score.
 
-> [!IMPORTANT]
-> **2. Benchmark depth.** You picked the No-TT and Default TT columns but did not tick Standard or Deep. The plan supports both (`--engines` and `--engines --deep`) and documents **both**. Deep takes about 4–5 minutes in total, mostly the array No-TT run. OK?
+That gives us an ironclad correctness check: the 40-position benchmark verifies all 40 positions node-for-node across both variants and both TT modes, and any divergence is flagged immediately.
 
 > [!NOTE]
-> **3. Variants in the benchmark.** You did not select the extra English suite, so performance numbers use the existing 40 International positions. English correctness is fully covered by the equivalence, perft, and rule tests, which run on both engines. The tests should run for both variants English and international, but the current positons can be used for both tests.
+> [Zobrist.cs](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/Engine/Zobrist.cs) already indexes squares as `row * 8 + col`, which matches the 64-bit bitboard square index (`0..63`). Both engines therefore produce **identical 64-bit Zobrist hashes** and share the exact same `TranspositionTable`.
 
 > [!NOTE]
-> **4. Out of scope.** Stermere's NNUE, LMR, futility pruning, killer/history heuristics, endgame DB and opening book are **not** copied over. They would change node counts and break the "same results" guarantee. We only use its bitboard layout and shift/mask techniques.
+> **Out of scope:** Stermere's NNUE, LMR, futility pruning, killer/history heuristics, endgame DB, and opening book are **not** copied over, as they would alter node counts and break the node-for-node equivalence guarantee. We adopt its 64-bit bitboard representation (`4 x ulong`) and bitwise shift/mask move generation techniques.
 
 ---
 
@@ -38,65 +36,70 @@ The bitboard engine must play **exactly the same game** as the array engine. For
 
 ```mermaid
 flowchart TD
-    UI["MainViewModel / GameSession (BoardState + Move: unchanged public API)"] --> F["EngineFactory (BoardEngine.Array / BoardEngine.Bitboard)"]
-    F -->|Array| RE["RuleEngine (existing, untouched)"]
-    F -->|Array| MP["MinimaxPlayer (existing, untouched)"]
-    F -->|Bitboard| BRE["BitboardRuleEngine : IRuleEngine"]
-    F -->|Bitboard| BMP["BitboardMinimaxPlayer : IPlayer"]
+    UI["MainViewModel / GameSession (BoardState + Move: unchanged public API, no GUI changes)"] --> F["EngineFactory (defaults to BoardEngine.Bitboard)"]
+    BM["EngineBenchmarkRunner (International + English, Standard + Deep)"] --> F
+    F -->|BoardEngine.Array| RE["RuleEngine (existing array engine, untouched)"]
+    F -->|BoardEngine.Array| MP["MinimaxPlayer (existing array search, untouched)"]
+    F -->|BoardEngine.Bitboard| BRE["BitboardRuleEngine : IRuleEngine"]
+    F -->|BoardEngine.Bitboard| BMP["BitboardMinimaxPlayer : IPlayer"]
     BRE --> GEN["BitboardMoveGenerator (men, flying kings, English kings)"]
     BMP --> GEN
     BMP --> EV["BitboardEvaluation"]
     BMP --> POS["BitPosition struct (4 x ulong + side + clock + hash)"]
     GEN --> POS
-    MP --> TT["TranspositionTable (shared, identical hashes)"]
+    MP --> TT["TranspositionTable (shared, identical Zobrist hashes)"]
     BMP --> TT
 ```
 
-- `BoardState`, `Move`, `GameSession`, the UI and PDN files keep the same API. The array engine stays **byte-for-byte unchanged**, so the comparison is fair.
-- The bitboard engine converts `BoardState` → `BitPosition` once at the root, searches with value-type positions and moves only, and maps the result back to one of the `Move` objects it received.
+- `BoardState`, `Move`, `GameSession`, the WPF/Blazor UI, `GameSettings`, and PDN files keep their exact existing API and UI layout.
+- The existing array `RuleEngine` and `MinimaxPlayer` remain **untouched**, guaranteeing a fair baseline comparison.
+- The bitboard engine converts `BoardState` $\rightarrow$ `BitPosition` once at the search root, searches purely with value-type `BitPosition` and `BitMove` structs on preallocated per-ply buffers, and maps the winning root move back to the corresponding `Move` object.
 
 ---
 
 ## Proposed Changes
 
-### 1. Bitboard core (`Checkers.Core/Bitboards/`)
+### 1. Bitboard Core (`src/Checkers.Core/Bitboards/`)
 
-#### [NEW] BitboardMasks.cs
-Bit index `sq = row * 8 + col` (row 0 = Black's home rank, White moves toward row 0).
+#### [NEW] `BitboardMasks.cs`
+Bit index `sq = row * 8 + col` (`row = 0` is Black's home rank; White moves toward `row = 0`).
 
 ```csharp
 public static class BitboardMasks
 {
-    public const ulong DarkSquares = 0x55AA55AA55AA55AAUL; // (row + col) odd
-    public const ulong NotColA  = 0xFEFEFEFEFEFEFEFEUL;    // one step left allowed
-    public const ulong NotColH  = 0x7F7F7F7F7F7F7F7FUL;    // one step right allowed
-    public const ulong NotColAB = 0xFCFCFCFCFCFCFCFCUL;    // jump left allowed
-    public const ulong NotColGH = 0x3F3F3F3F3F3F3F3FUL;    // jump right allowed
-    public const ulong Row0 = 0x00000000000000FFUL;        // White crown row
-    public const ulong Row7 = 0xFF00000000000000UL;        // Black crown row
-    public static readonly ulong[] Rows;                    // Rows[r]
-    public static readonly ulong CenterMask;                // rows 3-4, cols 2-5 (squares 14,15,18,19)
+    public const ulong DarkSquares = 0xAA55AA55AA55AA55UL; // (row + col) odd
+    public const ulong NotColA  = 0xFEFEFEFEFEFEFEFEUL;    // col >= 1 (one step left allowed)
+    public const ulong NotColH  = 0x7F7F7F7F7F7F7F7FUL;    // col <= 6 (one step right allowed)
+    public const ulong NotColAB = 0xFCFCFCFCFCFCFCFCUL;    // col >= 2 (jump left allowed)
+    public const ulong NotColGH = 0x3F3F3F3F3F3F3F3FUL;    // col <= 5 (jump right allowed)
+    public const ulong Row0 = 0x00000000000000FFUL;        // White crown row (row 0)
+    public const ulong Row7 = 0xFF00000000000000UL;        // Black crown row (row 7)
+    public static readonly ulong[] Rows;                    // Rows[0..7]
+    public static readonly ulong CenterMask;                // rows 3-4, cols 2-5 (squares #14, #15, #18, #19)
     public static readonly ulong KingCenterMask;            // rows 2-5, cols 2-5 (English king centralization)
-    public static readonly ulong[,] Rays;                   // Rays[dir, sq]: all squares along a diagonal
+    public static readonly ulong[,] Rays;                   // Rays[dir, sq]: all dark squares along diagonal dir from sq
 }
 ```
 
-Direction table (same order as `RuleEngine.AllDiagonals`, so move order is the same):
+Direction table (matching `RuleEngine.AllDiagonals` order so generated move lists have identical ordering):
 
-| Dir | (dRow,dCol) | Bit delta | Set shift |
+| Dir | `(dRow, dCol)` | Bit Delta | Bitwise Shift from Square `sq` |
 | :-: | :-: | :-: | :--- |
-| 0 | (-1,-1) up-left | −9 | `(S & NotColA) >> 9` |
-| 1 | (-1,+1) up-right | −7 | `(S & NotColH) >> 7` |
-| 2 | (+1,-1) down-left | +7 | `(S & NotColA) << 7` |
-| 3 | (+1,+1) down-right | +9 | `(S & NotColH) << 9` |
+| `0` | `(-1, -1)` up-left | `-9` | `(b & NotColA) >> 9` |
+| `1` | `(-1, +1)` up-right | `-7` | `(b & NotColH) >> 7` |
+| `2` | `(+1, -1)` down-left | `+7` | `(b & NotColA) << 7` |
+| `3` | `(+1, +1)` down-right | `+9` | `(b & NotColH) << 9` |
 
-#### [NEW] BitPosition.cs
-A small value type, copied on every move (copy-make, no heap allocation, nothing to undo).
+#### [NEW] `BitPosition.cs`
+A compact value type copied by value on every move (copy-make: zero heap allocations, no undo logic required).
 
 ```csharp
 public struct BitPosition
 {
-    public ulong WhiteMen, BlackMen, WhiteKings, BlackKings;
+    public ulong WhiteMen;
+    public ulong BlackMen;
+    public ulong WhiteKings;
+    public ulong BlackKings;
     public ulong Hash;               // identical to BoardState.ZobristHash
     public int HalfMoveClock;
     public PieceColor SideToMove;
@@ -106,166 +109,154 @@ public struct BitPosition
     public readonly ulong Occupied => White | Black;
     public readonly ulong Empty => BitboardMasks.DarkSquares & ~Occupied;
 
-    public static BitPosition FromBoardState(BoardState s);
+    public static BitPosition FromBoardState(BoardState state);
     public readonly BoardState ToBoardState(int fullMoveNumber);
-    public readonly BitPosition Apply(in BitMove m);  // incremental Zobrist, clocks, promotion
+    public readonly BitPosition Apply(in BitMove move); // incremental Zobrist, clock, promotion
 }
 ```
 
-`Apply` XORs only the changed squares into the hash: origin, destination (as a king if promoted), each captured square, and the side-to-move key. That replaces today's 64-square `RecalculateHash()` per move.
+`Apply` updates `Hash` incrementally by XORing only the origin square, the destination square (as a King if promoted), each captured square in `move.Captured` via `BitOperations.TrailingZeroCount`, and `Zobrist.BlackToMoveKey`—replacing the 64-square loop in `BoardState.RecalculateHash()`.
 
-#### [NEW] BitMove.cs
+#### [NEW] `BitMove.cs`
 ```csharp
 public readonly struct BitMove
 {
-    public readonly ulong Captured;   // bitmask of captured squares
-    public readonly byte From, To;
+    public readonly ulong Captured;   // bitmask of captured squares (0 for quiet moves)
+    public readonly byte From;        // 0..63
+    public readonly byte To;          // 0..63
     public readonly bool IsPromotion;
+
+    public bool IsCapture => Captured != 0;
     public int CaptureCount => BitOperations.PopCount(Captured);
 }
 ```
-No `List<Position>` and no notation string. `Path` and `Notation` are only built when a `Move` is needed (UI, root, PDN).
+During tree search, `BitMove` avoids allocating `List<Position>` or formatting notation strings. Full `Move` records (with `Path` and `Notation`) are only constructed when `IRuleEngine.GetLegalMoves(BoardState)` is called (root/UI/tests).
 
-#### [NEW] BitboardMoveGenerator.cs
-- **Fast capture check** (Stermere's `has_any_jump`): a few shifts and ANDs decide whether the node is a capture node before any per-piece work. Men use forward directions only, kings use all four.
-- **Men / English kings**: one-hop jumps with `NotColAB` / `NotColGH` masks, recursing for multi-jumps. A man reaching the crown row ends the move (promotion), as today.
-- **Flying kings (International)**: ray scanning with first-blocker lookup. On rays toward higher bits the nearest blocker is `TrailingZeroCount(ray & occ)`; toward lower bits it is `63 - LeadingZeroCount(ray & occ)`. Landing squares are walked nearest-first.
-- **Exact replication of current rule details**, so the move lists match:
-  - pieces captured earlier in the sequence stay on the board and block the ray;
-  - the king's starting square counts as occupied **before** reaching the enemy piece but as free **for landing** (the `landingPos != initialFrom` rule);
-  - the flying-king "must continue if any landing square continues" rule, applied per ray;
-  - captures for all pieces are collected first, quiet moves only when no capture exists;
-  - pieces are processed in ascending square order with the same direction order.
-- Two output modes:
-  - `Generate(in BitPosition, Span/buffer<BitMove>)` for search;
-  - `GenerateMoves(in BitPosition)` builds full `Move` records **with `Path`** for the UI and `IRuleEngine`. Paths come from a small square stack kept during the capture recursion.
+#### [NEW] `BitboardMoveGenerator.cs`
+Supports both `CheckersVariant.International` and `CheckersVariant.English`:
+- **Fast capture detection (`HasAnyCapture`):** Uses bitwise shifts and masks (inspired by Stermere's `has_any_jump`) to check in $O(1)$ bitwise operations whether any man or king has a legal jump before iterating individual pieces.
+- **Men & English Kings (1-step moves and jumps):**
+  - Quiet moves: 1-step shifts (`>> 9`, `>> 7` for White men; `<< 7`, `<< 9` for Black men; all 4 directions for English Kings) masked with `Empty`.
+  - Captures: 2-step jumps (`>> 18`, `>> 14`, `<< 14`, `<< 18`) using `NotColAB` and `NotColGH` column masks, recursing for multi-jump sequences. Men reaching `Row0` (White) or `Row7` (Black) promote and terminate the jump sequence immediately.
+- **International Flying Kings (ray scanning with hardware intrinsics):**
+  - Quiet moves: along each of the 4 diagonal rays `Rays[dir, sq]`, finds the first blocking piece on `ray & Occupied` using `BitOperations.TrailingZeroCount` (for positive directions `+7`, `+9`) or `63 - BitOperations.LeadingZeroCount` (for negative directions `-9`, `-7`). Every empty square before the first blocker is emitted in step order.
+  - Captures: finds the first blocker along the ray. If it is an uncaptured enemy piece (`(enemy & ~capturedSoFar) != 0`), finds the next blocker beyond it (`occupiedExceptInitialFrom`) to isolate all consecutive empty landing squares. Evaluates recursive continuation from each landing square and enforces the mandatory continuation rule per ray, matching `RuleEngine.FindFlyingKingCaptures` Move-for-Move.
+- **Two output entry points:**
+  - `int Generate(in BitPosition pos, CheckersVariant variant, Span<BitMove> buffer)` — zero-allocation move generation for `BitboardMinimaxPlayer`.
+  - `IReadOnlyList<Move> GenerateMoves(in BitPosition pos, CheckersVariant variant)` — builds full `Move` objects (with `Path` and `Notation`) in identical order to `RuleEngine.GetLegalMoves`.
 
-#### [NEW] BitboardEvaluation.cs
-The same formula as [EvaluationFunction.cs](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/AI/EvaluationFunction.cs), computed with popcounts:
-
-```csharp
-int white = PopCount(WhiteMen) * ManValue + PopCount(WhiteKings) * kingVal
-          + PopCount(White & CenterMask) * CenterControlBonus
-          + PopCount(WhiteMen & Row7) * BackRankDefenseBonus
-          + advanceStep * Σr (7 - r) * PopCount(WhiteMen & Rows[r]);
-if (English) white += PopCount(WhiteKings & KingCenterMask) * KingCentralizationBonus;
-// Black mirrored (r instead of 7 - r, Row0 for back rank)
-```
-Returns the score from the side to move's point of view, exactly like today.
+#### [NEW] `BitboardEvaluation.cs`
+Implements `IEvaluationFunction` (and a direct `Evaluate(in BitPosition pos)` overload for the bitboard search) using `BitOperations.PopCount` and bitmasks:
+- Material: `PopCount(WhiteMen) * ManValue + PopCount(WhiteKings) * kingVal` (and Black equivalent).
+- Center Control: `PopCount(White & CenterMask) * CenterControlBonus`.
+- English King Centralization: `PopCount(WhiteKings & KingCenterMask) * KingCentralizationBonus`.
+- Back Rank Defense: `PopCount(WhiteMen & Row7) * BackRankDefenseBonus` and `PopCount(BlackMen & Row0) * BackRankDefenseBonus`.
+- Advancement: row-masked `PopCount(WhiteMen & Rows[r]) * (7 - r) * advanceStep` and `PopCount(BlackMen & Rows[r]) * r * advanceStep`.
+Produces the exact same integer score as `EvaluationFunction.Evaluate(BoardState)` for every board state.
 
 ---
 
-### 2. Engines (`Checkers.Core/Engine/` and `Checkers.Core/AI/`)
+### 2. Engines & Factory (`src/Checkers.Core/Engine/` & `src/Checkers.Core/AI/`)
 
-#### [NEW] BoardEngine.cs (`Models/`)
+#### [NEW] `BoardEngine.cs` (`src/Checkers.Core/Models/BoardEngine.cs`)
 ```csharp
-public enum BoardEngine { Array, Bitboard }
-```
+namespace Checkers.Core.Models;
 
-#### [NEW] BitboardRuleEngine.cs
-Implements `IRuleEngine` (`Variant`, `GetLegalMoves`, `IsLegalMove`, `ApplyMove`, `EvaluateGameStatus`) on top of the generator. Its `ApplyMove` returns a `BoardState` identical to `RuleEngine.ApplyMove`, including `FullMoveNumber`, `HalfMoveClock` and hash.
-
-#### [NEW] BitboardMinimaxPlayer.cs
-Implements `IPlayer` with the **same algorithm and reporting** as `MinimaxPlayer`: iterative deepening, root PV ordering, TT probe/store, quiescence (ply cap 24), soft/hard time limits, 1024-node abort checks, live `IProgress<SearchAnalysis>` heartbeats and Blazor `Task.Delay(1)` yields.
-
-What changes internally:
-- `BitPosition` copy-make instead of `BoardState.Clone()` + 64-square rehash.
-- **Per-ply preallocated `BitMove[]` buffers**, so there are no `List<Move>`, LINQ or string allocations in the tree.
-- Moves are generated **once per node** (today `EvaluateGameStatus` and the search each generate them, so twice). The status checks keep the same order: no pieces → loss, no moves → loss, `HalfMoveClock >= 80` → draw.
-- Ordering uses a stable insertion sort on `CaptureCount desc, IsPromotion desc`, then moves the first TT from/to match to the front. That reproduces `OrderMoves` exactly.
-- At the root, the received `IReadOnlyList<Move>` is converted to `BitMove`s in the same order, and the chosen index returns the original `Move`.
-
-> [!NOTE]
-> The array `MinimaxPlayer` is left untouched. The search driver (about 250 lines) is therefore deliberately duplicated in `BitboardMinimaxPlayer`, so the baseline engine stays exactly as it is today.
-
-#### [NEW] EngineFactory.cs
-```csharp
-public static class EngineFactory
+public enum BoardEngine
 {
-    public static IRuleEngine CreateRuleEngine(BoardEngine engine, CheckersVariant variant);
-    public static IPlayer CreatePlayer(BoardEngine engine, SearchLimits limits, CheckersVariant variant,
-                                       TranspositionTable? tt, bool useTranspositionTable = true, bool useQuiescence = true);
+    Bitboard,
+    Array
 }
 ```
 
-#### [MODIFY] Zobrist.cs
-Add `GetPieceKey(int square, int pieceIndex)` and `BlackToMove` accessors for incremental hashing. Existing keys and seed stay the same.
+#### [NEW] `BitboardRuleEngine.cs` (`src/Checkers.Core/Engine/BitboardRuleEngine.cs`)
+Implements `IRuleEngine` (`Variant`, `GetLegalMoves`, `IsLegalMove`, `ApplyMove`, `EvaluateGameStatus`) backed by `BitPosition` and `BitboardMoveGenerator`.
 
-#### [MODIFY] GameRecordFormat.cs
-Parse an optional `[Engine "Bitboard|Array"]` tag. The session rule engine is created through `EngineFactory`.
+#### [NEW] `BitboardMinimaxPlayer.cs` (`src/Checkers.Core/AI/BitboardMinimaxPlayer.cs`)
+Implements `IPlayer` with the exact same search algorithm, parameters, and live telemetry as `MinimaxPlayer`:
+- Iterative deepening, root PV ordering, TT probe/store (`TranspositionTable`), quiescence search (ply cap 24), soft/hard time limits, 1024-node interrupt checks, and `IProgress<SearchAnalysis>` reporting.
+- Uses `BitPosition` value-type copy-make and preallocated per-ply `BitMove[]` scratch buffers (eliminating per-node `BoardState.Clone()`, `List<Move>` allocations, LINQ sorting, and string formatting).
+- Generates legal moves **once per node** (instead of twice in `EvaluateGameStatus` + `NegaMax`).
+- Uses a stable in-place sort by `CaptureCount` descending then `IsPromotion` descending, plus TT best-move fronting, matching `MinimaxPlayer.OrderMoves` order identically.
 
----
+#### [NEW] `EngineFactory.cs` (`src/Checkers.Core/Engine/EngineFactory.cs`)
+```csharp
+public static class EngineFactory
+{
+    public static IRuleEngine CreateRuleEngine(
+        CheckersVariant variant = CheckersVariant.International,
+        BoardEngine engine = BoardEngine.Bitboard);
 
-### 3. Application & UI (only if Open Question 1 is "yes")
+    public static IPlayer CreatePlayer(
+        SearchLimits limits,
+        CheckersVariant variant = CheckersVariant.International,
+        BoardEngine engine = BoardEngine.Bitboard,
+        TranspositionTable? transpositionTable = null,
+        bool useTranspositionTable = true,
+        bool useQuiescence = true);
+}
+```
 
-#### [MODIFY] GameSettings.cs / SettingsViewModel.cs
-Add `BoardEngine Engine = BoardEngine.Bitboard`, `IsBitboardEngine` / `IsArrayEngine` radio properties, and `EngineBadgeText`.
+#### [MODIFY] `Zobrist.cs`
+Expose `GetPieceKey(int squareIndex, int pieceIndex)` (`squareIndex = row * 8 + col`) and `BlackToMoveKey` so `BitPosition.Apply` can XOR piece keys directly by bit index `0..63`.
 
-#### [MODIFY] MainViewModel.cs
-Create the session rule engine and the AI player through `EngineFactory` with `Settings.Engine`. Switching engines mid-game does **not** need a new game, because both engines follow the same rules. The AI uses the new engine from its next move. Write the `[Engine]` PDN tag.
-
-#### [MODIFY] SettingsWindow.xaml (WPF) / DialogHost.razor (Blazor)
-Add a "Board engine" radio group: **Bitboard (fast, default)** / **Array (classic)**.
-
----
-
-### 4. Engine benchmark (`Checkers.Core/AI/Benchmark/` + `tools/Checkers.Benchmark`)
-
-#### [NEW] EngineBenchmarkRunner.cs and EngineBenchmarkResult.cs
-For each of the 40 positions in `BenchmarkSuite` (unchanged):
-1. Calibrate the depth exactly as today (standard 7–9 plies, or `--deep` 7–14 plies), using the array engine without TT.
-2. Run four searches at that depth: **Array No-TT**, **Bitboard No-TT**, **Array + TT 1M**, **Bitboard + TT 1M**. Each TT run gets a freshly cleared 1,048,576-entry table.
-3. Record nodes, leaf evaluations, time, nodes/sec, best move and score, and **flag any mismatch** between the engines.
-
-Output:
-- **Table A – No TT:** Array nodes/time vs Bitboard nodes/time, identical ✓, speedup, Mnodes/s.
-- **Table B – Default TT (1M):** same columns.
-- JSON files `docs/brain/bitboard_benchmark_results.json` (and `bitboard_deep_benchmark_results.json`).
-
-#### [MODIFY] Program.cs
-Add an `--engines` flag (works together with `--deep`). The existing TT benchmark is unchanged when the flag is absent.
+#### [MODIFY] `GameSession.cs` & `MainViewModel.cs`
+- Default `GameSession` and `MainViewModel` to use `EngineFactory.CreateRuleEngine(variant, BoardEngine.Bitboard)` and `EngineFactory.CreatePlayer(..., BoardEngine.Bitboard)`.
+- **No changes** to `SettingsWindow.xaml`, `DialogHost.razor`, `GameSettings`, `SettingsViewModel`, or `GameRecordFormat` PDN tags.
 
 ---
 
-### 5. Tests
+### 3. Benchmark Suite & Engine Benchmark Runner (`src/Checkers.Core/AI/Benchmark/` & `tools/Checkers.Benchmark`)
 
-| Test | Purpose |
+#### [MODIFY] `BenchmarkSuite.cs`
+Ensure `FindPositionMatching` validates that each candidate position has $\ge 2$ legal moves and non-trivial 5-ply branching under **both** `CheckersVariant.International` and `CheckersVariant.English`. That guarantees all 40 positions are non-forced and meaningful when benchmarked in both variants.
+
+#### [NEW] `EngineBenchmarkResult.cs` & `EngineBenchmarkRunner.cs`
+Runs the 40-position benchmark for **both `CheckersVariant.International` and `CheckersVariant.English`**, supporting both **Standard** (7–9 plies) and **Deep** (`--deep`, ~5s/pos baseline) calibration:
+1. For each position $P_i$ ($1 \dots 40$) and variant (`International`, `English`), calibrates search depth using Array No-TT.
+2. Runs four configurations at that calibrated depth:
+   - **Array (No-TT)**
+   - **Bitboard (No-TT)**
+   - **Array + Default TT ($1,048,576$ entries)**
+   - **Bitboard + Default TT ($1,048,576$ entries)**
+3. Verifies `NodesEvaluated`, `BestMove`, and `Score` match 100% between Array and Bitboard in both No-TT and Default TT modes.
+4. Outputs Markdown comparison tables (No-TT table and Default TT table for International and for English) and saves JSON results (`docs/brain/bitboard_benchmark_results.json` and `docs/brain/bitboard_deep_benchmark_results.json`).
+
+#### [MODIFY] `tools/Checkers.Benchmark/Program.cs`
+Add `--engines` CLI flag (combinable with `--deep`) to run the Array vs. Bitboard benchmark across both variants.
+
+---
+
+### 4. Automated Unit & Equivalence Tests (`tests/Checkers.Core.Tests/`)
+
+| Test File | What It Verifies |
 | :--- | :--- |
-| `BitboardMaskTests` (new) | Square mapping, masks, direction shifts at board edges, `BitPosition` ↔ `BoardState` round trip, identical hash |
-| `EngineEquivalenceTests` (new) | Seeded random self-play games in **both variants**. At every ply compare both engines on: legal moves (From, To, Path, Captured, IsPromotion, Notation, **order**), `ApplyMove` result, `EvaluateGameStatus`, and evaluation score |
-| `PerftTests` (new) | Leaf counts from the initial position at depth 1–6, both variants, identical for both engines |
-| `SearchEquivalenceTests` (new) | Several benchmark positions at depth 5, TT on and off: `NodesEvaluated`, `LeafEvaluations`, best move and score identical |
-| Existing rule tests | `FlyingKingTests`, `MandatoryCaptureTests`, `MultiJumpTests`, `PromotionTests`, `RegularMoveTests`, `TerminalConditionTests`, `EnglishCheckersTests` move to an abstract base with **Array** and **Bitboard** subclasses, so every rule test runs on both engines |
-| App tests | Engine setting default/normalize, factory selection, `[Engine]` PDN round trip |
+| `BitboardMaskTests.cs` (new) | Bit index mapping `row * 8 + col`, dark square mask, column masks, `BitPosition` $\leftrightarrow$ `BoardState` round-trip, incremental Zobrist hash equality |
+| `EngineEquivalenceTests.cs` (new) | 50 seeded random self-play games in **International** and 50 in **English**: at every ply asserts `RuleEngine` and `BitboardRuleEngine` produce identical legal moves (same order, `From`, `To`, `Path`, `CapturedPositions`, `IsPromotion`, `Notation`), identical `ApplyMove` states/hashes, identical `EvaluateGameStatus`, and identical static evaluations |
+| `PerftTests.cs` (new) | Perft move-tree leaf counts from initial board and tactical midgame positions for depths 1–6 in both **International** and **English** variants, asserting Array == Bitboard |
+| `SearchEquivalenceTests.cs` (new) | Runs `MinimaxPlayer` (Array) and `BitboardMinimaxPlayer` (Bitboard) on sample positions in both variants (with and without TT) and asserts identical `NodesEvaluated`, `LeafEvaluations`, best move, and score |
+| Existing Rule Test Suites | Run existing rule test suites (`FlyingKingTests`, `EnglishCheckersTests`, `MandatoryCaptureTests`, `MultiJumpTests`, `PromotionTests`, `RegularMoveTests`, `TerminalConditionTests`) against both `RuleEngine` and `BitboardRuleEngine` |
 
 ---
 
-### 6. Documentation
-- **[NEW]** `docs/brain/15-bitboards.md`: layout diagram, shift/mask table, capture detection, flying-king first-blocker technique, copy-make, `BitMove`, equivalence strategy, and the benchmark tables with analysis.
-- **[MODIFY]** `docs/brain/README.md` (chapter table and summary), `01-overview.md`, `02-board-and-coordinates.md` (bit index next to 1–32 notation), `07-search.md`, `12-app-integration.md`.
-- **[MODIFY]** [Create a checkers game.md](file:///c:/Udvikling/Spil/Checkers/Create%20a%20checkers%20game.md): new **Phase 7 – Bitboard Engine**, the engine setting in 4.1, project tree, and test metrics.
-- `walkthrough.md` updated when done. Docs reach `Checkers.Web` through the normal build sync.
+### 5. Documentation Updates
+
+- **[NEW]** `docs/brain/15-bitboards.md`: Comprehensive chapter covering the 64-bit `4 x ulong` bitboard layout, bitwise shift/mask tables, $O(1)$ capture detection, hardware-intrinsic flying-king ray scanning (`TrailingZeroCount` / `LeadingZeroCount`), copy-make `BitPosition`, compact `BitMove`, incremental Zobrist hashing, and the full empirical benchmark tables (Standard & Deep, International & English, No-TT & Default TT).
+- **[MODIFY]** `docs/brain/README.md`, `01-overview.md`, `02-board-and-coordinates.md`, `07-search.md`, `08-transposition-table.md` (if 40-position seeds shift slightly for dual-variant compatibility), and `Create a checkers game.md`.
 
 ---
 
 ## Verification Plan
 
-### Automated Tests
-```powershell
-dotnet build Checkers.slnx -c Release      # 0 warnings
-dotnet test Checkers.slnx -c Release --no-build
-```
-All existing 118 tests plus the new equivalence/perft/search tests must pass. The rule tests now also run against the bitboard engine.
-
-### Benchmark
-```powershell
-dotnet run --project tools/Checkers.Benchmark -c Release -- --engines
-dotnet run --project tools/Checkers.Benchmark -c Release -- --engines --deep
-```
-Pass criteria:
-- **identical nodes, best moves and scores for all 40 positions** in both No-TT and TT runs;
-- the speedup (time and Mnodes/s) is recorded in `15-bitboards.md` and the spec.
-
-### Manual Verification
-- WPF and Blazor: switch Settings → Board engine between Bitboard and Array. Play both variants: flying-king multi-jumps, English king jumps, and promotions behave the same. The analysis pane updates live and shows much higher node rates with Bitboard.
-- Save and load a game: the `[Engine]` and `[Variant]` tags are restored.
+1. **Build & Unit Tests:**
+   ```powershell
+   dotnet build Checkers.slnx -c Release
+   dotnet test Checkers.slnx -c Release --no-build
+   ```
+   Verify 0 compiler warnings and 100% pass rate across all unit, perft, and equivalence tests.
+2. **Standard & Deep Engine Benchmarks (International + English):**
+   ```powershell
+   dotnet run --project tools/Checkers.Benchmark -c Release -- --engines
+   dotnet run --project tools/Checkers.Benchmark -c Release -- --engines --deep
+   ```
+   Verify 100% node-count, best-move, and score equivalence between Array and Bitboard across all 40 positions in both variants, and record all empirical tables in `docs/brain/15-bitboards.md` and `Create a checkers game.md`.
