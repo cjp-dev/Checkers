@@ -656,3 +656,33 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 | **Pos #32** | Endgame | 20 plies | 20 plies | **20 plies** | `18-14` | `+439` | 50,345,995 | 4,502 ms | `11.18M/s` |
 | **Pos #40** | Blockade/Tension | 18 plies | 18 plies | **19 plies (+1)** | `29x8` | `+762` | 47,138,615 | **4,032 ms** | `11.69M/s` |
 
+---
+
+### Phase 4: Search Improvements — Stage B: Selective Pruning & Reductions (Verified LMR, RFP & FP)
+
+- **Verified Late Move Reductions (LMR):** For quiet moves (`!isCapture && !isPromotion`) at `depth >= 3`, `ply >= 2`, and move index $i \ge 3$ where `nextPos` does not give the opponent an immediate capture (`!BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant)`), reduces the initial null-window search by $R = \min(d - 2,\, 1 + [i \ge 8])$. Any reduced search that beats $\alpha$ is immediately verified at full depth $d - 1$ on the null window before being allowed to raise $\alpha$.
+- **Reverse Futility Pruning (RFP):** At shallow non-PV quiet nodes (`beta == alpha + 1`, `depth <= 6`, `!isCaptureNode`) where neither player has a capture available and `beta` is non-mate, immediately returns `cachedStaticEval` when $\text{eval}_0 - 40 \cdot d \ge \beta$.
+- **Futility Pruning (FP):** At shallow non-PV quiet nodes (`beta == alpha + 1`, `depth <= 3`, `!isCaptureNode`) where $\text{eval}_0 + 60 \cdot d \le \alpha$, skips subsequent ($i > 0$) quiet non-promoting moves that do not create a tactical capture threat.
+
+#### Part A: 40-Position Deep Fixed-Depth Comparison (Phase 0 vs. Phase 3 Exact vs. Phase 4 Selective)
+
+| Variant | Mode | Phase 0 Nodes | Phase 3 (Exact) Nodes | **Phase 4 (Selective) Nodes** | **Node Reduction vs. P0 (vs. P3)** | Phase 0 Time | Phase 3 Time | **Phase 4 Time** | **Speedup vs. P0** |
+|---|---|---:|---:|---:|:---:|---:|---:|---:|:---:|
+| **International** | **No-TT** | 95,811,314 | 33,933,396 | **6,727,472** | **-92.98% / 14.24x (-80.17% vs P3)** | 2,951 ms | 1,367 ms | **458 ms** | **6.44x faster** |
+| **International** | **1M TT** | 10,962,720 | 7,840,974 | **2,349,717** | **-78.57% / 4.67x (-70.03% vs P3)** | 714 ms | 548 ms | **246 ms** | **2.90x faster** |
+| **International** | **16M TT** | 10,921,266 | 7,840,967 | **2,349,717** | **-78.48% / 4.65x (-70.03% vs P3)** | 850 ms | 617 ms | **263 ms** | **3.23x faster** |
+| **English** | **No-TT** | 94,110,293 | 33,065,884 | **5,922,594** | **-93.71% / 15.89x (-82.09% vs P3)** | 2,641 ms | 1,124 ms | **302 ms** | **8.75x faster** |
+| **English** | **1M TT** | 9,974,305 | 7,324,657 | **2,083,260** | **-79.11% / 4.79x (-71.56% vs P3)** | 638 ms | 447 ms | **173 ms** | **3.69x faster** |
+| **English** | **16M TT** | 9,944,268 | 7,324,654 | **2,083,260** | **-79.05% / 4.77x (-71.56% vs P3)** | 720 ms | 516 ms | **187 ms** | **3.85x faster** |
+
+#### Part B: 5-Position Timed Benchmark (5.0s Budget / Position, 16M TT, International)
+
+| Position | Category | Phase 0 Depth | Phase 3 (Exact) Depth | **Phase 4 (Selective) Depth** | Best Move | Score | Phase 4 Nodes | Phase 4 Time | Phase 4 NPS |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|
+| **Pos #1** | Opening | 17 plies | 18 plies | **21 plies (+4 vs P0, +3 vs P3)** | `9-14` | `+5` | 40,181,760 | 5,000 ms | `8.04M/s` |
+| **Pos #13** | Middlegame | 16 plies | 17 plies | **21 plies (+5 vs P0, +4 vs P3)** | `28-24` | `+7` | 32,912,269 | **4,122 ms** | `7.98M/s` |
+| **Pos #20** | Middlegame | 18 plies | 20 plies | **22 plies (+4 vs P0, +2 vs P3)** | `12-16` | `0` | 35,436,215 | **4,320 ms** | `8.20M/s` |
+| **Pos #32** | Endgame | 20 plies | 20 plies | **25 plies (+5 vs P0 & P3)** | `18-14` | `+439` | 34,374,464 | **4,207 ms** | `8.17M/s` |
+| **Pos #40** | Blockade/Tension | 18 plies | 19 plies | **22 plies (+4 vs P0, Solved Mate!)** | `29x8` | **`+Win in 23 plies`** | 20,214,797 | **2,151 ms** | `9.40M/s` |
+
+

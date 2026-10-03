@@ -242,4 +242,28 @@ public class AiTests
         var salvagedMove = await ai.GetMoveAsync(board, legalMoves, progress: null, stateHashHistory: history);
         salvagedMove.Should().Be(otherMove, "Losing AI should choose the move that immediately claims a 0.00 threefold repetition draw");
     }
+
+    [Fact]
+    public async Task MinimaxPlayer_SelectivePruning_ReducesNodesComparedToExactSearch()
+    {
+        var board = BoardState.CreateInitial();
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+
+        var exactAi = new MinimaxPlayer(depth: 8, useTranspositionTable: true)
+        {
+            UseSelectivePruning = false
+        };
+        var selectiveAi = new MinimaxPlayer(depth: 8, useTranspositionTable: true)
+        {
+            UseSelectivePruning = true
+        };
+
+        var exactMove = await exactAi.GetMoveAsync(board, legalMoves);
+        var selectiveMove = await selectiveAi.GetMoveAsync(board, legalMoves);
+
+        legalMoves.Should().Contain(exactMove);
+        legalMoves.Should().Contain(selectiveMove);
+        selectiveAi.NodesEvaluated.Should().BeLessThan(exactAi.NodesEvaluated,
+            "Verified LMR, RFP, and Futility Pruning should reduce searched nodes at depth 8");
+    }
 }

@@ -19,6 +19,15 @@ public sealed class MinimaxPlayer : IPlayer
     private const int MaxPly = 64;
     private const int MaxMovesPerNode = 128;
 
+    private const int RfpMaxDepth = 6;
+    private const int RfpMargin = 40;
+    private const int FutilityMaxDepth = 3;
+    private const int FutilityMargin = 60;
+    private const int LmrMinDepth = 3;
+    private const int LmrMinPly = 2;
+    private const int LmrMinMoveIndex = 3;
+    private const int LmrLateMoveIndex = 8;
+
     private readonly CheckersVariant _variant;
     private readonly IEvaluationFunction? _customEvaluator;
     private readonly BitMove[][] _moveBuffers;
@@ -36,6 +45,7 @@ public sealed class MinimaxPlayer : IPlayer
     public TranspositionTable? TranspositionTable { get; }
     public bool UseTranspositionTable => TranspositionTable != null;
     public bool UseQuiescence { get; set; } = true;
+    public bool UseSelectivePruning { get; set; } = true;
 
     public MinimaxPlayer(
         SearchLimits limits,
@@ -428,6 +438,42 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         Span<BitMove> moves = moveBuffer.Slice(0, moveCount);
+        bool isCaptureNode = moves[0].IsCapture;
+        bool isNullWindow = beta <= alpha + 1;
+        bool futilityPrune = false;
+
+        // Stage B Selective Pruning (RFP & FP setup) at non-PV quiet nodes
+        if (UseSelectivePruning && !isCaptureNode && isNullWindow && depth <= RfpMaxDepth)
+        {
+            if (cachedStaticEval == TranspositionEntry.NoStaticEval)
+            {
+                LeafEvaluations++;
+                cachedStaticEval = EvaluatePosition(in pos);
+            }
+
+            // 4.2 Reverse Futility Pruning (RFP): if static eval is far above beta at a quiet non-PV node, return immediately
+            if (beta < TranspositionTable.WinThreshold &&
+                beta > -TranspositionTable.WinThreshold &&
+                cachedStaticEval - (RfpMargin * depth) >= beta)
+            {
+                BitPosition oppPos = pos;
+                oppPos.SideToMove = pos.SideToMove == PieceColor.White ? PieceColor.Black : PieceColor.White;
+                if (!BitboardMoveGenerator.HasAnyCapture(in oppPos, _variant))
+                {
+                    return cachedStaticEval;
+                }
+            }
+
+            // 4.3 Futility Pruning (FP) flag for shallow non-PV quiet nodes far below alpha
+            if (depth <= FutilityMaxDepth &&
+                alpha > -TranspositionTable.WinThreshold &&
+                alpha < TranspositionTable.WinThreshold &&
+                cachedStaticEval + (FutilityMargin * depth) <= alpha)
+            {
+                futilityPrune = true;
+            }
+        }
+
         OrderBitMoves(moves, ttPackedMove, hasTtMove, ply, pos.SideToMove);
         _drawTable.Record(ply, pos.Hash);
 
@@ -438,10 +484,25 @@ public sealed class MinimaxPlayer : IPlayer
         for (int i = 0; i < moves.Length; i++)
         {
             BitPosition nextPos = pos.Apply(in moves[i]);
+            bool isQuietMove = !isCaptureNode && !moves[i].IsPromotion;
+            bool oppHasCaptureAfterMove = false;
+            bool oppCaptureChecked = false;
+
+            // 4.3 Futility Pruning (FP): skip quiet non-promoting moves after move 0 that do not leave a tactical capture
+            if (futilityPrune && i > 0 && isQuietMove)
+            {
+                oppHasCaptureAfterMove = BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant);
+                oppCaptureChecked = true;
+                if (!oppHasCaptureAfterMove)
+                {
+                    continue;
+                }
+            }
+
             TranspositionTable?.Prefetch(nextPos.Hash);
 
             int score;
-            if (i == 0 || beta <= alpha + 1)
+            if (i == 0)
             {
                 score = -NegaMax(
                     in nextPos,
@@ -462,10 +523,28 @@ public sealed class MinimaxPlayer : IPlayer
             }
             else
             {
-                // Principal Variation Search (PVS): test subsequent moves with a zero-width window first
+                // 4.1 Verified Late Move Reductions (LMR)
+                int reduction = 0;
+                if (UseSelectivePruning && isQuietMove && depth >= LmrMinDepth && ply >= LmrMinPly && i >= LmrMinMoveIndex)
+                {
+                    if (!oppCaptureChecked)
+                    {
+                        oppHasCaptureAfterMove = BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant);
+                    }
+                    if (!oppHasCaptureAfterMove)
+                    {
+                        reduction = 1 + (i >= LmrLateMoveIndex ? 1 : 0);
+                        if (reduction > depth - 2)
+                        {
+                            reduction = depth - 2;
+                        }
+                    }
+                }
+
+                // Principal Variation Search (PVS): test subsequent moves with a zero-width window first (at reduced depth if LMR applies)
                 score = -NegaMax(
                     in nextPos,
-                    depth - 1,
+                    depth - 1 - reduction,
                     -alpha - 1,
                     -alpha,
                     ply + 1,
@@ -480,7 +559,29 @@ public sealed class MinimaxPlayer : IPlayer
                     bestScoreOverall,
                     out aborted);
 
-                if (!aborted && score > alpha && score < beta)
+                // Verified LMR re-search: if reduced search beat alpha, verify at full depth (depth - 1) on the null window
+                if (!aborted && reduction > 0 && score > alpha)
+                {
+                    score = -NegaMax(
+                        in nextPos,
+                        depth - 1,
+                        -alpha - 1,
+                        -alpha,
+                        ply + 1,
+                        sw,
+                        hardLimitMs,
+                        cancellationToken,
+                        progress,
+                        ref lastReportMs,
+                        currentIterDepth,
+                        currentRootMove,
+                        bestRootMoveOverall,
+                        bestScoreOverall,
+                        out aborted);
+                }
+
+                // PVS full-window re-search: if null-window search beat alpha inside a PV node, re-search with full window (-beta, -alpha)
+                if (!aborted && !isNullWindow && score > alpha && score < beta)
                 {
                     score = -NegaMax(
                         in nextPos,
