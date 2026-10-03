@@ -8,7 +8,7 @@ How long the computer player is permitted to think is configured via the **Game 
 
 The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) bounded by two time thresholds:
 1. **Soft Limit ($T_{\text{soft}}$):** Checked *between* depth iterations ($d \rightarrow d + 1$). Prevents starting a new ply iteration when less than $\frac{1}{3}$ of the move budget remains.
-2. **Hard Limit ($T_{\text{hard}}$):** Checked every $1{,}024$ nodes *inside* `NegaMax` and `Quiescence`. Aborts an in-progress iteration immediately if the budget expires, returning `bestMoveOverall` from the last completed depth $d - 1$.
+2. **Hard Limit ($T_{\text{hard}}$):** Checked every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`) *inside* `NegamaxBitboard` and `Quiescence`. Aborts an in-progress iteration immediately if the budget expires, returning `bestMoveOverall` from the last completed depth $d - 1$.
 
 ---
 
@@ -19,8 +19,8 @@ The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) boun
 | Mode | Factory Method | UI Slider Range | Max Iterative Depth | Description |
 |---|---|:---:|:---:|---|
 | **Fixed depth** | `SearchLimits.FixedDepth(plies)` | $1\text{–}20$ plies (default: $8$) | $D = \text{Depth}$ | Explores depths $1, 2, \dots, D$ with no wall-clock timeout ($T_{\text{soft}} = T_{\text{hard}} = \infty$). |
-| **Time per move** | `SearchLimits.TimePerMove(time)` | $1\text{–}60\text{ s}$ (default: $5\text{ s}$) | $20$ plies | Allocates a fixed wall-clock budget $T$ for every computer turn. |
-| **Time per game** | `SearchLimits.TimePerGame(remaining)` | $1\text{–}60\text{ min}$ (default: $5\text{ min}$) | $20$ plies | Shared chess clock dynamically apportioned across the remaining moves of the match. |
+| **Time per move** | `SearchLimits.TimePerMove(time)` | $1\text{–}60\text{ s}$ (default: $5\text{ s}$) | $64$ plies | Allocates a fixed wall-clock budget $T$ for every computer turn. |
+| **Time per game** | `SearchLimits.TimePerGame(remaining)` | $1\text{–}60\text{ min}$ (default: $5\text{ min}$) | $64$ plies | Shared chess clock dynamically apportioned across the remaining moves of the match. |
 
 ---
 
@@ -50,8 +50,8 @@ flowchart LR
     D1 --> CheckSoft{"Elapsed >= T_soft<br/>(2/3 of budget)?"}
     CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>from completed depth d"]
     CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1"]
-    NextD --> NodeCheck{"Every 1,024 nodes:<br/>Elapsed >= T_hard?"}
-    NodeCheck -- "No (Completed d+1)" --> SavePV["Update bestMoveOverall<br/>& Promote PV move"]
+    NextD --> NodeCheck{"Every 4,096 nodes:<br/>Elapsed >= T_hard?"}
+    NodeCheck -- "No (Completed d+1)" --> SavePV["Update bestMoveOverall<br/>&amp; Promote PV move"]
     SavePV --> CheckSoft
     NodeCheck -- "Yes (Hard Abort)" --> Discard["Discard partial depth d+1"]
     Discard --> Return

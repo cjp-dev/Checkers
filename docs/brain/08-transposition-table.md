@@ -4,374 +4,168 @@
 
 ## In short
 
-In Checkers, many different move sequences transpose into the exact same board configuration. The **Transposition Table** (`TranspositionTable.cs`) is a direct-mapped, power-of-two hash table indexed by the 64-bit Zobrist hash ([Chapter 02](02-board-and-coordinates.md)) that caches the search depth, evaluation score, alpha-beta bound type, generation age, and best move for previously searched positions.
+In Checkers, many different move sequences transpose into the exact same board configuration. The **Transposition Table** ([`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs)) is a high-speed, **4-way set-associative hash table** indexed by the 64-bit Zobrist hash ([Chapter 02](02-board-and-coordinates.md)) and organized into **64-byte CPU cache-line buckets** on the .NET **Pinned Object Heap (POH)**.
 
-When `MinimaxPlayer` encounters a position again—either via a different move order in the current tree or across successive iterations of Iterative Deepening ([Chapter 07](07-search.md))—it probes the table in $O(1)$ time to:
-1. **Trigger an immediate $\alpha$-$\beta$ cutoff** if the cached entry was searched to at least the required remaining depth (`entry.Depth >= depth`) and its bound satisfies the current window.
-2. **Seed move ordering** ([Chapter 06](06-move-ordering.md)) by searching the stored `BestMoveFrom` $\rightarrow$ `BestMoveTo` first even when the cached depth is shallower than `depth`.
+When `MinimaxPlayer` encounters a position—either via a different move order in the current tree, across successive iterations of Iterative Deepening, or on subsequent turns of a game—it probes the 4-way bucket in $O(1)$ time to:
+1. **Trigger an immediate $\alpha$-$\beta$ cutoff** if the cached entry was searched to at least the required remaining depth (`entry.Depth >= depth`) and its bound flag satisfies $[\alpha, \beta]$.
+2. **Seed move ordering** ([Chapter 06](06-move-ordering.md)) by searching the stored 16-bit `BestMove` (`(fromSq << 8) | toSq`) first at index `0` even when the cached depth is shallower than `depth`.
+3. **Reuse the cached `StaticEval`** (`short StaticEval`) for Quiescence stand-pat, Reverse Futility Pruning, and Futility Pruning ([Chapter 07](07-search.md)) without recomputing `EvaluationFunction.Evaluate`.
 
-In our 40-position empirical benchmark suite:
-- **Standard Benchmark ($7\text{–}9$ plies, ~0.1s/position):** The transposition table delivered a **70.5% reduction in evaluated nodes** (`2,408,731` $\rightarrow$ `711,546` nodes) and a **3.22× speedup** (`3,855 ms` $\rightarrow$ `1,198 ms`).
-- **Deep Benchmark ($7\text{–}14$ plies, ~3.9s/position baseline):** Pruning efficiency scaled to an **88.4% reduction in evaluated nodes** (`95,898,151` $\rightarrow$ `11,117,122` nodes in $1\text{M}$ TT / `11,076,738` in $16\text{M}$ TT) and an **8.16× overall speedup** (`154,278 ms` $\rightarrow$ `18,900 ms`), with **532,359 direct hash cutoffs** and **93.6% fewer hash collisions** in the $16,777,216$-entry table (`142,781` $\rightarrow$ `9,165` collisions).
+![4-Way Set-Associative 64-Byte Cache-Line Bucket & 16-Byte Entry Layout](images/tt-bucket-architecture.svg)
 
 ---
 
-## Compact 16-byte cache-aligned entry layout
+## Compact 16-byte entry & 64-byte cache-line bucket layout
 
-[`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **4 entries fit into a single 64-byte CPU cache line**:
+[`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**:
 
 ```
-┌───────────────────────────────┬───────────────┬───────┬───────────┬──────────┬──────────┐
-│          Key (8 B)            │  Score (4 B)  │ Depth │ Bound|Age │ MoveFrom │  MoveTo  │
-│         ulong (0..7)          │  int (8..11)  │ (12)  │   (13)    │   (14)   │   (15)   │
-└───────────────────────────────┴───────────────┴───────┴───────────┴──────────┴──────────┘
- 0                             7 8            11   12        13          14         15
+┌────────────────────┬───────────┬────────────┬───────────┬───────┬──────┬───────┬───────────┐
+│     Key32 (4 B)    │ Score(2B) │StaticEv(2B)│BestMove2B │ Depth │ Age  │ Flags │ Pad (3 B) │
+│     uint (0..3)    │short(4..5)│short (6..7)│ushort(8.9)│ (10)  │ (11) │ (12)  │  (13..15) │
+└────────────────────┴───────────┴────────────┴───────────┴───────┴──────┴───────┴───────────┘
+ 0                  3 4         5 6          7 8         9   10      11     12    13       15
 ```
 
 | Bytes | Field | Type | Contents |
 |---|---|---|---|
-| `0–7` | `Key` | `ulong` | Full 64-bit Zobrist hash key for exact collision verification |
-| `8–11` | `Score` | `int` | Centipawn or ply-normalized mate score |
-| `12` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded |
-| `13` | `BoundAndAge` | `byte` | Low 2 bits: `TranspositionBound` ($1..3$); High 6 bits: search generation `Age` ($0..63$) |
-| `14` | `BestMoveFrom` | `byte` | Encoded 6-bit source square (`(Row << 3) \| Col \| 0x40`, or `0` if none) |
-| `15` | `BestMoveTo` | `byte` | Encoded 6-bit destination square (`(Row << 3) \| Col \| 0x40`, or `0` if none) |
+| `0–3` | `Key32` | `uint` | Upper 32 bits of the 64-bit Zobrist hash: `(uint)(key >> 32)` |
+| `4–5` | `Score` | `short` | Centipawn or ply-normalized mate score ($\pm 30{,}000$) |
+| `6–7` | `StaticEval` | `short` | Cached static heuristic evaluation from `EvaluationFunction.Evaluate` |
+| `8–9` | `BestMove` | `ushort` | Packed bitboard move `(ushort)((fromSq << 8) \| toSq)` (`0..63`), or `0` if none |
+| `10` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded (`-1` if eval-only) |
+| `11` | `Age` | `byte` | 8-bit search generation counter (`0..255`), incremented once per root turn |
+| `12` | `Flags` | `byte` | Bits `0–1`: `TranspositionBound` ($0..3$); Bit `2` (`0x04`): `HasStaticEval` |
+| `13–15` | `_pad0`, `_pad1` | `byte + ushort` | Explicit alignment padding to exact 16-byte struct stride |
 
-### Alpha-Beta Search Bounds
+### 50–54 Bit Combined Zobrist Verification
+Because a table of $N = 2^k$ entries ($k \in \{20, \dots, 24\}$) contains $N_{\text{buckets}} = 2^{k-2}$ buckets, the bucket index `key & _bucketMask` implicitly verifies the lower $k - 2 \in \{18, \dots, 22\}$ bits of the 64-bit Zobrist hash, while `Key32 = (uint)(key >> 32)` explicitly verifies all upper 32 bits:
+
+$$\text{Total Verified Hash Bits} = 32 + \log_2(N / 4) = 30 + k \in [50, 54]\text{ bits}$$
+
+Saving 4 bytes on the key field (`uint Key32` instead of `ulong Key`) and 2 bytes on `Score` (`short` instead of `int`) frees the exact bytes needed to store `short StaticEval` and a full 8-bit `byte Age` inside the same 16-byte footprint.
+
+---
+
+## Alpha-Beta Search Bounds
 
 Because Alpha-Beta searches within a window $[\alpha, \beta]$, not every node finishes with an exact minimax value:
 
 | Bound Flag | Storage Condition | Meaning & Cutoff Condition on Probe (`entry.Depth >= depth`) |
 |---|---|---|
-| **`Exact`** | $\alpha < \text{score} < \beta$ | Every child move was searched without a $\beta$-cutoff, and at least one move improved $\alpha$. **Always returns `score` immediately.** |
-| **`LowerBound`** | $\text{score} \ge \beta$ | A fail-high $\beta$-cutoff occurred; the true minimax score is *at least* `score`. **Triggers cutoff if $\text{score} \ge \beta$.** |
-| **`UpperBound`** | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** |
+| **`Exact`** (`1`) | $\alpha < \text{score} < \beta$ | Every child move was searched without a $\beta$-cutoff, and at least one move improved $\alpha$. **Always returns `score` immediately.** |
+| **`LowerBound`** (`2`) | $\text{score} \ge \beta$ | A fail-high $\beta$-cutoff occurred; the true minimax score is *at least* `score`. **Triggers cutoff if $\text{score} \ge \beta$.** |
+| **`UpperBound`** (`3`) | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** |
 
 ---
 
-## Probe and Store Pipeline
+## 4-Way Bucket Probe and Store Pipeline
 
 ```mermaid
 flowchart TD
-    Probe["TryProbe(key, depth, α, β, ply)"] --> Index["Compute slot index = (int)(key & _mask)"]
-    Index --> Match{"entry.Key == key<br/>& Bound != None?"}
-    Match -- "No (Miss)" --> Miss["Return false"]
-    Match -- "Yes (Hit)" --> ExtractMove["Decode BestMoveFrom & BestMoveTo<br/>for move ordering"]
-    ExtractMove --> CheckDepth{"Is entry.Depth >= depth?"}
-    CheckDepth -- "No (Too shallow)" --> OrderOnly["Return true with hasCutoff = false<br/>(Use Hash Move at index 0)"]
+    Probe["TryProbe(key, depth, α, β, ply)"] --> Base["baseIndex = (int)(key &amp; _bucketMask) &lt;&lt; 2<br/>key32 = (uint)(key &gt;&gt; 32)"]
+    Base --> Scan["Scan 4 Ways in Single 64B Cache Line:<br/>w = 0, 1, 2, 3 at _entries[baseIndex + w]"]
+    Scan --> Match{"entry.Key32 == key32<br/>&amp; Flags != 0?"}
+    Match -- "No (All 4 ways miss)" --> Miss["Return false"]
+    Match -- "Yes (Hit in Way w)" --> Extract["Extract BestMove (ushort)<br/>&amp; StaticEval (if HasEvalBit set)"]
+    Extract --> CheckDepth{"entry.Bound != None<br/>&amp; entry.Depth >= depth?"}
+    CheckDepth -- "No (Too shallow / Eval-only)" --> OrderOnly["Return true with hasCutoff = false<br/>(Seed move ordering + reuse StaticEval)"]
     CheckDepth -- "Yes (Sufficient depth)" --> Norm["Denormalize mate score for current ply"]
-    Norm --> CheckBound{"Does Bound satisfy [α, β]?<br/>• Exact<br/>• LowerBound & score >= β<br/>• UpperBound & score <= α"}
+    Norm --> CheckBound{"Does Bound satisfy [α, β]?<br/>• Exact<br/>• LowerBound &amp; score >= β<br/>• UpperBound &amp; score <= α"}
     CheckBound -- "Yes" --> Cutoff["Increment Cutoffs<br/>Return true with hasCutoff = true"]
     CheckBound -- "No" --> OrderOnly
 ```
 
 ---
 
-## Memory layout & configurable sizing
+## 4-Way Victim Selection & Replacement Strategy
 
-The table capacity $N = 2^k$ is always an exact power of two, replacing slow integer modulo division (`key % N`) with a single-cycle bitwise AND mask:
+In a direct-mapped (1-slot) hash table, whenever two active positions map to the same index, one must immediately overwrite or be rejected by the other. Grouping 4 entries into a **64-byte set-associative bucket** (`BucketSize = 4`) provides 4 independent ways within the exact same L1/L3 cache line fetch.
 
-$$\text{index} = \text{key} \land (N - 1)$$
+When `Store` is called for `key`:
+1. **Pass 1 — Exact Match or Empty Way:** If any of the 4 ways (`w = 0..3`) already holds `Key32 == key32` or is empty (`Flags == 0`), that way is selected immediately (`victimWay = w`).
+   - **BestMove Preservation on Fail-Low:** When updating the same position (`existing.Key32 == key32`), if the new store has no best move (`bestMove == 0`, e.g., an `UpperBound` fail-low) or is an eval-only store, the existing `BestMove` and `StaticEval` are preserved!
+   - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth - 2`.
+2. **Pass 2 — Priority-Based Victim Eviction:** If all 4 ways in the bucket hold distinct keys (`Key32 != key32`), `Store` evaluates a replacement priority score for each way $w \in \{0, 1, 2, 3\}$ and overwrites the slot with the **lowest priority**:
 
-The capacity is user-configurable in the **Game -> Settings...** dialog across five power-of-two tiers from **$1,048,576$ ($2^{20}$, default)** up to **$16,777,216$ ($2^{24}$, matching Connect-4)**:
+$$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}) \bmod 256\bigr) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$
 
-| Setting | Entries ($N = 2^k$) | Memory ($16\text{ B} \times N$) | Target Environment |
-|---|---|---|---|
-| **Default ($2^{20}$)** | $1,048,576$ | $16\text{ MiB}$ | Default desktop & web client (fits inside CPU L3 cache) |
-| **Medium ($2^{21}$)** | $2,097,152$ | $32\text{ MiB}$ | Extended time-per-move play |
-| **Large ($2^{22}$)** | $4,194,304$ | $64\text{ MiB}$ | Deep tactical analysis |
-| **Extra Large ($2^{23}$)** | $8,388,608$ | $128\text{ MiB}$ | Long clock games |
-| **Maximum ($2^{24}$)** | $16,777,216$ | $256\text{ MiB}$ | Maximum capacity (matching Connect-4) |
-| **Lightweight / Tests ($2^{16}$)** | $65,536$ | $1\text{ MiB}$ | Fast unit test execution |
-
-If allocating a larger array throws `OutOfMemoryException` on a memory-constrained browser device, `TranspositionTable` gracefully falls back to `DefaultEntries` ($1,048,576$) and sets `UsesFallbackCapacity = true`.
+* **Stale Generation Eviction (`-8 * ageDiff`):** Entries from earlier turns in the match (`e.Age != _currentAge`) receive a steep negative penalty ($-8$ priority per turn of age), ensuring they are always evicted before current-search entries.
+* **Exact-Bound Protection (`+4`):** Exact Principal Variation nodes are given a $+4\text{ ply}$ priority bonus over `LowerBound` / `UpperBound` entries of similar depth.
+* **Depth Preference (`e.Depth`):** Among current-generation entries, the shallowest subtree is evicted so deep interior nodes that cost thousands of evaluations are retained.
 
 ---
 
-## Age & Depth-Preferred Replacement Strategy
+## Pinned Object Heap (POH) & Hardware Cache Prefetching (`Sse.Prefetch0`)
 
-When `Store` maps a position to slot `index`, an existing entry in that slot is overwritten if and only if at least one of the following holds:
-1. **Empty Slot:** `existing.Bound == TranspositionBound.None`
-2. **Same Position Update:** `existing.Key == key` (updates the position with deeper search or fresher bound)
-3. **Stale Generation Age:** `existing.Age != _currentAge` (the entry was created during an earlier move in the game)
-4. **Deeper or Equal Subtree:** `depth >= existing.Depth` (preserves deep subtrees that took many nodes to compute against shallow leaf overwrites)
+In the 64-bit bitboard engine, per-node move generation, copy-make, and `POPCNT` evaluation take only **~28–30 nanoseconds**. By comparison, a random Zobrist lookup into a 16 MiB–256 MiB Transposition Table in L3 cache or main DRAM takes **15–40 nanoseconds**.
 
-Whenever a different key (`existing.Key != key`) occupies a slot of the current search generation (`existing.Age == _currentAge`), `Collisions` is incremented. By the **occupancy load formula**, after $M$ stores into a table of size $N$, the expected number of index collisions grows quadratically at low load factors:
+To hide this memory latency:
+1. **Pinned Object Heap Allocation:** `TranspositionTable` allocates `_entries` on the .NET **Pinned Object Heap** (`GC.AllocateArray<TranspositionEntry>(count, pinned: true)`) and caches the fixed base pointer `TranspositionEntry* _entriesPtr = (TranspositionEntry*) Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_entries))`. Because the GC never relocates POH arrays, address calculation requires zero pinning overhead during search.
+2. **Early Hardware Prefetch (`Sse.Prefetch0`):** Inside `MinimaxPlayer.NegamaxBitboard`, immediately after `BitPosition nextPos = pos.Apply(in moves[i])` computes the child's Zobrist hash `nextPos.Hash`—*before* checking futility pruning, setting up LMR reductions, or pushing the recursive stack frame—the engine issues a hardware prefetch instruction:
 
-$$\mathbb{E}[\text{Collisions}] \approx M - N\left(1 - \left(1 - \frac{1}{N}\right)^M\right) \approx \frac{M^2}{2N}$$
+```csharp
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+public void Prefetch(ulong key)
+{
+    if (Sse.IsSupported)
+    {
+        Sse.Prefetch0(_entriesPtr + ((int)(key & _bucketMask) << 2));
+    }
+}
+```
 
-Thus, increasing $N$ by $16\times$ (from $2^{20}$ to $2^{24}$) theoretically reduces index collisions by $\approx 16\times$ ($93.75\%$), closely matching our empirical measurement of **$93.6\%$ collision reduction** (`142,781` $\rightarrow$ `9,165`).
+By the time the recursive `NegamaxBitboard` call finishes its terminal/repetition checks and invokes `TryProbe`, the entire 64-byte 4-way bucket is already warming in the CPU's L1 data cache.
 
 ---
 
-## Score normalization (win distance invariance)
+## Multi-Turn Persistence & Configurable Sizing
 
-As described in [Chapter 07](07-search.md#distance-to-mate-scoring), a forced win or loss score ($|\text{score}| \ge 90{,}000$) depends on the `ply` distance from the root: $\pm 100{,}000 \mp \text{ply}$. If stored raw at $\text{ply}_1$ and retrieved via a transposition at $\text{ply}_2 \neq \text{ply}_1$, the mate distance would be corrupted.
+The table capacity $N = 2^k$ is always an exact power of two (with $N_{\text{buckets}} = N / 4 = 2^{k-2}$), replacing integer division (`%`) with a single-cycle bitwise AND mask:
+
+$$\text{baseIndex} = \bigl(\text{key} \land (N_{\text{buckets}} - 1)\bigr) \ll 2$$
+
+The capacity is user-configurable in the **Game -> Settings...** dialog across five power-of-two tiers from **$1,048,576$ ($2^{20}$, default)** up to **$16,777,216$ ($2^{24}$)**:
+
+| Setting | Entries ($N = 2^k$) | 4-Way Buckets ($2^{k-2}$) | Memory ($16\text{ B} \times N$) | Target Environment |
+|---|---|---|---|---|
+| **Default ($2^{20}$)** | $1,048,576$ | $262,144$ | $16\text{ MiB}$ | Default desktop & web client (fits inside CPU L3 cache) |
+| **Medium ($2^{21}$)** | $2,097,152$ | $524,288$ | $32\text{ MiB}$ | Extended time-per-move play |
+| **Large ($2^{22}$)** | $4,194,304$ | $1,048,576$ | $64\text{ MiB}$ | Deep tactical analysis |
+| **Extra Large ($2^{23}$)** | $8,388,608$ | $2,097,152$ | $128\text{ MiB}$ | Long clock games |
+| **Maximum ($2^{24}$)** | $16,777,216$ | $4,194,304$ | $256\text{ MiB}$ | Maximum capacity (zero collisions across 40 deep positions) |
+| **Lightweight / Tests ($2^{16}$)** | $65,536$ | $16,384$ | $1\text{ MiB}$ | Fast unit test execution |
+
+During interactive gameplay, `MainViewModel` retains the `TranspositionTable` across turns without calling `Clear()`. At the start of each computer turn, `MinimaxPlayer` calls `_tt.NewSearch()`, which increments `_currentAge` (`byte`, $0\dots 255$) in $O(1)$ time—allowing deep subtrees calculated on turn $t$ to accelerate turn $t + 1$ while automatically aging out stale entries during bucket eviction.
+
+---
+
+## Score Normalization (Win Distance Invariance)
+
+As described in [Chapter 07](07-search.md#distance-to-mate-scoring), a forced win or loss score ($|\text{score}| \ge 28{,}000$, where `WinScore = 30,000` fits inside a 16-bit `short`) depends on the `ply` distance from the root: $\pm 30{,}000 \mp \text{ply}$. If stored raw at $\text{ply}_1$ and retrieved via a transposition at $\text{ply}_2 \neq \text{ply}_1$, the mate distance would be corrupted.
 
 To make stored mate scores independent of the root path length, `TranspositionTable` normalizes mate scores relative to the node itself:
 
-$$\text{NormalizeForStore}(\text{score}, \text{ply}) = \begin{cases} \text{score} + \text{ply} & \text{if } \text{score} \ge +90{,}000 \\ \text{score} - \text{ply} & \text{if } \text{score} \le -90{,}000 \\ \text{score} & \text{otherwise} \end{cases}$$
+$$\text{NormalizeForStore}(\text{score}, \text{ply}) = \begin{cases} \text{score} + \text{ply} & \text{if } \text{score} \ge +28{,}000 \\ \text{score} - \text{ply} & \text{if } \text{score} \le -28{,}000 \\ \text{score} & \text{otherwise} \end{cases}$$
 
-$$\text{NormalizeForRetrieve}(\text{stored}, \text{ply}) = \begin{cases} \text{stored} - \text{ply} & \text{if } \text{stored} \ge +90{,}000 \\ \text{stored} + \text{ply} & \text{if } \text{stored} \le -90{,}000 \\ \text{stored} & \text{otherwise} \end{cases}$$
-
----
-
-## Empirical Benchmark 1: Standard Depth (7–9 Plies, ~0.1s / Position)
-
-To scientifically quantify the performance gains of the Transposition Table and compare the default capacity ($1,048,576$ entries) against the maximum capacity ($16,777,216$ entries), an automated empirical benchmark was first run at standard interactive depths (7–9 plies) across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules (`docs/brain/tt_benchmark_results.json`).
-
-### Table 1A: Baseline vs Default Transposition Table ($1,048,576$ entries) — Standard Depth
-
-| # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Opening | 8 plies | 38,305 | 21,086 | **45.0%** | 86 ms | 44 ms | **1.95x** | 197 |
-| 2 | Opening | 8 plies | 58,204 | 24,096 | **58.6%** | 116 ms | 45 ms | **2.58x** | 222 |
-| 3 | Opening | 7 plies | 44,913 | 6,195 | **86.2%** | 75 ms | 11 ms | **6.82x** | 42 |
-| 4 | Opening | 7 plies | 67,449 | 17,927 | **73.4%** | 122 ms | 33 ms | **3.70x** | 321 |
-| 5 | Opening | 7 plies | 69,129 | 9,540 | **86.2%** | 114 ms | 16 ms | **7.12x** | 175 |
-| 6 | Opening | 8 plies | 70,060 | 25,735 | **63.3%** | 117 ms | 45 ms | **2.60x** | 610 |
-| 7 | Opening | 7 plies | 87,714 | 6,766 | **92.3%** | 147 ms | 12 ms | **12.25x** | 41 |
-| 8 | Opening | 7 plies | 48,374 | 7,890 | **83.7%** | 78 ms | 14 ms | **5.57x** | 64 |
-| 9 | Opening | 7 plies | 59,062 | 13,974 | **76.3%** | 93 ms | 23 ms | **4.04x** | 213 |
-| 10 | Opening | 7 plies | 46,247 | 8,585 | **81.4%** | 72 ms | 18 ms | **4.00x** | 62 |
-| 11 | Middlegame | 8 plies | 42,472 | 16,203 | **61.9%** | 63 ms | 26 ms | **2.42x** | 652 |
-| 12 | Middlegame | 7 plies | 53,188 | 11,666 | **78.1%** | 89 ms | 21 ms | **4.24x** | 263 |
-| 13 | Middlegame | 7 plies | 134,182 | 35,519 | **73.5%** | 202 ms | 59 ms | **3.42x** | 496 |
-| 14 | Middlegame | 7 plies | 56,142 | 10,008 | **82.2%** | 87 ms | 16 ms | **5.44x** | 345 |
-| 15 | Middlegame | 7 plies | 69,640 | 31,815 | **54.3%** | 115 ms | 62 ms | **1.85x** | 807 |
-| 16 | Middlegame | 8 plies | 11,328 | 7,462 | **34.1%** | 18 ms | 13 ms | **1.38x** | 116 |
-| 17 | Middlegame | 8 plies | 36,601 | 10,266 | **72.0%** | 66 ms | 18 ms | **3.67x** | 153 |
-| 18 | Middlegame | 7 plies | 41,710 | 6,496 | **84.4%** | 67 ms | 11 ms | **6.09x** | 137 |
-| 19 | Middlegame | 8 plies | 55,338 | 22,599 | **59.2%** | 90 ms | 35 ms | **2.57x** | 651 |
-| 20 | Middlegame | 8 plies | 118,841 | 32,487 | **72.7%** | 180 ms | 51 ms | **3.53x** | 818 |
-| 21 | Middlegame | 8 plies | 43,885 | 12,158 | **72.3%** | 67 ms | 20 ms | **3.35x** | 314 |
-| 22 | Middlegame | 8 plies | 17,425 | 11,383 | **34.7%** | 25 ms | 16 ms | **1.56x** | 565 |
-| 23 | Middlegame | 7 plies | 61,587 | 12,579 | **79.6%** | 102 ms | 22 ms | **4.64x** | 314 |
-| 24 | Middlegame | 7 plies | 36,218 | 8,757 | **75.8%** | 61 ms | 14 ms | **4.36x** | 110 |
-| 25 | Middlegame | 8 plies | 67,300 | 24,042 | **64.3%** | 117 ms | 45 ms | **2.60x** | 506 |
-| 26 | Endgame | 8 plies | 48,927 | 23,148 | **52.7%** | 51 ms | 26 ms | **1.96x** | 1,083 |
-| 27 | Endgame | 7 plies | 46,614 | 16,010 | **65.7%** | 77 ms | 28 ms | **2.75x** | 254 |
-| 28 | Endgame | 9 plies | 8,892 | 6,222 | **30.0%** | 13 ms | 9 ms | **1.44x** | 326 |
-| 29 | Endgame | 7 plies | 51,929 | 16,865 | **67.5%** | 99 ms | 30 ms | **3.30x** | 728 |
-| 30 | Endgame | 8 plies | 48,050 | 15,962 | **66.8%** | 56 ms | 19 ms | **2.95x** | 643 |
-| 31 | Endgame | 8 plies | 95,291 | 20,585 | **78.4%** | 89 ms | 23 ms | **3.87x** | 1,550 |
-| 32 | Endgame | 7 plies | 78,917 | 20,366 | **74.2%** | 115 ms | 32 ms | **3.59x** | 574 |
-| 33 | Endgame | 8 plies | 75,185 | 31,368 | **58.3%** | 125 ms | 55 ms | **2.27x** | 714 |
-| 34 | Endgame | 7 plies | 90,965 | 16,121 | **82.3%** | 147 ms | 28 ms | **5.25x** | 608 |
-| 35 | Endgame | 8 plies | 29,293 | 13,406 | **54.2%** | 38 ms | 19 ms | **2.00x** | 355 |
-| 36 | Blockade/Tension | 8 plies | 43,113 | 17,679 | **59.0%** | 68 ms | 30 ms | **2.27x** | 409 |
-| 37 | Blockade/Tension | 8 plies | 25,695 | 10,331 | **59.8%** | 41 ms | 17 ms | **2.41x** | 581 |
-| 38 | Blockade/Tension | 8 plies | 33,991 | 13,149 | **61.3%** | 44 ms | 19 ms | **2.32x** | 350 |
-| 39 | Blockade/Tension | 8 plies | 160,896 | 61,520 | **61.8%** | 299 ms | 115 ms | **2.60x** | 3,171 |
-| 40 | Blockade/Tension | 8 plies | 135,659 | 33,580 | **75.2%** | 224 ms | 58 ms | **3.86x** | 1,146 |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| **Total** | **All 40** | **7–9 plies** | **2,408,731** | **711,546** | **70.5%** | **3,855 ms** | **1,198 ms** | **3.22x** | **20,686** |
-
-### Table 1B: Default TT ($1,048,576$) vs Max TT ($16,777,216$) — Standard Depth
-
-| # | Category | Depth | Baseline Nodes | Default TT Nodes (1M) | Max TT Nodes (16M) | Default Time | Max Time | Default Collisions | Max Collisions |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Opening | 8 plies | 38,305 | 21,086 | 21,086 | 44 ms | 47 ms | 15 | 0 |
-| 2 | Opening | 8 plies | 58,204 | 24,096 | 24,096 | 45 ms | 44 ms | 17 | 1 |
-| 3 | Opening | 7 plies | 44,913 | 6,195 | 6,195 | 11 ms | 11 ms | 0 | 0 |
-| 4 | Opening | 7 plies | 67,449 | 17,927 | 17,927 | 33 ms | 33 ms | 11 | 0 |
-| 5 | Opening | 7 plies | 69,129 | 9,540 | 9,540 | 16 ms | 16 ms | 6 | 0 |
-| 6 | Opening | 8 plies | 70,060 | 25,735 | 25,735 | 45 ms | 46 ms | 23 | 0 |
-| 7 | Opening | 7 plies | 87,714 | 6,766 | 6,766 | 12 ms | 14 ms | 0 | 0 |
-| 8 | Opening | 7 plies | 48,374 | 7,890 | 7,890 | 14 ms | 15 ms | 0 | 0 |
-| 9 | Opening | 7 plies | 59,062 | 13,974 | 13,974 | 23 ms | 24 ms | 2 | 0 |
-| 10 | Opening | 7 plies | 46,247 | 8,585 | 8,585 | 18 ms | 15 ms | 0 | 0 |
-| 11 | Middlegame | 8 plies | 42,472 | 16,203 | 16,203 | 26 ms | 27 ms | 1 | 0 |
-| 12 | Middlegame | 7 plies | 53,188 | 11,666 | 11,666 | 21 ms | 21 ms | 1 | 0 |
-| 13 | Middlegame | 7 plies | 134,182 | 35,519 | 35,504 | 59 ms | 59 ms | 36 | 1 |
-| 14 | Middlegame | 7 plies | 56,142 | 10,008 | 10,008 | 16 ms | 16 ms | 0 | 0 |
-| 15 | Middlegame | 7 plies | 69,640 | 31,815 | 31,813 | 62 ms | 61 ms | 59 | 2 |
-| 16 | Middlegame | 8 plies | 11,328 | 7,462 | 7,462 | 13 ms | 13 ms | 2 | 0 |
-| 17 | Middlegame | 8 plies | 36,601 | 10,266 | 10,266 | 18 ms | 18 ms | 5 | 0 |
-| 18 | Middlegame | 7 plies | 41,710 | 6,496 | 6,496 | 11 ms | 11 ms | 0 | 0 |
-| 19 | Middlegame | 8 plies | 55,338 | 22,599 | 22,594 | 35 ms | 36 ms | 19 | 0 |
-| 20 | Middlegame | 8 plies | 118,841 | 32,487 | 32,487 | 51 ms | 52 ms | 44 | 3 |
-| 21 | Middlegame | 8 plies | 43,885 | 12,158 | 12,158 | 20 ms | 20 ms | 10 | 7 |
-| 22 | Middlegame | 8 plies | 17,425 | 11,383 | 11,383 | 16 ms | 17 ms | 10 | 0 |
-| 23 | Middlegame | 7 plies | 61,587 | 12,579 | 12,579 | 22 ms | 22 ms | 6 | 0 |
-| 24 | Middlegame | 7 plies | 36,218 | 8,757 | 8,757 | 14 ms | 15 ms | 4 | 4 |
-| 25 | Middlegame | 8 plies | 67,300 | 24,042 | 24,040 | 45 ms | 45 ms | 28 | 0 |
-| 26 | Endgame | 8 plies | 48,927 | 23,148 | 23,148 | 26 ms | 26 ms | 14 | 2 |
-| 27 | Endgame | 7 plies | 46,614 | 16,010 | 16,008 | 28 ms | 29 ms | 6 | 0 |
-| 28 | Endgame | 9 plies | 8,892 | 6,222 | 6,222 | 9 ms | 9 ms | 2 | 0 |
-| 29 | Endgame | 7 plies | 51,929 | 16,865 | 16,865 | 30 ms | 30 ms | 1 | 0 |
-| 30 | Endgame | 8 plies | 48,050 | 15,962 | 15,962 | 19 ms | 20 ms | 25 | 0 |
-| 31 | Endgame | 8 plies | 95,291 | 20,585 | 20,585 | 23 ms | 23 ms | 11 | 0 |
-| 32 | Endgame | 7 plies | 78,917 | 20,366 | 20,366 | 32 ms | 33 ms | 13 | 4 |
-| 33 | Endgame | 8 plies | 75,185 | 31,368 | 31,365 | 55 ms | 56 ms | 52 | 2 |
-| 34 | Endgame | 7 plies | 90,965 | 16,121 | 16,121 | 28 ms | 31 ms | 4 | 0 |
-| 35 | Endgame | 8 plies | 29,293 | 13,406 | 13,406 | 19 ms | 20 ms | 5 | 0 |
-| 36 | Blockade/Tension | 8 plies | 43,113 | 17,679 | 17,677 | 30 ms | 27 ms | 12 | 2 |
-| 37 | Blockade/Tension | 8 plies | 25,695 | 10,331 | 10,331 | 17 ms | 18 ms | 2 | 0 |
-| 38 | Blockade/Tension | 8 plies | 33,991 | 13,149 | 13,149 | 19 ms | 20 ms | 15 | 0 |
-| 39 | Blockade/Tension | 8 plies | 160,896 | 61,520 | 61,505 | 115 ms | 115 ms | 122 | 6 |
-| 40 | Blockade/Tension | 8 plies | 135,659 | 33,580 | 33,565 | 58 ms | 59 ms | 25 | 2 |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| **Total** | **All 40** | **7–9 plies** | **2,408,731** | **711,546** | **711,485** | **1,198 ms** | **1,214 ms** | **608** | **36** |
+$$\text{NormalizeForRetrieve}(\text{stored}, \text{ply}) = \begin{cases} \text{stored} - \text{ply} & \text{if } \text{stored} \ge +28{,}000 \\ \text{stored} + \text{ply} & \text{if } \text{stored} \le -28{,}000 \\ \text{stored} & \text{otherwise} \end{cases}$$
 
 ---
 
-## Empirical Benchmark 2: Extended Deep Search (7–14 Plies, ~4–7 Seconds per Position)
+## Empirical Performance & Collision Summary
 
-To test how the Transposition Table and its configurable capacities ($1,048,576$ vs $16,777,216$ entries) behave when the search evaluates millions of nodes per position, a second benchmark (`dotnet run --project tools/Checkers.Benchmark -c Release -- --deep`) calibrated each of the 40 positions to deeper search depths (**7 to 14 plies**, averaging **3.86 seconds** per position on baseline and up to **7.23 seconds** / **5.06 million baseline nodes** on single positions, totaling **95,898,151 baseline nodes** and **154.3 seconds** across all 40 positions). Raw JSON output is stored in `docs/brain/tt_deep_benchmark_results.json`.
+Across our 40-position deep benchmark suite ($7\text{–}14$ plies, ~95.8M baseline nodes):
 
-### Table 2A: Baseline vs Default Transposition Table ($1,048,576$ entries) — Deep Search
+1. **88.4% Node Reduction & 8.16× Tree Pruning Speedup (No-TT vs. TT):**
+   - Enabling the Transposition Table reduces total evaluated nodes across the 40 deep International positions from **`95,811,314` to `10,962,720` nodes (-88.56%)**, and in English Checkers from **`94,110,293` to `9,974,305` nodes (-89.40%)**, generating over **500,000 direct hash cutoffs**.
+2. **99.91%–100% Collision Elimination via 4-Way Cache-Line Buckets (Phase 2):**
+   - Upgrading from a 1-slot direct-mapped table to **4-way set-associative 64-byte buckets** virtually eliminated hash collisions while accelerating TT throughput by **+11.9% to +14.2%**:
 
-| # | Category | Depth | Baseline Nodes | TT Nodes | Node Reduction | Baseline Time | TT Time | Speedup | TT Cutoffs |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Opening | 11 plies | 1,364,775 | 292,659 | **78.6%** | 2,376 ms | 536 ms | **4.43x** | 5,515 |
-| 2 | Opening | 12 plies | 2,268,109 | 477,847 | **78.9%** | 3,705 ms | 840 ms | **4.41x** | 8,986 |
-| 3 | Opening | 11 plies | 2,152,631 | 62,373 | **97.1%** | 3,416 ms | 105 ms | **32.53x** | 1,627 |
-| 4 | Opening | 10 plies | 3,862,989 | 483,930 | **87.5%** | 6,365 ms | 864 ms | **7.37x** | 12,810 |
-| 5 | Opening | 10 plies | 2,204,847 | 149,910 | **93.2%** | 3,718 ms | 274 ms | **13.57x** | 4,616 |
-| 6 | Opening | 11 plies | 1,540,643 | 322,604 | **79.1%** | 2,581 ms | 562 ms | **4.59x** | 6,667 |
-| 7 | Opening | 10 plies | 2,267,162 | 269,454 | **88.1%** | 3,951 ms | 494 ms | **8.00x** | 4,910 |
-| 8 | Opening | 10 plies | 1,915,942 | 272,268 | **85.8%** | 3,217 ms | 478 ms | **6.73x** | 5,705 |
-| 9 | Opening | 10 plies | 1,662,035 | 240,271 | **85.5%** | 2,951 ms | 443 ms | **6.66x** | 8,900 |
-| 10 | Opening | 10 plies | 1,742,411 | 138,374 | **92.1%** | 2,916 ms | 249 ms | **11.71x** | 3,073 |
-| 11 | Middlegame | 12 plies | 2,074,281 | 186,845 | **91.0%** | 3,185 ms | 303 ms | **10.51x** | 14,172 |
-| 12 | Middlegame | 10 plies | 2,101,525 | 116,233 | **94.5%** | 3,292 ms | 200 ms | **16.46x** | 3,615 |
-| 13 | Middlegame | 10 plies | 2,763,961 | 337,093 | **87.8%** | 4,374 ms | 574 ms | **7.62x** | 11,016 |
-| 14 | Middlegame | 10 plies | 2,723,163 | 278,835 | **89.8%** | 4,183 ms | 465 ms | **9.00x** | 11,006 |
-| 15 | Middlegame | 10 plies | 2,115,795 | 358,175 | **83.1%** | 3,697 ms | 647 ms | **5.71x** | 13,415 |
-| 16 | Middlegame | 14 plies | 2,595,254 | 382,298 | **85.3%** | 4,089 ms | 672 ms | **6.08x** | 14,591 |
-| 17 | Middlegame | 12 plies | 2,799,308 | 307,907 | **89.0%** | 4,790 ms | 563 ms | **8.51x** | 10,283 |
-| 18 | Middlegame | 11 plies | 4,329,327 | 447,196 | **89.7%** | 6,555 ms | 694 ms | **9.45x** | 19,383 |
-| 19 | Middlegame | 12 plies | 3,506,277 | 533,483 | **84.8%** | 5,152 ms | 843 ms | **6.11x** | 17,763 |
-| 20 | Middlegame | 10 plies | 1,506,054 | 234,959 | **84.4%** | 2,226 ms | 373 ms | **5.97x** | 7,769 |
-| 21 | Middlegame | 13 plies | 2,674,334 | 355,299 | **86.7%** | 4,042 ms | 581 ms | **6.96x** | 15,743 |
-| 22 | Middlegame | 14 plies | 2,560,701 | 601,181 | **76.5%** | 4,035 ms | 953 ms | **4.23x** | 52,526 |
-| 23 | Middlegame | 10 plies | 2,632,773 | 311,310 | **88.2%** | 4,312 ms | 540 ms | **7.99x** | 10,217 |
-| 24 | Middlegame | 11 plies | 3,509,716 | 208,480 | **94.1%** | 5,753 ms | 355 ms | **16.21x** | 7,567 |
-| 25 | Middlegame | 11 plies | 1,757,145 | 216,934 | **87.7%** | 3,081 ms | 401 ms | **7.68x** | 5,486 |
-| 26 | Endgame | 8 plies | 48,927 | 23,148 | **52.7%** | 53 ms | 25 ms | **2.12x** | 1,083 |
-| 27 | Endgame | 10 plies | 1,662,722 | 163,987 | **90.1%** | 2,770 ms | 287 ms | **9.65x** | 10,476 |
-| 28 | Endgame | 7 plies | 8,892 | 6,222 | **30.0%** | 14 ms | 9 ms | **1.56x** | 326 |
-| 29 | Endgame | 10 plies | 2,248,895 | 226,528 | **89.9%** | 3,552 ms | 366 ms | **9.70x** | 14,609 |
-| 30 | Endgame | 11 plies | 980,995 | 202,311 | **79.4%** | 1,451 ms | 314 ms | **4.62x** | 17,962 |
-| 31 | Endgame | 11 plies | 1,622,990 | 154,247 | **90.5%** | 2,079 ms | 198 ms | **10.50x** | 21,131 |
-| 32 | Endgame | 10 plies | 3,057,532 | 551,373 | **82.0%** | 5,821 ms | 1,003 ms | **5.80x** | 54,515 |
-| 33 | Endgame | 11 plies | 3,996,874 | 415,579 | **89.6%** | 7,230 ms | 776 ms | **9.32x** | 24,137 |
-| 34 | Endgame | 10 plies | 4,030,225 | 243,580 | **94.0%** | 6,954 ms | 438 ms | **15.88x** | 16,764 |
-| 35 | Endgame | 12 plies | 1,739,170 | 288,749 | **83.4%** | 2,255 ms | 388 ms | **5.81x** | 16,590 |
-| 36 | Blockade/Tension | 12 plies | 2,714,028 | 149,121 | **94.5%** | 4,156 ms | 248 ms | **16.76x** | 5,415 |
-| 37 | Blockade/Tension | 12 plies | 2,900,280 | 296,991 | **89.8%** | 4,899 ms | 539 ms | **9.09x** | 27,969 |
-| 38 | Blockade/Tension | 13 plies | 5,057,208 | 358,765 | **92.9%** | 7,107 ms | 540 ms | **13.16x** | 23,103 |
-| 39 | Blockade/Tension | 10 plies | 1,543,917 | 209,163 | **86.5%** | 2,678 ms | 376 ms | **7.12x** | 11,267 |
-| 40 | Blockade/Tension | 11 plies | 3,654,338 | 241,440 | **93.4%** | 5,297 ms | 384 ms | **13.79x** | 9,651 |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| **Total** | **All 40** | **7–14 plies** | **95,898,151** | **11,117,122** | **88.4%** | **154,278 ms** | **18,900 ms** | **8.16x** | **532,359** |
+| Variant & Table Size | 1-Slot Direct Collisions (Phase 1) | 4-Way Bucket Collisions (Phase 2) | Collision Reduction | Phase 0 Time | Phase 2 Time | Phase 2 Throughput |
+|---|---:|---:|---:|---:|---:|---:|
+| **International — 1M TT (16 MiB)** | `141,091` | **`120`** | **-99.91%** | `714 ms` | **`638 ms`** | **17.18M nodes/s (+11.9%)** |
+| **International — 16M TT (256 MiB)** | `9,175` | **`0`** | **-100.00%** | `850 ms` | **`764 ms`** | **14.34M nodes/s (+11.6%)** |
+| **English — 1M TT (16 MiB)** | `121,868` | **`78`** | **-99.94%** | `638 ms` | **`557 ms`** | **17.85M nodes/s (+14.2%)** |
+| **English — 16M TT (256 MiB)** | `7,915` | **`0`** | **-100.00%** | `720 ms` | **`656 ms`** | **15.14M nodes/s (+9.6%)** |
 
----
-
-### Table 2B: Default TT ($1,048,576$ entries) vs Max TT ($16,777,216$ entries) — Deep Search
-
-| # | Category | Depth | Baseline Nodes | Default TT Nodes (1M) | Max TT Nodes (16M) | Default Time | Max Time | Default Collisions | Max Collisions |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | Opening | 11 plies | 1,364,775 | 292,659 | 291,704 | 536 ms | 538 ms | 3,573 | 231 |
-| 2 | Opening | 12 plies | 2,268,109 | 477,847 | 476,408 | 840 ms | 845 ms | 8,166 | 522 |
-| 3 | Opening | 11 plies | 2,152,631 | 62,373 | 62,343 | 105 ms | 109 ms | 132 | 7 |
-| 4 | Opening | 10 plies | 3,862,989 | 483,930 | 481,688 | 864 ms | 868 ms | 7,558 | 562 |
-| 5 | Opening | 10 plies | 2,204,847 | 149,910 | 149,197 | 274 ms | 266 ms | 997 | 68 |
-| 6 | Opening | 11 plies | 1,540,643 | 322,604 | 320,520 | 562 ms | 573 ms | 4,264 | 251 |
-| 7 | Opening | 10 plies | 2,267,162 | 269,454 | 268,585 | 494 ms | 491 ms | 2,988 | 157 |
-| 8 | Opening | 10 plies | 1,915,942 | 272,268 | 271,929 | 478 ms | 484 ms | 3,016 | 196 |
-| 9 | Opening | 10 plies | 1,662,035 | 240,271 | 239,878 | 443 ms | 475 ms | 2,359 | 141 |
-| 10 | Opening | 10 plies | 1,742,411 | 138,374 | 137,955 | 249 ms | 264 ms | 891 | 77 |
-| 11 | Middlegame | 12 plies | 2,074,281 | 186,845 | 186,572 | 303 ms | 310 ms | 1,178 | 109 |
-| 12 | Middlegame | 10 plies | 2,101,525 | 116,233 | 116,113 | 200 ms | 198 ms | 369 | 26 |
-| 13 | Middlegame | 10 plies | 2,763,961 | 337,093 | 334,222 | 574 ms | 572 ms | 4,237 | 244 |
-| 14 | Middlegame | 10 plies | 2,723,163 | 278,835 | 277,858 | 465 ms | 468 ms | 3,080 | 160 |
-| 15 | Middlegame | 10 plies | 2,115,795 | 358,175 | 357,057 | 647 ms | 656 ms | 4,669 | 300 |
-| 16 | Middlegame | 14 plies | 2,595,254 | 382,298 | 380,802 | 672 ms | 681 ms | 5,576 | 354 |
-| 17 | Middlegame | 12 plies | 2,799,308 | 307,907 | 307,571 | 563 ms | 571 ms | 3,383 | 221 |
-| 18 | Middlegame | 11 plies | 4,329,327 | 447,196 | 445,009 | 694 ms | 692 ms | 8,967 | 600 |
-| 19 | Middlegame | 12 plies | 3,506,277 | 533,483 | 532,057 | 843 ms | 861 ms | 11,837 | 774 |
-| 20 | Middlegame | 10 plies | 1,506,054 | 234,959 | 234,638 | 373 ms | 383 ms | 2,312 | 152 |
-| 21 | Middlegame | 13 plies | 2,674,334 | 355,299 | 353,902 | 581 ms | 594 ms | 5,727 | 371 |
-| 22 | Middlegame | 14 plies | 2,560,701 | 601,181 | 598,846 | 953 ms | 959 ms | 14,075 | 992 |
-| 23 | Middlegame | 10 plies | 2,632,773 | 311,310 | 310,815 | 540 ms | 542 ms | 3,829 | 163 |
-| 24 | Middlegame | 11 plies | 3,509,716 | 208,480 | 208,095 | 355 ms | 358 ms | 1,681 | 127 |
-| 25 | Middlegame | 11 plies | 1,757,145 | 216,934 | 216,714 | 401 ms | 410 ms | 1,843 | 127 |
-| 26 | Endgame | 8 plies | 48,927 | 23,148 | 23,148 | 25 ms | 25 ms | 14 | 2 |
-| 27 | Endgame | 10 plies | 1,662,722 | 163,987 | 163,769 | 287 ms | 286 ms | 896 | 53 |
-| 28 | Endgame | 7 plies | 8,892 | 6,222 | 6,222 | 9 ms | 9 ms | 2 | 0 |
-| 29 | Endgame | 10 plies | 2,248,895 | 226,528 | 226,468 | 366 ms | 372 ms | 1,326 | 72 |
-| 30 | Endgame | 11 plies | 980,995 | 202,311 | 201,733 | 314 ms | 320 ms | 1,469 | 75 |
-| 31 | Endgame | 11 plies | 1,622,990 | 154,247 | 154,085 | 198 ms | 203 ms | 703 | 21 |
-| 32 | Endgame | 10 plies | 3,057,532 | 551,373 | 549,710 | 1,003 ms | 1,031 ms | 8,248 | 464 |
-| 33 | Endgame | 11 plies | 3,996,874 | 415,579 | 408,390 | 776 ms | 766 ms | 5,200 | 321 |
-| 34 | Endgame | 10 plies | 4,030,225 | 243,580 | 242,593 | 438 ms | 452 ms | 1,835 | 119 |
-| 35 | Endgame | 12 plies | 1,739,170 | 288,749 | 288,578 | 388 ms | 388 ms | 2,424 | 175 |
-| 36 | Blockade/Tension | 12 plies | 2,714,028 | 149,121 | 148,955 | 248 ms | 263 ms | 959 | 190 |
-| 37 | Blockade/Tension | 12 plies | 2,900,280 | 296,991 | 296,307 | 539 ms | 536 ms | 3,096 | 143 |
-| 38 | Blockade/Tension | 13 plies | 5,057,208 | 358,765 | 357,525 | 540 ms | 554 ms | 6,409 | 366 |
-| 39 | Blockade/Tension | 10 plies | 1,543,917 | 209,163 | 208,798 | 376 ms | 382 ms | 1,377 | 68 |
-| 40 | Blockade/Tension | 11 plies | 3,654,338 | 241,440 | 239,979 | 384 ms | 387 ms | 2,116 | 164 |
-|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
-| **Total** | **All 40** | **7–14 plies** | **95,898,151** | **11,117,122** | **11,076,738** | **18,900 ms** | **19,142 ms** | **142,781** | **9,165** |
-
----
-
-## Comparative Analysis: Standard (7–9 Plies) vs Deep (7–14 Plies) Benchmarks
-
-| Metric | **Standard Benchmark (7–9 plies)** | **Deep Benchmark (7–14 plies)** | **Scaling Comparison** |
-| :--- | ---: | ---: | :--- |
-| **Total Baseline Nodes (No TT)** | $2,408,731$ | **$95,898,151$** | **$39.8\times$ more baseline nodes** |
-| **Total Default TT Nodes ($1\text{M}$)** | $711,546$ | **$11,117,122$** | $15.6\times$ more TT nodes |
-| **Total Max TT Nodes ($16\text{M}$)** | $711,485$ | **$11,076,738$** | **Saves $40,384$ additional nodes** ($662\times$ larger node savings than at 7–9 plies) |
-| **Overall Node Reduction %** | **70.5%** | **88.4%** ($1\text{M}$) / **88.45%** ($16\text{M}$) | **+17.9 percentage points higher pruning efficiency** |
-| **Peak Single-Position Reduction** | **92.3%** (Pos 7) | **97.1%** (Pos 3: `2,152,631` $\rightarrow$ `62,373` nodes) | **32.53x single-position speedup** (`3,416 ms` $\rightarrow$ `105 ms`) |
-| **Total Baseline Time** | $3,855\text{ ms}$ ($3.86\text{s}$) | **$154,278\text{ ms}$ ($154.28\text{s}$)** | $40.0\times$ longer baseline runtime |
-| **Total Default TT Time ($1\text{M}$)** | $1,198\text{ ms}$ ($1.20\text{s}$) | **$18,900\text{ ms}$ ($18.90\text{s}$)** | Saves **135.4 seconds** across 40 positions |
-| **Total Max TT Time ($16\text{M}$)** | $1,214\text{ ms}$ ($1.21\text{s}$) | **$19,142\text{ ms}$ ($19.14\text{s}$)** | Saves **135.1 seconds** across 40 positions |
-| **Overall Speedup Factor** | **3.22x** | **8.16x** ($1\text{M}$) / **8.06x** ($16\text{M}$) | **Speedup more than doubles ($3.22\text{x} \rightarrow 8.16\text{x}$)** |
-| **Total TT Cutoffs** | $20,686$ | **$532,359$** | **$25.7\times$ more direct hash cutoffs** |
-| **Hash Collisions ($1,048,576$ entries)** | $608$ | **$142,781$** | **$234.8\times$ more collisions** as table load rises |
-| **Hash Collisions ($16,777,216$ entries)** | $36$ | **$9,165$** | **93.6% fewer collisions** ($142,781 \rightarrow 9,165$) |
-
-### Key Conclusions
-1. **Transposition Pruning Efficiency Scales Exponentially with Depth (`70.5%` $\rightarrow$ `88.4%`):**
-   - Increasing search depth by $2\text{–}5$ plies expanded the unpruned baseline search tree by **$39.8\times$** (from `2.41M` to `95.90M` nodes), while the Transposition Table tree grew by only **$15.6\times$** (from `711.5K` to `11.12M` nodes).
-   - Because deeper search trees contain exponentially more transpositions (different move orders converging on the same board configuration), overall node reduction jumped from **70.5% to 88.4%** (pruning **84.78 million nodes**), and overall speedup more than doubled from **3.22× to 8.16×** (reducing total runtime from **154.3 seconds** down to **18.9 seconds**).
-   - On individual positions with high transposition density, speedup reached **32.53×** (Position 3 at 11 plies: `2,152,631` $\rightarrow$ `62,373` nodes, **97.1% reduction**, `3,416 ms` $\rightarrow$ `105 ms`), **16.76×** (Position 36 at 12 plies), **16.46×** (Position 12 at 10 plies), and **16.21×** (Position 24 at 11 plies).
-2. **Hash Collisions Scale Quadratically (`235×` Growth) and $16\text{M}$ Entries Saves $662\times$ More Nodes:**
-   - While TT nodes grew by $15.6\times$, hash collisions in the $1,048,576$-entry table grew by **$234.8\times$** (from `608` to `142,781`) due to the birthday-paradox load factor as hundreds of thousands of interior nodes were stored per position.
-   - In the shallow benchmark, the $16,777,216$-entry table saved only **61 nodes** over the $1,048,576$-entry table. In the deep benchmark, eliminating **133,616 collisions** (`142,781` $\rightarrow$ `9,165`, a **93.6% reduction**) enabled the $16,777,216$-entry table to save **40,384 evaluated nodes** across the 40 positions — **$662\times$ larger node savings** than in the shallow test.
-3. **CPU Cache Locality vs Table Capacity Trade-Off:**
-   - Despite evaluating **40,384 fewer nodes**, the $16,777,216$-entry table (**256 MiB**) took **19,142 ms** compared to **18,900 ms** for the $1,048,576$-entry table (**16 MiB**) — a ~1.28% wall-clock difference (`242 ms` over `19s`), though on several individual positions (Positions 5, 7, 12, 13, 18, 27, 33, 37) the $16\text{M}$ table was already faster in wall-clock time.
-   - This occurs because a 16 MiB table fits largely inside modern CPU L3 cache, whereas random Zobrist probes across a 256 MiB array incur main-memory DRAM latency and TLB page misses.
-   - In long time-control games where the persistent table is retained across dozens of moves without clearing, or in ultra-deep bitboard searches ($> 2\text{M}$ TT nodes per turn) where the $1\text{M}$ table saturates, increasing the table size via the Settings Dialog ($2\text{M}\text{–}16\text{M}$ entries) prevents deep transposition thrashing.
-4. **100% Search Consistency:** Across both benchmarks and all 40 positions, Baseline, Default TT ($1\text{M}$), and Max TT ($16\text{M}$) produced identical best moves and identical evaluation scores.
-
----
-
-## Phase 2 Upgrade: 4-Way Set-Associative Cache-Line Buckets, `StaticEval` Caching & Hardware Prefetch
-
-In **Phase 2** of the engine improvements roadmap, [`TranspositionTable.cs`](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/AI/TranspositionTable.cs) was upgraded from a direct-mapped (1-slot) table to a **4-way set-associative table with 64-byte CPU cache-line buckets**:
-
-1. **Compact 16-Byte `TranspositionEntry` with `Key32`, `short Score`, `short StaticEval`, and `byte Age`:**
-   - Stores `uint Key32 = (uint)(hash >> 32)` (upper 32 bits of the 64-bit Zobrist hash; combined with the 18–22 lower bucket index bits, this verifies **50–54 bits** of the Zobrist hash).
-   - Stores `short Score` (`int16`, with `WinScore = 30,000` and `WinThreshold = 28,000`) and **`short StaticEval`**, allowing each entry to cache the static heuristic evaluation alongside the search score inside the exact same 16-byte footprint.
-   - Stores `ushort BestMove` (`(fromSq << 8) | toSq`) directly in bitboard square coordinates (`0..63`), eliminating `Position(row, col)` conversions on probe and store.
-2. **4-Way Set-Associative 64-Byte Buckets (`BucketSize = 4`):**
-   - Every 4 consecutive 16-byte entries form a **64-byte bucket** (`baseIndex = (int)(key & _bucketMask) << 2`), matching a single 64-byte L1/L3 CPU cache line.
-   - When all 4 ways in a bucket are occupied by distinct keys, `Store` evicts the lowest-priority slot using an **Age + Depth + Exact-Bound Protection** formula:
-     $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot ((_age - e.\text{Age}) \bmod 256) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$
-3. **Pinned Object Heap (POH) Allocation & `Sse.Prefetch0` Hardware Prefetching:**
-   - The entry array is allocated via `GC.AllocateArray<TranspositionEntry>(count, pinned: true)` on the .NET Pinned Object Heap.
-   - Immediately after `BitPosition nextPos = pos.Apply(in move)` computes `nextPos.Hash`, [`MinimaxPlayer.cs`](file:///c:/Udvikling/Spil/Checkers/src/Checkers.Core/AI/MinimaxPlayer.cs) calls `TranspositionTable?.Prefetch(nextPos.Hash)` (`Sse.Prefetch0`), fetching the child's 64-byte bucket into L1 cache ahead of the recursive `NegaMax` call.
-
-### Impact on Collisions and Throughput (40 Deep Positions, 7–14 Plies)
-
-| Variant & Table Size | Direct-Mapped Collisions (Phase 1) | 4-Way Bucket Collisions (Phase 2) | Collision Reduction | Phase 0 Time | Phase 1 Time | Phase 2 Time | Phase 2 Throughput |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| **International — 1M TT (16 MiB)** | 141,091 | **120** | **-99.91%** | 714 ms | 672 ms | **638 ms** | **17.18M nodes/s (+11.9%)** |
-| **International — 16M TT (256 MiB)** | 9,175 | **0** | **-100.00%** | 850 ms | 824 ms | **764 ms** | **14.34M nodes/s (+11.6%)** |
-| **English — 1M TT (16 MiB)** | 121,868 | **78** | **-99.94%** | 638 ms | 575 ms | **557 ms** | **17.85M nodes/s (+14.2%)** |
-| **English — 16M TT (256 MiB)** | 7,915 | **0** | **-100.00%** | 720 ms | 708 ms | **656 ms** | **15.14M nodes/s (+9.6%)** |
+For the complete 40-position per-position benchmark tables ($1\text{M}$ vs. $16\text{M}$ TT, Standard and Deep suites) and the Phase 0–4 progression, see [Chapter 11 – Engine improvements during development](11-engine-improvements.md).
