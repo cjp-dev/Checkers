@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <rect width="860" height="420" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <text x="430" y="28" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1E293B">Checkers Engine Evolution: From 2D Array Prototype to Phase 4 Bitboard Engine</text>
+  <text x="430" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">40-Position Deep Suite (7–14 Plies) &amp; 5-Position Timed Suite (5.0s / Position, 16M 4-Way Bucket TT)</text>
+
+  <!-- LEFT PANEL: 40-Position Deep Suite Runtime & Node Reduction -->
+  <g transform="translate(24,62)">
+    <rect width="415" height="336" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <text x="207" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">40 Deep Positions (7–14 Plies, International)</text>
+    <text x="207" y="40" text-anchor="middle" font-size="10.5" fill="#64748B">Total Wall-Clock Time &amp; Evaluated Nodes Across Development Phases</text>
+
+    <!-- Milestone Rows -->
+    <!-- 1. Array No-TT -->
+    <rect x="16" y="54" width="383" height="42" rx="5" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.2"/>
+    <text x="26" y="72" font-size="11" font-weight="700" fill="#991B1B">0A. Original Array Engine (No TT)</text>
+    <text x="26" y="88" font-family="Consolas, monospace" font-size="10" fill="#B91C1C">95,811,314 nodes  •  148,822 ms (148.8s)  •  0.64M NPS</text>
+    <text x="389" y="80" text-anchor="end" font-size="11" font-weight="700" fill="#991B1B">1.0x</text>
+
+    <!-- 2. Array 1M TT -->
+    <rect x="16" y="102" width="383" height="42" rx="5" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.2"/>
+    <text x="26" y="120" font-size="11" font-weight="700" fill="#9A3412">0B. Original Array Engine (1M Direct TT)</text>
+    <text x="26" y="136" font-family="Consolas, monospace" font-size="10" fill="#C2410C">10,962,720 nodes  •   17,941 ms (17.9s)   •  0.61M NPS</text>
+    <text x="389" y="128" text-anchor="end" font-size="11" font-weight="700" fill="#9A3412">8.3x</text>
+
+    <!-- 3. Phase 0 Bitboard -->
+    <rect x="16" y="150" width="383" height="42" rx="5" fill="#FEF3C7" stroke="#D97706" stroke-width="1.2"/>
+    <text x="26" y="168" font-size="11" font-weight="700" fill="#78350F">Phase 0. 64-Bit Bitboard Baseline (1M TT)</text>
+    <text x="26" y="184" font-family="Consolas, monospace" font-size="10" fill="#B45309">10,962,720 nodes  •      714 ms (0.71s)   • 15.35M NPS</text>
+    <text x="389" y="176" text-anchor="end" font-size="11" font-weight="700" fill="#78350F">208x</text>
+
+    <!-- 4. Phase 1 & 2 Speed + 4-Way Bucket TT -->
+    <rect x="16" y="198" width="383" height="42" rx="5" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.2"/>
+    <text x="26" y="216" font-size="11" font-weight="700" fill="#0C4A6E">Phase 1 &amp; 2. Bitboard Speed + 4-Way Bucket TT</text>
+    <text x="26" y="232" font-family="Consolas, monospace" font-size="10" fill="#0369A1">10,956,192 nodes  •      638 ms (0.64s)   • 17.18M NPS</text>
+    <text x="389" y="224" text-anchor="end" font-size="11" font-weight="700" fill="#0C4A6E">233x</text>
+
+    <!-- 5. Phase 3 Stage A Exact Search -->
+    <rect x="16" y="246" width="383" height="42" rx="5" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.2"/>
+    <text x="26" y="264" font-size="11" font-weight="700" fill="#1E3A8A">Phase 3. Stage A Exact (PVS + Killers + History)</text>
+    <text x="26" y="280" font-family="Consolas, monospace" font-size="10" fill="#1D4ED8"> 7,840,974 nodes  •      548 ms (0.55s)   • −28.5% TT nodes</text>
+    <text x="389" y="272" text-anchor="end" font-size="11" font-weight="700" fill="#1E3A8A">272x</text>
+
+    <!-- 6. Phase 4 Stage B Selective Search -->
+    <rect x="16" y="294" width="383" height="34" rx="5" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+    <text x="26" y="310" font-size="11" font-weight="700" fill="#14532D">Phase 4. Stage B Selective (LMR + RFP + FP)</text>
+    <text x="26" y="323" font-family="Consolas, monospace" font-size="9.5" font-weight="700" fill="#15803D"> 2,349,717 nodes  •      246 ms (0.25s)   • −78.6% TT nodes</text>
+    <text x="389" y="316" text-anchor="end" font-size="11.5" font-weight="700" fill="#15803D">605x</text>
+  </g>
+
+  <!-- RIGHT PANEL: 5-Position Timed Search Depth Progression (5.0s / Position) -->
+  <g transform="translate(455,62)">
+    <rect width="381" height="336" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <text x="190" y="24" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">5-Second Timed Search Depth (16M TT)</text>
+    <text x="190" y="40" text-anchor="middle" font-size="10.5" fill="#64748B">Completed Iterative Deepening Plies (Phase 0 → Phase 3 → Phase 4)</text>
+
+    <!-- Pos #1 -->
+    <g transform="translate(18,56)">
+      <text x="0" y="14" font-size="11" font-weight="700" fill="#1E293B">Pos #1 (Opening)</text>
+      <rect x="145" y="2" width="136" height="16" rx="3" fill="#CBD5E0"/>
+      <text x="150" y="14" font-size="9.5" font-weight="700" fill="#334155">P0: 17 plies</text>
+      <rect x="145" y="20" width="168" height="18" rx="3" fill="#16A34A"/>
+      <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 21 plies (+4 plies)</text>
+    </g>
+
+    <!-- Pos #13 -->
+    <g transform="translate(18,108)">
+      <text x="0" y="14" font-size="11" font-weight="700" fill="#1E293B">Pos #13 (Middlegame)</text>
+      <rect x="145" y="2" width="128" height="16" rx="3" fill="#CBD5E0"/>
+      <text x="150" y="14" font-size="9.5" font-weight="700" fill="#334155">P0: 16 plies</text>
+      <rect x="145" y="20" width="168" height="18" rx="3" fill="#16A34A"/>
+      <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 21 plies (+5 plies)</text>
+    </g>
+
+    <!-- Pos #20 -->
+    <g transform="translate(18,160)">
+      <text x="0" y="14" font-size="11" font-weight="700" fill="#1E293B">Pos #20 (Middlegame)</text>
+      <rect x="145" y="2" width="144" height="16" rx="3" fill="#CBD5E0"/>
+      <text x="150" y="14" font-size="9.5" font-weight="700" fill="#334155">P0: 18 plies (P3: 20)</text>
+      <rect x="145" y="20" width="176" height="18" rx="3" fill="#16A34A"/>
+      <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 22 plies (+4 plies)</text>
+    </g>
+
+    <!-- Pos #32 -->
+    <g transform="translate(18,212)">
+      <text x="0" y="14" font-size="11" font-weight="700" fill="#1E293B">Pos #32 (Endgame)</text>
+      <rect x="145" y="2" width="160" height="16" rx="3" fill="#CBD5E0"/>
+      <text x="150" y="14" font-size="9.5" font-weight="700" fill="#334155">P0: 20 plies</text>
+      <rect x="145" y="20" width="200" height="18" rx="3" fill="#16A34A"/>
+      <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 25 plies (+5 plies)</text>
+    </g>
+
+    <!-- Pos #40 -->
+    <g transform="translate(18,264)">
+      <text x="0" y="14" font-size="11" font-weight="700" fill="#1E293B">Pos #40 (Tension)</text>
+      <rect x="145" y="2" width="144" height="16" rx="3" fill="#CBD5E0"/>
+      <text x="150" y="14" font-size="9.5" font-weight="700" fill="#334155">P0: 18 plies (+765 cp)</text>
+      <rect x="145" y="20" width="184" height="18" rx="3" fill="#2563EB"/>
+      <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 22 plies (Win in 23 / 2.15s!)</text>
+    </g>
+
+    <text x="190" y="322" text-anchor="middle" font-size="10.5" font-weight="600" fill="#15803D">Up to 875x faster in English (No-TT: 142,038 ms → 302 ms)</text>
+  </g>
+</svg>

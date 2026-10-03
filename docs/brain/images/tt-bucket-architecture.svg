@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 400" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <rect width="860" height="400" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <text x="430" y="28" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1E293B">4-Way Set-Associative 64-Byte Cache-Line Bucket &amp; 16-Byte Entry Layout</text>
+  <text x="430" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Pinned Object Heap (POH) + Sse.Prefetch0 Hardware Prefetching + Age/Depth/Exact Victim Selection (−99.91% to −100% Collisions)</text>
+
+  <!-- TOP PANEL: 16-Byte TranspositionEntry Byte-by-Byte Layout -->
+  <g transform="translate(26,62)">
+    <rect width="808" height="126" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <text x="404" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">Single TranspositionEntry Struct (Exact 16 Bytes — Pack = 1)</text>
+
+    <!-- Byte Blocks (Total width = 768px = 48px per byte) -->
+    <g transform="translate(20,34)">
+      <!-- Bytes 0..3: uint Key32 (4B = 192px) -->
+      <rect x="0" y="0" width="192" height="54" rx="4" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+      <text x="96" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="12" font-weight="700" fill="#1E3A8A">uint Key32 (4 B)</text>
+      <text x="96" y="40" text-anchor="middle" font-size="10" fill="#1D4ED8">(uint)(ZobristHash &gt;&gt; 32)</text>
+      <text x="96" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Bytes 0..3</text>
+
+      <!-- Bytes 4..5: short Score (2B = 96px) -->
+      <rect x="192" y="0" width="96" height="54" rx="4" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+      <text x="240" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#14532D">Score (2B)</text>
+      <text x="240" y="40" text-anchor="middle" font-size="9.5" fill="#15803D">short (±30,000)</text>
+      <text x="240" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Bytes 4..5</text>
+
+      <!-- Bytes 6..7: short StaticEval (2B = 96px) -->
+      <rect x="288" y="0" width="96" height="54" rx="4" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+      <text x="336" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#0C4A6E">StaticEval</text>
+      <text x="336" y="40" text-anchor="middle" font-size="9.5" fill="#0369A1">short (2 B)</text>
+      <text x="336" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Bytes 6..7</text>
+
+      <!-- Bytes 8..9: ushort BestMove (2B = 96px) -->
+      <rect x="384" y="0" width="96" height="54" rx="4" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+      <text x="432" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="11" font-weight="700" fill="#78350F">BestMove</text>
+      <text x="432" y="40" text-anchor="middle" font-size="9.5" fill="#B45309">(From&lt;&lt;8)|To</text>
+      <text x="432" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Bytes 8..9</text>
+
+      <!-- Byte 10: sbyte Depth (1B = 64px) -->
+      <rect x="480" y="0" width="64" height="54" rx="4" fill="#F3E8FF" stroke="#9333EA" stroke-width="1.5"/>
+      <text x="512" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#581C87">Depth</text>
+      <text x="512" y="40" text-anchor="middle" font-size="9.5" fill="#7E22CE">sbyte</text>
+      <text x="512" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Byte 10</text>
+
+      <!-- Byte 11: byte Age (1B = 64px) -->
+      <rect x="544" y="0" width="64" height="54" rx="4" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+      <text x="576" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#9A3412">Age</text>
+      <text x="576" y="40" text-anchor="middle" font-size="9.5" fill="#C2410C">byte</text>
+      <text x="576" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Byte 11</text>
+
+      <!-- Byte 12: byte Flags (1B = 72px) -->
+      <rect x="608" y="0" width="72" height="54" rx="4" fill="#FCE7F3" stroke="#DB2777" stroke-width="1.5"/>
+      <text x="644" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#831843">Flags</text>
+      <text x="644" y="40" text-anchor="middle" font-size="9" fill="#9D174D">Bound|Eval</text>
+      <text x="644" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Byte 12</text>
+
+      <!-- Bytes 13..15: Padding (3B = 88px) -->
+      <rect x="680" y="0" width="88" height="54" rx="4" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.2"/>
+      <text x="724" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="600" fill="#475569">Align Pad</text>
+      <text x="724" y="40" text-anchor="middle" font-size="9.5" fill="#64748B">3 Bytes</text>
+      <text x="724" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Bytes 13..15</text>
+    </g>
+  </g>
+
+  <!-- BOTTOM LEFT: 64-Byte Cache-Line 4-Way Bucket -->
+  <g transform="translate(26,202)">
+    <rect width="480" height="176" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <text x="240" y="23" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">64-Byte CPU Cache-Line Bucket (baseIndex = (int)(key &amp; _bucketMask) &lt;&lt; 2)</text>
+
+    <g transform="translate(16,36)">
+      <rect x="0" y="0" width="106" height="62" rx="5" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="53" y="22" text-anchor="middle" font-size="11" font-weight="700" fill="#1E3A8A">Way 0 (16 B)</text>
+      <text x="53" y="40" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#1D4ED8">baseIndex + 0</text>
+      <text x="53" y="54" text-anchor="middle" font-size="9" fill="#2563EB">Bytes 0..15</text>
+
+      <rect x="114" y="0" width="106" height="62" rx="5" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="167" y="22" text-anchor="middle" font-size="11" font-weight="700" fill="#1E3A8A">Way 1 (16 B)</text>
+      <text x="167" y="40" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#1D4ED8">baseIndex + 1</text>
+      <text x="167" y="54" text-anchor="middle" font-size="9" fill="#2563EB">Bytes 16..31</text>
+
+      <rect x="228" y="0" width="106" height="62" rx="5" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="281" y="22" text-anchor="middle" font-size="11" font-weight="700" fill="#1E3A8A">Way 2 (16 B)</text>
+      <text x="281" y="40" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#1D4ED8">baseIndex + 2</text>
+      <text x="281" y="54" text-anchor="middle" font-size="9" fill="#2563EB">Bytes 32..47</text>
+
+      <rect x="342" y="0" width="106" height="62" rx="5" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="395" y="22" text-anchor="middle" font-size="11" font-weight="700" fill="#1E3A8A">Way 3 (16 B)</text>
+      <text x="395" y="40" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#1D4ED8">baseIndex + 3</text>
+      <text x="395" y="54" text-anchor="middle" font-size="9" fill="#2563EB">Bytes 48..63</text>
+    </g>
+
+    <rect x="16" y="108" width="448" height="54" rx="5" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="240" y="127" text-anchor="middle" font-size="11" font-weight="700" fill="#1E293B">Victim Eviction Score (when all 4 ways hold distinct keys):</text>
+    <text x="240" y="147" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#0F172A">Priority(e) = e.Depth - (ageDiff * 8) + (e.Bound == Exact ? 4 : 0)</text>
+  </g>
+
+  <!-- BOTTOM RIGHT: Hardware Prefetch & Collision Reduction -->
+  <g transform="translate(522,202)">
+    <rect width="312" height="176" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <text x="156" y="23" text-anchor="middle" font-size="13" font-weight="700" fill="#1E293B">POH + Sse.Prefetch0 Pipeline</text>
+
+    <rect x="16" y="36" width="280" height="58" rx="5" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.4"/>
+    <text x="26" y="54" font-family="Consolas, monospace" font-size="10" font-weight="700" fill="#14532D">1. nextPos = pos.Apply(in move);</text>
+    <text x="26" y="70" font-family="Consolas, monospace" font-size="10" font-weight="700" fill="#15803D">2. _tt.Prefetch(nextPos.Hash); // Sse.Prefetch0</text>
+    <text x="26" y="85" font-size="9.5" fill="#166534">Loads 64B bucket into L1 cache before recursion!</text>
+
+    <rect x="16" y="104" width="280" height="58" rx="5" fill="#FEF3C7" stroke="#D97706" stroke-width="1.4"/>
+    <text x="156" y="122" text-anchor="middle" font-size="11" font-weight="700" fill="#78350F">40 Deep Positions Collision Reduction</text>
+    <text x="156" y="139" text-anchor="middle" font-size="10.5" font-weight="600" fill="#92400E">1M TT (16 MiB): 141,091 → 120 (−99.91%)</text>
+    <text x="156" y="154" text-anchor="middle" font-size="10.5" font-weight="600" fill="#15803D">16M TT (256 MiB): 9,175 → 0 (−100.00%)</text>
+  </g>
+</svg>

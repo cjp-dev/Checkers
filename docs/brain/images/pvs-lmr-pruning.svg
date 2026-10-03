@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <defs>
+    <marker id="arrBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#16A34A"/>
+    </marker>
+    <marker id="arrPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#7E22CE"/>
+    </marker>
+  </defs>
+
+  <rect width="860" height="420" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <text x="430" y="28" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1E293B">Two-Stage Search Architecture: Exact PVS (Stage A) &amp; Selective Pruning (Stage B)</text>
+  <text x="430" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Stage A cuts exact nodes by 64.9% (No-TT) / 28.5% (TT); Stage B cuts total nodes by 93.7% (No-TT) / 79.1% (TT) &amp; adds +4..5 plies</text>
+
+  <!-- LEFT PANEL: Stage A (Exact Node Reduction) -->
+  <g transform="translate(24,62)">
+    <rect width="396" height="336" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <rect x="0" y="0" width="396" height="34" rx="8" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="198" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#1E3A8A">Stage A: Exact Node Reduction (Zero Loss of Exactness)</text>
+
+    <!-- DrawTable -->
+    <rect x="16" y="46" width="364" height="68" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.4"/>
+    <text x="28" y="65" font-size="11.5" font-weight="700" fill="#14532D">1. In-Search Repetition Detection (DrawTable)</text>
+    <text x="28" y="83" font-size="10.5" fill="#166534">• Checked at ply &gt; 0 BEFORE Transposition Table probe</text>
+    <text x="28" y="99" font-size="10.5" fill="#166534">• Detects 2-fold game history, 1-fold history (ply ≥ 2) &amp; path loops</text>
+
+    <!-- PVS First Move -->
+    <rect x="16" y="124" width="364" height="64" rx="6" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.4"/>
+    <text x="28" y="143" font-size="11.5" font-weight="700" fill="#1E3A8A">2. PVS Move i = 0 (Principal Variation Candidate)</text>
+    <text x="28" y="161" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#1D4ED8">score = -NegaMax(nextPos, d - 1, -β, -α, ply + 1)</text>
+    <text x="28" y="177" font-size="10.5" fill="#1E40AF">Searched with full window [−β, −α] to establish tight α bound</text>
+
+    <!-- PVS Subsequent Moves -->
+    <rect x="16" y="198" width="364" height="122" rx="6" fill="#FEF3C7" stroke="#D97706" stroke-width="1.4"/>
+    <text x="28" y="217" font-size="11.5" font-weight="700" fill="#78350F">3. PVS Moves i &gt; 0 (Zero-Width Null-Window Probe)</text>
+    <text x="28" y="235" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#B45309">score = -NegaMax(nextPos, d - 1, -α - 1, -α, ply + 1)</text>
+    <text x="28" y="253" font-size="10.5" fill="#92400E">• Window width = 1: every child immediately fails high or low</text>
+    <text x="28" y="269" font-size="10.5" fill="#92400E">• If score ≤ α → Move proven inferior (No full-window search!)</text>
+    <text x="28" y="285" font-size="10.5" font-weight="700" fill="#991B1B">• If α &lt; score &lt; β → Re-search with full window [−β, −α]</text>
+    <text x="28" y="305" font-size="10.5" font-weight="600" fill="#15803D">Result: −64.9% nodes (No-TT) &amp; −28.5% nodes (16M TT)</text>
+  </g>
+
+  <!-- RIGHT PANEL: Stage B (Selective Pruning & Reductions) -->
+  <g transform="translate(440,62)">
+    <rect width="396" height="336" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.5"/>
+    <rect x="0" y="0" width="396" height="34" rx="8" fill="#F3E8FF" stroke="#9333EA" stroke-width="1.5"/>
+    <text x="198" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#581C87">Stage B: Selective Pruning &amp; Verified LMR</text>
+
+    <!-- RFP -->
+    <rect x="16" y="46" width="364" height="72" rx="6" fill="#FCE7F3" stroke="#DB2777" stroke-width="1.4"/>
+    <text x="28" y="65" font-size="11.5" font-weight="700" fill="#831843">1. Reverse Futility Pruning (RFP / Static Null Move)</text>
+    <text x="28" y="83" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#9D174D">Non-PV, Quiet, d ≤ 6:  eval₀ - 40·d ≥ β  ⇒  Return eval₀</text>
+    <text x="28" y="101" font-size="10.5" fill="#831843">Guard: !isCaptureNode &amp;&amp; !HasAnyCapture(opponent) &amp;&amp; |β| &lt; 28,000</text>
+
+    <!-- FP -->
+    <rect x="16" y="128" width="364" height="68" rx="6" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.4"/>
+    <text x="28" y="147" font-size="11.5" font-weight="700" fill="#9A3412">2. Frontier Futility Pruning (FP)</text>
+    <text x="28" y="165" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#C2410C">Non-PV, Quiet, d ≤ 3, i &gt; 0:  eval₀ + 60·d ≤ α  ⇒  Skip move</text>
+    <text x="28" y="183" font-size="10.5" fill="#9A3412">Guard: !m.IsPromotion &amp;&amp; !HasAnyCapture(nextPos)</text>
+
+    <!-- Verified LMR -->
+    <rect x="16" y="206" width="364" height="114" rx="6" fill="#F3E8FF" stroke="#9333EA" stroke-width="1.4"/>
+    <text x="28" y="225" font-size="11.5" font-weight="700" fill="#581C87">3. Two-Stage Verified Late Move Reductions (LMR)</text>
+    <text x="28" y="242" font-size="10.5" fill="#6B21A8">For quiet moves at d ≥ 3, ply ≥ 2, i ≥ 3 (!HasAnyCapture(nextPos)):</text>
+    <text x="28" y="259" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#7E22CE">Step 1 (Reduced):  NegaMax(nextPos, d - 1 - R, -α - 1, -α)</text>
+    <text x="28" y="276" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#1D4ED8">Step 2 (Verify):   if (score &gt; α) NegaMax(nextPos, d - 1, -α - 1, -α)</text>
+    <text x="28" y="293" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#15803D">Step 3 (Full PV):  if (score &gt; α &amp;&amp; β &gt; α+1) NegaMax(..., -β, -α)</text>
+    <text x="28" y="310" font-size="10.5" font-weight="600" fill="#581C87">Result: 14.2x–15.9x fewer nodes (No-TT) &amp; 21–25 plies in 5.0s!</text>
+  </g>
+</svg>
