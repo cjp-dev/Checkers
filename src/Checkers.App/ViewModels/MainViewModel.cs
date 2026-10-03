@@ -553,7 +553,7 @@ public sealed partial class MainViewModel : ObservableObject
                 Analysis.Reset();
                 _transpositionTable.Clear();
                 FileName = string.Empty;
-                AttachSession(new GameSession(EngineFactory.CreateRuleEngine(Settings.Variant)));
+                AttachSession(new GameSession(new RuleEngine(Settings.Variant)));
             }
 
             RefreshBoard();
@@ -883,10 +883,10 @@ public sealed partial class MainViewModel : ObservableObject
     public Func<GameSettings, TimeSpan, IPlayer>? AiPlayerFactory { get; set; }
 
     public IPlayer CreateAiPlayer() =>
-        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? EngineFactory.CreatePlayer(
+        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(
             Settings.ToLimits(_computerTimeLeft),
-            Settings.Variant,
-            BoardEngine.Bitboard,
+            ruleEngine: new RuleEngine(Settings.Variant),
+            evaluator: new EvaluationFunction(Settings.Variant),
             transpositionTable: _transpositionTable);
 
     public void CancelAi()

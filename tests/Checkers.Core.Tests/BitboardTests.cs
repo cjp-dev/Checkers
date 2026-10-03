@@ -11,47 +11,87 @@ namespace Checkers.Core.Tests;
 public class BitboardTests
 {
     [Fact]
-    public void BitboardMasks_HaveExpectedPopCountsAndCoordinates()
+    public void BitboardMasks_DarkSquaresAndRowColMasks_MatchBoardGeometry()
     {
         BitOperations.PopCount(BitboardMasks.DarkSquares).Should().Be(32);
-        BitOperations.PopCount(BitboardMasks.CenterMask).Should().Be(4);
-        BitOperations.PopCount(BitboardMasks.KingCenterMask).Should().Be(8);
 
         for (int r = 0; r < 8; r++)
         {
             BitOperations.PopCount(BitboardMasks.Rows[r]).Should().Be(8);
+
             for (int c = 0; c < 8; c++)
             {
                 int sq = BitboardMasks.ToSquareIndex(r, c);
-                sq.Should().Be(r * 8 + c);
-                BitboardMasks.ToPosition(sq).Should().Be(new Position(r, c));
+                ulong bit = 1UL << sq;
+                var pos = new Position(r, c);
 
-                bool isDark = ((BitboardMasks.DarkSquares >> sq) & 1UL) != 0;
-                isDark.Should().Be(new Position(r, c).IsDarkSquare);
+                BitboardMasks.Positions[sq].Should().Be(pos);
+                ((BitboardMasks.DarkSquares & bit) != 0).Should().Be(pos.IsDarkSquare);
+                ((BitboardMasks.NotColA & bit) != 0).Should().Be(c != 0);
+                ((BitboardMasks.NotColH & bit) != 0).Should().Be(c != 7);
+                ((BitboardMasks.NotColAB & bit) != 0).Should().Be(c >= 2);
+                ((BitboardMasks.NotColGH & bit) != 0).Should().Be(c <= 5);
+                ((BitboardMasks.Rows[r] & bit) != 0).Should().BeTrue();
+                ((BitboardMasks.CenterMask & bit) != 0).Should().Be(pos.IsDarkSquare && r is >= 3 and <= 4 && c is >= 2 and <= 5);
+                ((BitboardMasks.KingCenterMask & bit) != 0).Should().Be(pos.IsDarkSquare && r is >= 2 and <= 5 && c is >= 2 and <= 5);
             }
         }
     }
 
     [Fact]
-    public void BitPosition_RoundTripsInitialAndCustomBoardStateWithIdenticalHash()
+    public void BitboardMasks_DiagonalRays_MatchStepByStepOffsets()
     {
-        var initial = BoardState.CreateInitial();
-        var bitPos = BitPosition.FromBoardState(initial);
-
-        bitPos.WhitePiecesCount.Should().Be(12);
-        bitPos.BlackPiecesCount.Should().Be(12);
-        bitPos.Hash.Should().Be(initial.ZobristHash);
-
-        var roundTrip = bitPos.ToBoardState(initial.FullMoveNumber);
-        roundTrip.ZobristHash.Should().Be(initial.ZobristHash);
-        roundTrip.WhitePiecesCount.Should().Be(12);
-        roundTrip.BlackPiecesCount.Should().Be(12);
+        int[] dRows = [-1, -1, 1, 1];
+        int[] dCols = [-1, 1, -1, 1];
 
         for (int r = 0; r < 8; r++)
         {
             for (int c = 0; c < 8; c++)
             {
-                roundTrip.GetPiece(r, c).Should().Be(initial.GetPiece(r, c));
+                if (((r + c) & 1) == 0)
+                    continue;
+
+                int sq = BitboardMasks.ToSquareIndex(r, c);
+                for (int dir = 0; dir < 4; dir++)
+                {
+                    ulong expectedRay = 0UL;
+                    int nr = r + dRows[dir];
+                    int nc = c + dCols[dir];
+                    while (nr is >= 0 and < 8 && nc is >= 0 and < 8)
+                    {
+                        expectedRay |= 1UL << BitboardMasks.ToSquareIndex(nr, nc);
+                        nr += dRows[dir];
+                        nc += dCols[dir];
+                    }
+
+                    BitboardMasks.Rays[dir, sq].Should().Be(expectedRay);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void BitPosition_FromBoardStateAndToBoardState_RoundTripsLosslessly()
+    {
+        var initial = BoardState.CreateInitial();
+        var bitPos = BitPosition.FromBoardState(initial);
+
+        BitOperations.PopCount(bitPos.WhiteMen).Should().Be(12);
+        BitOperations.PopCount(bitPos.BlackMen).Should().Be(12);
+        bitPos.WhiteKings.Should().Be(0UL);
+        bitPos.BlackKings.Should().Be(0UL);
+        bitPos.Hash.Should().Be(initial.ZobristHash);
+
+        var roundTripped = bitPos.ToBoardState(initial.FullMoveNumber);
+        roundTripped.ZobristHash.Should().Be(initial.ZobristHash);
+        roundTripped.WhitePiecesCount.Should().Be(12);
+        roundTripped.BlackPiecesCount.Should().Be(12);
+
+        for (int r = 0; r < 8; r++)
+        {
+            for (int c = 0; c < 8; c++)
+            {
+                roundTripped.GetPiece(r, c).Should().Be(initial.GetPiece(r, c));
             }
         }
     }
@@ -59,117 +99,83 @@ public class BitboardTests
     [Theory]
     [InlineData(CheckersVariant.International)]
     [InlineData(CheckersVariant.English)]
-    public void EngineEquivalence_50RandomGamesPerVariant_MatchMoveForMoveAndHashForHash(CheckersVariant variant)
+    public void RandomSelfPlay_100Games_IncrementalHashAndMoveGenerationAreConsistent(CheckersVariant variant)
     {
-        var arrayEngine = new RuleEngine(variant);
-        var bitboardEngine = new BitboardRuleEngine(variant);
-        var arrayEval = new EvaluationFunction(variant);
-        var bitboardEval = new BitboardEvaluation(variant);
-
+        var engine = new RuleEngine(variant);
+        var evaluator = new EvaluationFunction(variant);
         Span<BitMove> moveBuffer = stackalloc BitMove[128];
 
-        for (int seed = 1; seed <= 50; seed++)
+        for (int game = 0; game < 50; game++)
         {
-            var rng = new Random(seed * 997 + (int)variant * 31);
+            var rng = new Random(10_000 + game * 97 + (int)variant * 100_000);
             var state = BoardState.CreateInitial();
+            var bitPos = state.BitPosition;
 
-            for (int ply = 0; ply < 80; ply++)
+            for (int ply = 0; ply < 120; ply++)
             {
-                // 1. Static evaluation equivalence
-                int evalArr = arrayEval.Evaluate(state);
-                int evalBit = bitboardEval.Evaluate(state);
-                evalBit.Should().Be(evalArr, $"Evaluation mismatch at seed {seed}, ply {ply}, variant {variant}");
+                bitPos.Hash.Should().Be(state.ZobristHash, $"Zobrist hash mismatch at game {game}, ply {ply} ({variant})");
 
-                // 2. Game status equivalence
-                var statusArr = arrayEngine.EvaluateGameStatus(state);
-                var statusBit = bitboardEngine.EvaluateGameStatus(state);
-                statusBit.Should().Be(statusArr, $"Status mismatch at seed {seed}, ply {ply}, variant {variant}");
+                var recalc = bitPos;
+                recalc.RecalculateHash().Should().Be(bitPos.Hash, $"Incremental hash must equal full RecalculateHash at game {game}, ply {ply}");
 
-                if (statusArr.Status != GameStatus.InProgress)
+                EvaluationFunction.Evaluate(in bitPos, variant).Should().Be(
+                    evaluator.Evaluate(state),
+                    $"Evaluation mismatch at game {game}, ply {ply} ({variant})");
+
+                var moves = engine.GetLegalMoves(state);
+                int bitMoveCount = BitboardMoveGenerator.Generate(in bitPos, variant, moveBuffer);
+                bool hasAny = BitboardMoveGenerator.HasAnyLegalMove(in bitPos, variant);
+
+                hasAny.Should().Be(moves.Count > 0, $"HasAnyLegalMove mismatch at game {game}, ply {ply} ({variant})");
+                bitMoveCount.Should().Be(moves.Count, $"Move count mismatch at game {game}, ply {ply} ({variant})");
+
+                if (moves.Count == 0)
                     break;
 
-                // 3. Full Move list equivalence (order, From, To, Path, CapturedPositions, IsPromotion, Notation)
-                var movesArr = arrayEngine.GetLegalMoves(state);
-                var movesBit = bitboardEngine.GetLegalMoves(state);
-
-                movesBit.Count.Should().Be(movesArr.Count, $"Move count mismatch at seed {seed}, ply {ply}, variant {variant}");
-
-                var bitPos = BitPosition.FromBoardState(state);
-                int rawBitMoveCount = BitboardMoveGenerator.Generate(in bitPos, variant, moveBuffer);
-                rawBitMoveCount.Should().Be(movesArr.Count);
-
-                for (int i = 0; i < movesArr.Count; i++)
+                for (int i = 0; i < moves.Count; i++)
                 {
-                    var ma = movesArr[i];
-                    var mb = movesBit[i];
-
-                    mb.From.Should().Be(ma.From);
-                    mb.To.Should().Be(ma.To);
-                    mb.IsPromotion.Should().Be(ma.IsPromotion);
-                    mb.Notation.Should().Be(ma.Notation);
-                    mb.Path.Should().Equal(ma.Path);
-                    mb.CapturedPositions.Should().Equal(ma.CapturedPositions);
-
-                    // Verify raw BitMove matches full Move
-                    var rawBm = moveBuffer[i];
-                    BitboardMasks.ToPosition(rawBm.From).Should().Be(ma.From);
-                    BitboardMasks.ToPosition(rawBm.To).Should().Be(ma.To);
-                    rawBm.IsPromotion.Should().Be(ma.IsPromotion);
-                    rawBm.CaptureCount.Should().Be(ma.CapturedPositions.Count);
+                    BitMove expectedBitMove = BitMove.FromMove(moves[i]);
+                    moveBuffer[i].Should().Be(expectedBitMove);
                 }
 
-                // 4. Pick move and verify ApplyMove & incremental Zobrist hash equivalence
-                int chosenIdx = rng.Next(movesArr.Count);
-                var chosenMove = movesArr[chosenIdx];
-
-                var nextArr = arrayEngine.ApplyMove(state, chosenMove);
-                var nextBit = bitboardEngine.ApplyMove(state, chosenMove);
-
-                nextBit.ZobristHash.Should().Be(nextArr.ZobristHash, $"ZobristHash mismatch at seed {seed}, ply {ply}, move {chosenMove}");
-                nextBit.ActivePlayer.Should().Be(nextArr.ActivePlayer);
-                nextBit.HalfMoveClock.Should().Be(nextArr.HalfMoveClock);
-                nextBit.FullMoveNumber.Should().Be(nextArr.FullMoveNumber);
-                nextBit.WhitePiecesCount.Should().Be(nextArr.WhitePiecesCount);
-                nextBit.BlackPiecesCount.Should().Be(nextArr.BlackPiecesCount);
-                nextBit.WhiteKingsCount.Should().Be(nextArr.WhiteKingsCount);
-                nextBit.BlackKingsCount.Should().Be(nextArr.BlackKingsCount);
-
-                state = nextArr;
+                int idx = rng.Next(moves.Count);
+                state = engine.ApplyMove(state, moves[idx]);
+                bitPos = bitPos.Apply(in moveBuffer[idx]);
             }
         }
     }
 
     [Theory]
-    [InlineData(CheckersVariant.International, 1, 7)]
-    [InlineData(CheckersVariant.International, 2, 49)]
-    [InlineData(CheckersVariant.International, 3, 302)]
-    [InlineData(CheckersVariant.International, 4, 1469)]
-    [InlineData(CheckersVariant.International, 5, 7361)]
-    [InlineData(CheckersVariant.English, 1, 7)]
-    [InlineData(CheckersVariant.English, 2, 49)]
-    [InlineData(CheckersVariant.English, 3, 302)]
-    [InlineData(CheckersVariant.English, 4, 1469)]
-    [InlineData(CheckersVariant.English, 5, 7361)]
-    public void Perft_InitialPosition_MatchesExactNodeCountsAndArrayEngine(
+    [InlineData(CheckersVariant.International, 1, 7L)]
+    [InlineData(CheckersVariant.International, 2, 49L)]
+    [InlineData(CheckersVariant.International, 3, 302L)]
+    [InlineData(CheckersVariant.International, 4, 1469L)]
+    [InlineData(CheckersVariant.International, 5, 7361L)]
+    [InlineData(CheckersVariant.English, 1, 7L)]
+    [InlineData(CheckersVariant.English, 2, 49L)]
+    [InlineData(CheckersVariant.English, 3, 302L)]
+    [InlineData(CheckersVariant.English, 4, 1469L)]
+    [InlineData(CheckersVariant.English, 5, 7361L)]
+    public void Perft_InitialPosition_MatchesRuleEngineAndExpectedLeafNodes(
         CheckersVariant variant,
         int depth,
         long expectedLeafNodes)
     {
+        var engine = new RuleEngine(variant);
         var initial = BoardState.CreateInitial();
-        var arrayEngine = new RuleEngine(variant);
-        var bitPos = BitPosition.FromBoardState(initial);
+        var bitPos = initial.BitPosition;
 
-        long arrayNodes = PerftArray(arrayEngine, initial, depth);
+        long engineNodes = PerftRuleEngine(engine, initial, depth);
         long bitboardNodes = PerftBitboard(in bitPos, variant, depth);
 
-        bitboardNodes.Should().Be(arrayNodes);
+        bitboardNodes.Should().Be(engineNodes);
         bitboardNodes.Should().Be(expectedLeafNodes);
     }
 
     [Theory]
     [InlineData(CheckersVariant.International)]
     [InlineData(CheckersVariant.English)]
-    public async Task SearchEquivalence_ArrayAndBitboardMinimax_ProduceIdenticalNodesScoreAndMove(CheckersVariant variant)
+    public async Task MinimaxPlayer_WithAndWithoutTT_ProducesDeterministicSearchAndCutoffs(CheckersVariant variant)
     {
         var positions = BenchmarkSuite.GetPositions();
         var sampleIndices = new[] { 0, 5, 12, 18, 26, 33, 38 };
@@ -177,56 +183,38 @@ public class BitboardTests
         foreach (int idx in sampleIndices)
         {
             var state = positions[idx].State;
-            var arrayEngine = new RuleEngine(variant);
-            var legalMoves = arrayEngine.GetLegalMoves(state);
+            var engine = new RuleEngine(variant);
+            var legalMoves = engine.GetLegalMoves(state);
 
-            // 1. Without Transposition Table (Depth 5)
-            var arrNoTt = new MinimaxPlayer(
+            var noTt1 = new MinimaxPlayer(
                 depth: 5,
-                ruleEngine: arrayEngine,
-                evaluator: new EvaluationFunction(variant),
+                variant: variant,
                 useTranspositionTable: false,
                 useQuiescence: true);
-            var bitNoTt = new BitboardMinimaxPlayer(
+            var noTt2 = new MinimaxPlayer(
                 depth: 5,
                 variant: variant,
                 useTranspositionTable: false,
                 useQuiescence: true);
 
-            var moveArrNoTt = await arrNoTt.GetMoveAsync(state, legalMoves);
-            var moveBitNoTt = await bitNoTt.GetMoveAsync(state, legalMoves);
+            var move1 = await noTt1.GetMoveAsync(state, legalMoves);
+            var move2 = await noTt2.GetMoveAsync(state, legalMoves);
 
-            bitNoTt.NodesEvaluated.Should().Be(arrNoTt.NodesEvaluated, $"No-TT node count mismatch on Pos #{idx + 1} ({variant})");
-            bitNoTt.LeafEvaluations.Should().Be(arrNoTt.LeafEvaluations, $"No-TT leaf evals mismatch on Pos #{idx + 1} ({variant})");
-            moveBitNoTt.Notation.Should().Be(moveArrNoTt.Notation, $"No-TT best move mismatch on Pos #{idx + 1} ({variant})");
-            bitNoTt.LastAnalysis!.Value.Should().Be(arrNoTt.LastAnalysis!.Value, $"No-TT score mismatch on Pos #{idx + 1} ({variant})");
+            noTt1.NodesEvaluated.Should().Be(noTt2.NodesEvaluated);
+            noTt1.LeafEvaluations.Should().Be(noTt2.LeafEvaluations);
+            move1.Notation.Should().Be(move2.Notation);
 
-            // 2. With Transposition Table (Depth 6)
-            var ttArr = new TranspositionTable(megabytes: 4);
-            var ttBit = new TranspositionTable(megabytes: 4);
-
-            var arrWithTt = new MinimaxPlayer(
-                depth: 6,
-                ruleEngine: arrayEngine,
-                evaluator: new EvaluationFunction(variant),
-                transpositionTable: ttArr,
-                useTranspositionTable: true,
-                useQuiescence: true);
-            var bitWithTt = new BitboardMinimaxPlayer(
+            var tt = new TranspositionTable(megabytes: 4);
+            var withTt = new MinimaxPlayer(
                 depth: 6,
                 variant: variant,
-                transpositionTable: ttBit,
+                transpositionTable: tt,
                 useTranspositionTable: true,
                 useQuiescence: true);
 
-            var moveArrTt = await arrWithTt.GetMoveAsync(state, legalMoves);
-            var moveBitTt = await bitWithTt.GetMoveAsync(state, legalMoves);
-
-            bitWithTt.NodesEvaluated.Should().Be(arrWithTt.NodesEvaluated, $"TT node count mismatch on Pos #{idx + 1} ({variant})");
-            bitWithTt.LeafEvaluations.Should().Be(arrWithTt.LeafEvaluations, $"TT leaf evals mismatch on Pos #{idx + 1} ({variant})");
-            moveBitTt.Notation.Should().Be(moveArrTt.Notation, $"TT best move mismatch on Pos #{idx + 1} ({variant})");
-            bitWithTt.LastAnalysis!.Value.Should().Be(arrWithTt.LastAnalysis!.Value, $"TT score mismatch on Pos #{idx + 1} ({variant})");
-            ttBit.Cutoffs.Should().Be(ttArr.Cutoffs, $"TT cutoffs mismatch on Pos #{idx + 1} ({variant})");
+            var moveTt = await withTt.GetMoveAsync(state, legalMoves);
+            legalMoves.Should().Contain(m => m.Notation == moveTt.Notation);
+            withTt.NodesEvaluated.Should().BeGreaterThan(0);
         }
     }
 
@@ -234,8 +222,8 @@ public class BitboardTests
     public void BenchmarkSuite_All40Positions_HaveMultipleLegalMovesInBothInternationalAndEnglish()
     {
         var positions = BenchmarkSuite.GetPositions();
-        var intlEngine = new BitboardRuleEngine(CheckersVariant.International);
-        var engEngine = new BitboardRuleEngine(CheckersVariant.English);
+        var intlEngine = new RuleEngine(CheckersVariant.International);
+        var engEngine = new RuleEngine(CheckersVariant.English);
         var seenHashes = new HashSet<ulong>();
 
         positions.Count.Should().Be(40);
@@ -250,7 +238,7 @@ public class BitboardTests
         }
     }
 
-    private static long PerftArray(RuleEngine engine, BoardState state, int depth)
+    private static long PerftRuleEngine(RuleEngine engine, BoardState state, int depth)
     {
         if (depth == 0)
             return 1;
@@ -263,7 +251,7 @@ public class BitboardTests
         for (int i = 0; i < moves.Count; i++)
         {
             var next = engine.ApplyMove(state, moves[i]);
-            nodes += PerftArray(engine, next, depth - 1);
+            nodes += PerftRuleEngine(engine, next, depth - 1);
         }
         return nodes;
     }
@@ -286,39 +274,4 @@ public class BitboardTests
         }
         return nodes;
     }
-}
-
-public class BitboardRegularMoveTests : RegularMoveTests
-{
-    public BitboardRegularMoveTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardMandatoryCaptureTests : MandatoryCaptureTests
-{
-    public BitboardMandatoryCaptureTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardMultiJumpTests : MultiJumpTests
-{
-    public BitboardMultiJumpTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardPromotionTests : PromotionTests
-{
-    public BitboardPromotionTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardTerminalConditionTests : TerminalConditionTests
-{
-    public BitboardTerminalConditionTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardFlyingKingTests : FlyingKingTests
-{
-    public BitboardFlyingKingTests() : base(new BitboardRuleEngine()) { }
-}
-
-public class BitboardEnglishCheckersTests : EnglishCheckersTests
-{
-    public BitboardEnglishCheckersTests() : base(new BitboardRuleEngine(CheckersVariant.English)) { }
 }

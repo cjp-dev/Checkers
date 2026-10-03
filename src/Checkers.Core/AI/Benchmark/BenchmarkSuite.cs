@@ -196,7 +196,7 @@ public static class BenchmarkSuite
         if (branchingChildren < 2)
             return false;
 
-        var probePlayer = new BitboardMinimaxPlayer(
+        var probePlayer = new MinimaxPlayer(
             limits: SearchLimits.FixedDepth(5),
             variant: ruleEngine.Variant,
             useTranspositionTable: false,

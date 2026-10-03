@@ -100,18 +100,17 @@ public readonly record struct Piece(PieceColor Color, PieceType Type)
 * `PieceColor`: `White` (`0`) or `Black` (`1`).
 * `PieceType`: `Man` (`0`) or `King` (`1`).
 
-### `BoardState`
-The `BoardState` class represents an instantaneous snapshot of the entire game:
-* `Piece?[,] _grid`: 8x8 nullable array storing pieces on dark squares.
+### `BoardState` & `BitPosition` (64-Bit Bitboard Representation)
+The `BoardState` class represents an instantaneous snapshot of the entire game, backed directly by a value-type `BitPosition` (`Checkers.Core.Bitboards`) with zero array allocations:
+* `BitPosition BitPosition`: Packs the 8×8 board into four 64-bit unsigned integers (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), where bit `sq = Row * 8 + Col` (`0..63`) corresponds to `(Row, Col)`.
 * `PieceColor ActivePlayer`: Player whose turn it is (`White` moves first).
 * `int HalfMoveClock`: Counter tracking half-moves since the last capture or promotion (resets to 0 on captures/promotions; triggers draw at 80).
 * `int FullMoveNumber`: Incremented after each move completed by Black.
-* `int WhitePiecesCount`, `BlackPiecesCount`: Fast $O(1)$ piece totals.
-* `int WhiteKingsCount`, `BlackKingsCount`: Fast $O(1)$ crowned king totals.
-* `ulong ZobristHash`: Cached 64-bit hash.
+* `int WhitePiecesCount`, `BlackPiecesCount`: Hardware `BitOperations.PopCount` $O(1)$ piece totals.
+* `int WhiteKingsCount`, `BlackKingsCount`: Hardware `BitOperations.PopCount` $O(1)$ crowned king totals.
+* `ulong ZobristHash`: Incrementally maintained 64-bit Zobrist hash.
 
-### `BitPosition` (64-Bit Bitboard Representation)
-For high-speed move generation and Alpha-Beta tree search, `BitPosition` (`Checkers.Core.Bitboards`) packs the 8×8 board into four 64-bit unsigned integers (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), where bit `sq = Row * 8 + Col` (`0..63`) corresponds to `(Row, Col)`. See [Chapter 15 – Bitboards](15-bitboards.md) for the complete architecture and benchmarks.
+See [Chapter 15 – Bitboards](15-bitboards.md) for the complete bitboard architecture and empirical benchmarks comparing the bitboard representation against the original `Piece?[8, 8]` array engine.
 
 ---
 

@@ -4,16 +4,16 @@
 
 ## In short
 
-While `BoardState` (`Piece?[8, 8]`) provides a clean, object-oriented domain model for UI binding and PDN serialization, cloning a heap-allocated `Piece?[8, 8]` array and allocating `List<Move>` / `List<Position>` at every node of an Alpha-Beta search tree creates substantial memory-bandwidth and garbage-collection overhead.
+In the initial implementation of `Checkers.Core`, `BoardState` stored pieces in a heap-allocated `Piece?[8, 8]` array, and cloning that array alongside `List<Move>` / `List<Position>` allocations at every node of an Alpha-Beta search tree created substantial memory-bandwidth and garbage-collection overhead.
 
-To maximize search throughput while preserving **100% behavioral and node-for-node search equivalence**, `Checkers.Core` includes a complete **64-bit Bitboard Engine** (`Checkers.Core.Bitboards`) used as the default engine via `EngineFactory`:
-- **`BitPosition` (`struct`, 48 bytes):** Represents the entire board using four `ulong` bitboards (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), an incrementally maintained 64-bit Zobrist `Hash`, `HalfMoveClock`, and `SideToMove`.
+To maximize search throughput while preserving **100% behavioral and node-for-node search equivalence**, `Checkers.Core` was refactored to a pure **64-bit Bitboard Engine** (`Checkers.Core.Bitboards`), backing `BoardState`, `RuleEngine`, `EvaluationFunction`, and `MinimaxPlayer` directly by 64-bit bitboards:
+- **`BitPosition` (`struct`, 48 bytes):** Represents the entire board using four `ulong` bitboards (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), an incrementally maintained 64-bit Zobrist `Hash`, `HalfMoveClock`, and `SideToMove`. `BoardState` wraps `BitPosition` directly with zero array allocation.
 - **`BitMove` (`readonly record struct`, 16 bytes):** Value-type move representation storing `ulong Captured` (all jumped squares as a bitmask), `byte From`, `byte To`, and `bool IsPromotion` with zero heap allocations.
-- **`BitboardMoveGenerator`:** Generates legal moves into stack/per-ply `Span<BitMove>` buffers using parallel 64-bit shift-and-mask operations for Men and English 1-Step Kings, and hardware `BitOperations.TrailingZeroCount` / `LeadingZeroCount` diagonal ray scans for International Flying Kings.
-- **`BitboardEvaluation`:** Computes the exact same static evaluation as `EvaluationFunction` using hardware `BitOperations.PopCount` (`POPCNT` instruction) and precomputed row/center masks instead of 64-square loops.
-- **`BitboardMinimaxPlayer`:** Allocation-free Negamax Alpha-Beta search using value-type copy-make (`BitPosition next = pos.Apply(in move)`), preallocated per-ply `BitMove[][]` buffers, single move generation per node (reusing root legal moves for `HasAnyLegalMove`), and in-place insertion sort.
+- **`BitboardMoveGenerator` & `RuleEngine`:** Generates legal moves into stack/per-ply `Span<BitMove>` buffers using parallel 64-bit shift-and-mask operations for Men and English 1-Step Kings, and hardware `BitOperations.TrailingZeroCount` / `LeadingZeroCount` diagonal ray scans for International Flying Kings.
+- **`EvaluationFunction`:** Computes the exact same static evaluation using hardware `BitOperations.PopCount` (`POPCNT` instruction) and precomputed row/center masks instead of 64-square loops.
+- **`MinimaxPlayer`:** Allocation-free Negamax Alpha-Beta search using value-type copy-make (`BitPosition next = pos.Apply(in move)`), preallocated per-ply `BitMove[][]` buffers, single move generation per node, and in-place insertion sort.
 
-Across the 40-position benchmark suite, the bitboard engine evaluates the **exact same number of nodes, leaf evaluations, and TT cutoffs** as the array engine while delivering:
+Across the 40-position benchmark suite, the bitboard engine evaluated the **exact same number of nodes, leaf evaluations, and TT cutoffs** as the original `Piece?[8, 8]` array engine while delivering:
 - **63x–65x speedup** on standard depths (7–9 plies, No-TT) and **23.6x–24.0x speedup** with the 1M Transposition Table.
 - **50.4x–53.8x speedup** on deep searches (~5s/pos baseline, 7–14 plies, ~95M nodes, No-TT) and **25.1x–25.6x speedup** with the 1M Transposition Table (**>208x–222x combined speedup** over the uncached array baseline).
 
@@ -99,24 +99,24 @@ For Flying Kings, ray attacks along each of the 4 diagonal directions (`UL`, `UR
 
 ---
 
-## Bitboard Static Evaluation (`BitboardEvaluation.cs`)
+## Bitboard Static Evaluation (`EvaluationFunction.cs`)
 
-`BitboardEvaluation.Evaluate(in BitPosition pos, CheckersVariant variant)` replaces the 64-square nested array loop in `EvaluationFunction.cs` with hardware `BitOperations.PopCount` instructions:
+`EvaluationFunction.Evaluate(in BitPosition pos, CheckersVariant variant)` replaces the 64-square nested array loop with hardware `BitOperations.PopCount` instructions:
 
 1. **Material:**
    $$\text{Score}_{\text{mat}} = 100 \cdot \bigl(\text{PopCount}(W_M) - \text{PopCount}(B_M)\bigr) + W_{\text{king}} \cdot \bigl(\text{PopCount}(W_K) - \text{PopCount}(B_K)\bigr)$$
    where $W_{\text{king}} = 300$ (`International`) or $170$ (`English`).
 2. **Advancement Bonus:** Computed per rank using `BitOperations.PopCount(pos.WhiteMen & BitboardMasks.Rows[r]) * ((7 - r) * 5)`.
-3. **Center Control (`+12`):** `12 * (PopCount(pos.WhitePieces & CenterMask) - PopCount(pos.BlackPieces & CenterMask))`.
+3. **Center Control (`+12`):** `12 * (PopCount(pos.White & CenterMask) - PopCount(pos.Black & CenterMask))`.
 4. **English King Centralization (`+10`):** `10 * (PopCount(pos.WhiteKings & KingCenterMask) - PopCount(pos.BlackKings & KingCenterMask))`.
 
 ---
 
-## Value-Type Copy-Make Search (`BitboardMinimaxPlayer.cs`)
+## Value-Type Copy-Make Search (`MinimaxPlayer.cs`)
 
 ```mermaid
 flowchart LR
-    Root["BoardState (Root)"] --> Convert["BitPosition.FromBoardState(state)"]
+    Root["BoardState (Root)"] --> Convert["state.BitPosition (O(1))"]
     Convert --> ID["Iterative Deepening (d = 1..MaxDepth)"]
     ID --> Negamax["Negamax(in BitPosition, depth, ply, α, β)"]
     Negamax --> Gen["BitboardMoveGenerator.Generate(in pos, Span&lt;BitMove&gt;)"]
@@ -125,10 +125,10 @@ flowchart LR
     CopyMake --> Negamax
 ```
 
-Unlike `MinimaxPlayer`, which clones a `BoardState` object on the managed heap and calls `RuleEngine.GetLegalMoves` twice per internal node (once via `EvaluateGameStatus` and once for child expansion), `BitboardMinimaxPlayer`:
-1. Generates moves **once** into a preallocated per-ply buffer `_plyMoves[ply]` (`BitMove[128]`).
-2. If `moveCount == 0`, immediately returns `-WinScore + ply` (opponent has no legal moves) without calling a second move generator.
-3. Orders moves in-place using a zero-allocation insertion sort matching `MinimaxPlayer`'s exact priority weights (`TT Hash Move = 1,000,000`, `Multi-Jump = 10,000 * capturedCount`, `Promotion = 5,000`, `PV Move = 500,000`).
+Unlike the original array-based `MinimaxPlayer`, which cloned a `Piece?[8, 8]` `BoardState` on the managed heap and called `RuleEngine.GetLegalMoves` twice per internal node (once via `EvaluateGameStatus` and once for child expansion), the bitboard `MinimaxPlayer`:
+1. Generates moves **once** into a preallocated per-ply buffer `_moveBuffers[ply]` (`BitMove[128]`).
+2. If `moveCount == 0`, immediately returns `LossScore + ply` (opponent has no legal moves) without calling a second move generator.
+3. Orders moves in-place using a zero-allocation stable insertion sort preserving exact priority order (`TT Hash Move`, `CaptureCount` descending, `IsPromotion` descending).
 4. Applies each move via `BitPosition next = pos.Apply(in move)`, copying 48 bytes on the stack and updating `Hash` with 2–4 XOR operations.
 
 ---

@@ -1,21 +1,27 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using Checkers.Core.Bitboards;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
 namespace Checkers.Core.AI;
 
 /// <summary>
-/// Minimax AI with Alpha-Beta pruning, iterative deepening, PV and TT move ordering,
+/// High-performance 64-bit Bitboard Minimax AI with Alpha-Beta pruning, iterative deepening, PV and TT move ordering,
 /// 64-bit Zobrist transposition table, quiescence search, live progress reporting, and time controls.
+/// Uses value-type <see cref="BitPosition"/> copy-make and preallocated per-ply <see cref="BitMove"/> buffers.
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
     private const int WinScore = 100_000;
     private const int LossScore = -100_000;
+    private const int MaxPly = 64;
+    private const int MaxMovesPerNode = 128;
 
-    private readonly IRuleEngine _ruleEngine;
-    private readonly IEvaluationFunction _evaluator;
+    private readonly CheckersVariant _variant;
+    private readonly IEvaluationFunction? _customEvaluator;
+    private readonly BitMove[][] _moveBuffers;
 
     public string Name { get; }
     public SearchLimits Limits { get; }
@@ -35,9 +41,15 @@ public sealed class MinimaxPlayer : IPlayer
         IEvaluationFunction? evaluator = null,
         TranspositionTable? transpositionTable = null,
         bool useTranspositionTable = true,
-        bool useQuiescence = true)
+        bool useQuiescence = true,
+        CheckersVariant? variant = null)
     {
         Limits = limits;
+        _variant = variant
+            ?? ruleEngine?.Variant
+            ?? (evaluator as EvaluationFunction)?.Variant
+            ?? CheckersVariant.International;
+        _customEvaluator = evaluator is null or EvaluationFunction ? null : evaluator;
         Name = name ?? limits.Mode switch
         {
             TimeControlMode.FixedDepth => $"Minimax (Depth {limits.Depth})",
@@ -45,12 +57,16 @@ public sealed class MinimaxPlayer : IPlayer
             TimeControlMode.TimePerGame => "Minimax (Clock)",
             _ => "Minimax AI"
         };
-        _ruleEngine = ruleEngine ?? new RuleEngine();
-        _evaluator = evaluator ?? new EvaluationFunction(_ruleEngine.Variant);
         TranspositionTable = useTranspositionTable
             ? (transpositionTable ?? new TranspositionTable(megabytes: 32))
             : null;
         UseQuiescence = useQuiescence;
+
+        _moveBuffers = new BitMove[MaxPly][];
+        for (int i = 0; i < MaxPly; i++)
+        {
+            _moveBuffers[i] = new BitMove[MaxMovesPerNode];
+        }
     }
 
     public MinimaxPlayer(
@@ -60,10 +76,17 @@ public sealed class MinimaxPlayer : IPlayer
         IEvaluationFunction? evaluator = null,
         TranspositionTable? transpositionTable = null,
         bool useTranspositionTable = true,
-        bool useQuiescence = true)
-        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence)
+        bool useQuiescence = true,
+        CheckersVariant? variant = null)
+        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence, variant)
     {
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int EvaluatePosition(in BitPosition pos) =>
+        _customEvaluator != null
+            ? _customEvaluator.Evaluate(pos.ToBoardState(1))
+            : EvaluationFunction.Evaluate(in pos, _variant);
 
     public ValueTask<Move> GetMoveAsync(
         BoardState state,
@@ -82,7 +105,6 @@ public sealed class MinimaxPlayer : IPlayer
         if (legalMoves.Count == 0)
             throw new InvalidOperationException("No legal moves available.");
 
-        // If only 1 move is legal, play it immediately
         if (legalMoves.Count == 1)
         {
             var singleMove = legalMoves[0];
@@ -111,7 +133,6 @@ public sealed class MinimaxPlayer : IPlayer
 
         TranspositionTable?.NewSearch();
 
-        // Compute time budgets (soft and hard limits in milliseconds)
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
         int maxTargetDepth = Limits.Mode == TimeControlMode.FixedDepth ? Limits.Depth : 20;
@@ -130,27 +151,32 @@ public sealed class MinimaxPlayer : IPlayer
             softLimitMs = (hardLimitMs * 2) / 3;
         }
 
+        BitPosition rootPos = state.BitPosition;
+
+        var currentOrder = legalMoves
+            .OrderByDescending(m => m.CapturedPositions.Count)
+            .ThenByDescending(m => m.IsPromotion ? 1 : 0)
+            .Select(m => (Move: m, BitMove: BitMove.FromMove(m)))
+            .ToList();
+
         Move? bestMoveOverall = null;
         int bestScoreOverall = 0;
         int completedDepth = 1;
 
-        var currentOrder = OrderMoves(legalMoves, null).ToList();
-
-        // Iterative Deepening from depth 1 up to maxTargetDepth
         for (int d = 1; d <= maxTargetDepth; d++)
         {
-            // If soft limit reached after finishing previous depth, stop iterating
             if (d > 1 && sw.ElapsedMilliseconds >= softLimitMs)
                 break;
 
-            Move? bestMoveThisDepth = null;
+            (Move Move, BitMove BitMove)? bestEntryThisDepth = null;
             int bestScoreThisDepth = int.MinValue;
             int alpha = -200_000;
             int beta = 200_000;
             bool depthAborted = false;
 
-            foreach (var move in currentOrder)
+            for (int i = 0; i < currentOrder.Count; i++)
             {
+                var entry = currentOrder[i];
                 cancellationToken.ThrowIfCancellationRequested();
                 if (sw.ElapsedMilliseconds >= hardLimitMs)
                 {
@@ -158,9 +184,9 @@ public sealed class MinimaxPlayer : IPlayer
                     break;
                 }
 
-                var nextState = _ruleEngine.ApplyMove(state, move);
+                BitPosition nextPos = rootPos.Apply(in entry.BitMove);
                 int score = -NegaMax(
-                    nextState,
+                    in nextPos,
                     d - 1,
                     -beta,
                     -alpha,
@@ -171,7 +197,7 @@ public sealed class MinimaxPlayer : IPlayer
                     progress,
                     ref lastReportMs,
                     d,
-                    move,
+                    entry.Move,
                     bestMoveOverall,
                     bestScoreOverall,
                     out bool aborted);
@@ -185,21 +211,23 @@ public sealed class MinimaxPlayer : IPlayer
                 if (score > bestScoreThisDepth)
                 {
                     bestScoreThisDepth = score;
-                    bestMoveThisDepth = move;
+                    bestEntryThisDepth = entry;
                 }
 
-                alpha = Math.Max(alpha, score);
+                if (score > alpha)
+                {
+                    alpha = score;
+                }
 
-                // Periodically report search heartbeat between root moves and yield to browser dispatcher
                 if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 150)
                 {
                     lastReportMs = sw.ElapsedMilliseconds;
                     var heartbeatAnalysis = new SearchAnalysis
                     {
-                        Move = move.Notation,
+                        Move = entry.Move.Notation,
                         Depth = $"{d} plies...",
                         Value = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
-                        BestMove = bestMoveThisDepth?.Notation ?? bestMoveOverall?.Notation ?? move.Notation,
+                        BestMove = bestEntryThisDepth?.Move.Notation ?? bestMoveOverall?.Notation ?? entry.Move.Notation,
                         Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
                         Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
                         Time = sw.Elapsed.ToString(@"m\:ss\.f")
@@ -209,17 +237,15 @@ public sealed class MinimaxPlayer : IPlayer
                 }
             }
 
-            if (!depthAborted && bestMoveThisDepth != null)
+            if (!depthAborted && bestEntryThisDepth.HasValue)
             {
-                bestMoveOverall = bestMoveThisDepth;
+                bestMoveOverall = bestEntryThisDepth.Value.Move;
                 bestScoreOverall = bestScoreThisDepth;
                 completedDepth = d;
 
-                // PV move ordering: prioritize the best move found in this depth
-                currentOrder.Remove(bestMoveThisDepth);
-                currentOrder.Insert(0, bestMoveThisDepth);
+                currentOrder.Remove(bestEntryThisDepth.Value);
+                currentOrder.Insert(0, bestEntryThisDepth.Value);
 
-                // Report completed depth iteration live to progress listener
                 var iterationAnalysis = new SearchAnalysis
                 {
                     Move = bestMoveOverall.Notation,
@@ -239,7 +265,6 @@ public sealed class MinimaxPlayer : IPlayer
                     await Task.Delay(1, cancellationToken);
                 }
 
-                // Stop early if forced win found
                 if (bestScoreOverall >= 90_000)
                     break;
             }
@@ -251,7 +276,7 @@ public sealed class MinimaxPlayer : IPlayer
 
         sw.Stop();
 
-        bestMoveOverall ??= currentOrder[0];
+        bestMoveOverall ??= currentOrder[0].Move;
 
         LastAnalysis = new SearchAnalysis
         {
@@ -270,7 +295,7 @@ public sealed class MinimaxPlayer : IPlayer
     }
 
     private int NegaMax(
-        BoardState state,
+        in BitPosition pos,
         int depth,
         int alpha,
         int beta,
@@ -297,7 +322,6 @@ public sealed class MinimaxPlayer : IPlayer
                 return 0;
             }
 
-            // Periodically report search heartbeat during long depth evaluations
             if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 200)
             {
                 lastReportMs = sw.ElapsedMilliseconds;
@@ -316,28 +340,37 @@ public sealed class MinimaxPlayer : IPlayer
 
         NodesEvaluated++;
 
-        var (status, _) = _ruleEngine.EvaluateGameStatus(state);
-        if (status != GameStatus.InProgress)
+        // Fast terminal status check matching RuleEngine.EvaluateGameStatus
+        ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
+        if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
         {
-            if (status == GameStatus.Draw)
-                return 0;
-
-            // Current player lost/blocked/eliminated
             return LossScore + ply;
+        }
+        if (pos.HalfMoveClock >= 80)
+        {
+            return 0;
         }
 
         int originalAlpha = alpha;
-        Move? ttMove = null;
         Position ttFrom = default;
         Position ttTo = default;
+        bool hasTtMove = false;
+        byte ttFromSq = 0;
+        byte ttToSq = 0;
 
         // Transposition Table Probe
         if (TranspositionTable != null &&
-            TranspositionTable.TryProbe(state.ZobristHash, depth, alpha, beta, ply, out int ttScore, out ttFrom, out ttTo, out bool hasCutoff))
+            TranspositionTable.TryProbe(pos.Hash, depth, alpha, beta, ply, out int ttScore, out ttFrom, out ttTo, out bool hasCutoff))
         {
             if (hasCutoff)
             {
                 return ttScore;
+            }
+            if (ttFrom.IsValid && ttTo.IsValid)
+            {
+                hasTtMove = true;
+                ttFromSq = (byte)BitboardMasks.ToSquareIndex(ttFrom);
+                ttToSq = (byte)BitboardMasks.ToSquareIndex(ttTo);
             }
         }
 
@@ -346,32 +379,31 @@ public sealed class MinimaxPlayer : IPlayer
         {
             if (UseQuiescence)
             {
-                return Quiescence(state, alpha, beta, ply, sw, hardLimitMs, cancellationToken, out aborted);
+                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, out aborted);
             }
             LeafEvaluations++;
-            return _evaluator.Evaluate(state);
+            return EvaluatePosition(in pos);
         }
 
-        var legalMoves = _ruleEngine.GetLegalMoves(state);
-        if (legalMoves.Count == 0)
+        Span<BitMove> moveBuffer = ply < MaxPly ? _moveBuffers[ply] : stackalloc BitMove[MaxMovesPerNode];
+        int moveCount = BitboardMoveGenerator.Generate(in pos, _variant, moveBuffer);
+        if (moveCount == 0)
         {
             return LossScore + ply;
         }
 
-        if (TranspositionTable != null && ttFrom.IsValid && ttTo.IsValid)
-        {
-            ttMove = legalMoves.FirstOrDefault(m => m.From == ttFrom && m.To == ttTo);
-        }
+        Span<BitMove> moves = moveBuffer.Slice(0, moveCount);
+        OrderBitMoves(moves, ttFromSq, ttToSq, hasTtMove);
 
-        var orderedMoves = OrderMoves(legalMoves, ttMove);
-        Move? bestMoveThisNode = null;
+        BitMove bestMoveThisNode = default;
+        bool hasBestMove = false;
         int maxScore = int.MinValue;
 
-        foreach (var move in orderedMoves)
+        for (int i = 0; i < moves.Length; i++)
         {
-            var nextState = _ruleEngine.ApplyMove(state, move);
+            BitPosition nextPos = pos.Apply(in moves[i]);
             int score = -NegaMax(
-                nextState,
+                in nextPos,
                 depth - 1,
                 -beta,
                 -alpha,
@@ -393,14 +425,17 @@ public sealed class MinimaxPlayer : IPlayer
             if (score > maxScore)
             {
                 maxScore = score;
-                bestMoveThisNode = move;
+                bestMoveThisNode = moves[i];
+                hasBestMove = true;
             }
 
-            alpha = Math.Max(alpha, score);
+            if (score > alpha)
+            {
+                alpha = score;
+            }
 
             if (alpha >= beta)
             {
-                // Beta cutoff
                 break;
             }
         }
@@ -417,20 +452,20 @@ public sealed class MinimaxPlayer : IPlayer
                 bound = TranspositionBound.Exact;
 
             TranspositionTable.Store(
-                state.ZobristHash,
+                pos.Hash,
                 depth,
                 maxScore,
                 bound,
                 ply,
-                bestMoveThisNode?.From ?? default,
-                bestMoveThisNode?.To ?? default);
+                hasBestMove ? BitboardMasks.Positions[bestMoveThisNode.From] : default,
+                hasBestMove ? BitboardMasks.Positions[bestMoveThisNode.To] : default);
         }
 
         return maxScore;
     }
 
     private int Quiescence(
-        BoardState state,
+        in BitPosition pos,
         int alpha,
         int beta,
         int ply,
@@ -453,13 +488,17 @@ public sealed class MinimaxPlayer : IPlayer
 
         NodesEvaluated++;
 
-        var (status, _) = _ruleEngine.EvaluateGameStatus(state);
-        if (status != GameStatus.InProgress)
+        ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
+        if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
         {
-            return status == GameStatus.Draw ? 0 : LossScore + ply;
+            return LossScore + ply;
+        }
+        if (pos.HalfMoveClock >= 80)
+        {
+            return 0;
         }
 
-        int standPat = _evaluator.Evaluate(state);
+        int standPat = EvaluatePosition(in pos);
         LeafEvaluations++;
 
         if (standPat >= beta)
@@ -472,28 +511,25 @@ public sealed class MinimaxPlayer : IPlayer
             alpha = standPat;
         }
 
-        // Limit maximum quiescence search extension to prevent runaway search
         if (ply >= 24)
         {
             return alpha;
         }
 
-        var legalMoves = _ruleEngine.GetLegalMoves(state);
-        var captureMoves = legalMoves.Where(m => m.IsCapture).ToList();
-
-        // In Checkers, if there are captures, mandatory jumping applies.
-        // If there are no captures, the position is quiet.
-        if (captureMoves.Count == 0)
+        Span<BitMove> moveBuffer = ply < MaxPly ? _moveBuffers[ply] : stackalloc BitMove[MaxMovesPerNode];
+        int captureCount = BitboardMoveGenerator.GenerateCaptures(in pos, _variant, moveBuffer);
+        if (captureCount == 0)
         {
             return alpha;
         }
 
-        var orderedCaptures = OrderMoves(captureMoves, null);
+        Span<BitMove> captures = moveBuffer.Slice(0, captureCount);
+        OrderBitMoves(captures, 0, 0, hasTtMove: false);
 
-        foreach (var move in orderedCaptures)
+        for (int i = 0; i < captures.Length; i++)
         {
-            var nextState = _ruleEngine.ApplyMove(state, move);
-            int score = -Quiescence(nextState, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
+            BitPosition nextPos = pos.Apply(in captures[i]);
+            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, out aborted);
 
             if (aborted)
                 return 0;
@@ -512,25 +548,47 @@ public sealed class MinimaxPlayer : IPlayer
         return alpha;
     }
 
-    private static IReadOnlyList<Move> OrderMoves(IEnumerable<Move> moves, Move? ttMove = null)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void OrderBitMoves(Span<BitMove> moves, byte ttFrom, byte ttTo, bool hasTtMove)
     {
-        var list = moves
-            .OrderByDescending(m => m.CapturedPositions.Count) // Multi-jumps first
-            .ThenByDescending(m => m.IsPromotion ? 1 : 0)     // Promotions next
-            .ToList();
-
-        if (ttMove != null)
+        for (int i = 1; i < moves.Length; i++)
         {
-            int index = list.FindIndex(m => m.From == ttMove.From && m.To == ttMove.To);
-            if (index > 0)
+            BitMove current = moves[i];
+            int currentKey = (current.CaptureCount << 1) | (current.IsPromotion ? 1 : 0);
+            if (currentKey == 0)
+                continue;
+
+            int j = i - 1;
+            while (j >= 0)
             {
-                var move = list[index];
-                list.RemoveAt(index);
-                list.Insert(0, move);
+                int prevKey = (moves[j].CaptureCount << 1) | (moves[j].IsPromotion ? 1 : 0);
+                if (prevKey >= currentKey)
+                    break;
+                moves[j + 1] = moves[j];
+                j--;
             }
+            moves[j + 1] = current;
         }
 
-        return list;
+        if (hasTtMove)
+        {
+            for (int i = 0; i < moves.Length; i++)
+            {
+                if (moves[i].From == ttFrom && moves[i].To == ttTo)
+                {
+                    if (i > 0)
+                    {
+                        BitMove ttMove = moves[i];
+                        for (int j = i; j > 0; j--)
+                        {
+                            moves[j] = moves[j - 1];
+                        }
+                        moves[0] = ttMove;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     private static string FormatValue(int score) => score switch

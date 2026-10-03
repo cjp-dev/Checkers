@@ -1,18 +1,14 @@
+using Checkers.Core.Bitboards;
 using Checkers.Core.Models;
 
 namespace Checkers.Core.Engine;
 
 /// <summary>
-/// Checkers rule engine implementing 8x8 Draughts with Flying Kings,
-/// strict mandatory captures, and free choice among capture sequences.
+/// Pure rule engine for 8x8 Draughts, backed by 64-bit bitboards (<see cref="BitPosition"/> and <see cref="BitboardMoveGenerator"/>).
+/// Supports both International Draughts (Flying Kings) and English Checkers (1-Step Kings).
 /// </summary>
 public sealed class RuleEngine : IRuleEngine
 {
-    private static readonly (int dRow, int dCol)[] AllDiagonals =
-    [
-        (-1, -1), (-1, 1), (1, -1), (1, 1)
-    ];
-
     public CheckersVariant Variant { get; }
 
     public RuleEngine(CheckersVariant variant = CheckersVariant.International)
@@ -22,125 +18,43 @@ public sealed class RuleEngine : IRuleEngine
 
     public IReadOnlyList<Move> GetLegalMoves(BoardState state)
     {
-        var captureMoves = new List<Move>();
-
-        // 1. Scan for captures
-        for (int r = 0; r < 8; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var piece = state.GetPiece(r, c);
-                if (piece.HasValue && piece.Value.Color == state.ActivePlayer)
-                {
-                    var pos = new Position(r, c);
-                    if (piece.Value.IsMan)
-                    {
-                        FindManCaptures(state, pos, pos, [pos], [], captureMoves);
-                    }
-                    else if (Variant == CheckersVariant.English)
-                    {
-                        FindEnglishKingCaptures(state, pos, pos, [pos], [], captureMoves);
-                    }
-                    else
-                    {
-                        FindFlyingKingCaptures(state, pos, pos, [pos], [], captureMoves);
-                    }
-                }
-            }
-        }
-
-        // Strict Mandatory Capture: if captures exist, ONLY captures are legal
-        if (captureMoves.Count > 0)
-        {
-            return captureMoves;
-        }
-
-        // 2. Generate quiet moves
-        var quietMoves = new List<Move>();
-        for (int r = 0; r < 8; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var piece = state.GetPiece(r, c);
-                if (piece.HasValue && piece.Value.Color == state.ActivePlayer)
-                {
-                    var pos = new Position(r, c);
-                    if (piece.Value.IsMan)
-                    {
-                        FindManQuietMoves(state, pos, piece.Value, quietMoves);
-                    }
-                    else if (Variant == CheckersVariant.English)
-                    {
-                        FindEnglishKingQuietMoves(state, pos, quietMoves);
-                    }
-                    else
-                    {
-                        FindFlyingKingQuietMoves(state, pos, quietMoves);
-                    }
-                }
-            }
-        }
-
-        return quietMoves;
+        var bitPos = state.BitPosition;
+        return BitboardMoveGenerator.GenerateMoves(in bitPos, Variant);
     }
 
     public bool IsLegalMove(BoardState state, Move move)
     {
         var legalMoves = GetLegalMoves(state);
-        return legalMoves.Any(m =>
-            m.From == move.From &&
-            m.To == move.To &&
-            m.CapturedPositions.Count == move.CapturedPositions.Count &&
-            m.CapturedPositions.SequenceEqual(move.CapturedPositions) &&
-            m.Path.SequenceEqual(move.Path));
+        for (int i = 0; i < legalMoves.Count; i++)
+        {
+            var m = legalMoves[i];
+            if (m.From == move.From &&
+                m.To == move.To &&
+                m.CapturedPositions.Count == move.CapturedPositions.Count &&
+                m.CapturedPositions.SequenceEqual(move.CapturedPositions) &&
+                m.Path.SequenceEqual(move.Path))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public BoardState ApplyMove(BoardState state, Move move)
     {
-        var clone = state.Clone();
-        var piece = clone.GetPiece(move.From);
-
+        var piece = state.GetPiece(move.From);
         if (!piece.HasValue)
             throw new InvalidOperationException($"No piece exists at start position {move.From}.");
 
-        // Clear original square
-        clone.SetPiece(move.From, null);
+        var bitPos = state.BitPosition;
+        var bitMove = BitMove.FromMove(move);
+        var nextBitPos = bitPos.Apply(in bitMove);
 
-        // Remove all captured pieces
-        foreach (var capPos in move.CapturedPositions)
-        {
-            clone.SetPiece(capPos, null);
-        }
+        int nextFullMove = state.ActivePlayer == PieceColor.Black
+            ? state.FullMoveNumber + 1
+            : state.FullMoveNumber;
 
-        // Determine promotion
-        var finalPiece = (piece.Value.IsMan && move.IsPromotion) ? piece.Value.Crown() : piece.Value;
-
-        // Place piece on destination square
-        clone.SetPiece(move.To, finalPiece);
-
-        // Update HalfMoveClock for 40-move draw rule (reset on capture or promotion)
-        if (move.IsCapture || move.IsPromotion)
-        {
-            clone.HalfMoveClock = 0;
-        }
-        else
-        {
-            clone.HalfMoveClock++;
-        }
-
-        // Update FullMoveNumber after Black moves
-        if (clone.ActivePlayer == PieceColor.Black)
-        {
-            clone.FullMoveNumber++;
-        }
-
-        // Switch active turn
-        clone.ActivePlayer = clone.ActivePlayer.Opponent();
-
-        // Recalculate state hash
-        clone.RecalculateHash();
-
-        return clone;
+        return nextBitPos.ToBoardState(nextFullMove);
     }
 
     public (GameStatus Status, GameOverReason Reason) EvaluateGameStatus(
@@ -157,9 +71,9 @@ public sealed class RuleEngine : IRuleEngine
             return (GameStatus.WhiteWon, GameOverReason.OpponentPiecesEliminated);
         }
 
-        // 2. Check no legal moves (blocked)
-        var legalMoves = GetLegalMoves(state);
-        if (legalMoves.Count == 0)
+        // 2. Check no legal moves (blocked) using fast O(1) bitboard check
+        var bitPos = state.BitPosition;
+        if (!BitboardMoveGenerator.HasAnyLegalMove(in bitPos, Variant))
         {
             return state.ActivePlayer == PieceColor.White
                 ? (GameStatus.BlackWon, GameOverReason.OpponentNoLegalMoves)
@@ -175,298 +89,17 @@ public sealed class RuleEngine : IRuleEngine
         // 4. Threefold repetition
         if (stateHashHistory != null)
         {
-            int repetitions = stateHashHistory.Count(h => h == state.ZobristHash);
-            if (repetitions >= 3)
+            int repetitions = 0;
+            ulong targetHash = state.ZobristHash;
+            for (int i = 0; i < stateHashHistory.Count; i++)
             {
-                return (GameStatus.Draw, GameOverReason.ThreefoldRepetition);
+                if (stateHashHistory[i] == targetHash && ++repetitions >= 3)
+                {
+                    return (GameStatus.Draw, GameOverReason.ThreefoldRepetition);
+                }
             }
         }
 
         return (GameStatus.InProgress, GameOverReason.None);
     }
-
-    #region Man Move Generation
-
-    private static void FindManQuietMoves(
-        BoardState state,
-        Position from,
-        Piece piece,
-        List<Move> quietMoves)
-    {
-        int forwardRow = piece.Color == PieceColor.White ? -1 : 1;
-        int targetRow = piece.Color == PieceColor.White ? 0 : 7;
-
-        foreach (int dCol in new[] { -1, 1 })
-        {
-            var dest = from.Offset(forwardRow, dCol);
-            if (dest.IsValid && dest.IsDarkSquare && state.GetPiece(dest) == null)
-            {
-                bool isPromotion = dest.Row == targetRow;
-                quietMoves.Add(Move.CreateQuiet(from, dest, isPromotion));
-            }
-        }
-    }
-
-    private static void FindManCaptures(
-        BoardState state,
-        Position initialFrom,
-        Position currentPos,
-        List<Position> pathSoFar,
-        List<Position> capturedSoFar,
-        List<Move> resultMoves)
-    {
-        var playerColor = state.ActivePlayer;
-        int forwardRow = playerColor == PieceColor.White ? -1 : 1;
-        int crownRow = playerColor == PieceColor.White ? 0 : 7;
-
-        foreach (int dCol in new[] { -1, 1 })
-        {
-            var jumpedPos = currentPos.Offset(forwardRow, dCol);
-            var landingPos = currentPos.Offset(2 * forwardRow, 2 * dCol);
-
-            if (!landingPos.IsValid || !landingPos.IsDarkSquare)
-                continue;
-
-            // Landing square must be empty (or start of path if circular jump)
-            if (state.GetPiece(landingPos) != null && landingPos != initialFrom)
-                continue;
-
-            // Must jump over opponent piece that hasn't been jumped yet in this sequence
-            var jumpedPiece = state.GetPiece(jumpedPos);
-            if (jumpedPiece.HasValue &&
-                jumpedPiece.Value.Color == playerColor.Opponent() &&
-                !capturedSoFar.Contains(jumpedPos))
-            {
-                var newPath = new List<Position>(pathSoFar) { landingPos };
-                var newCaptured = new List<Position>(capturedSoFar) { jumpedPos };
-
-                // Promotion rule: reaching crown row promotes man and ends turn immediately
-                if (landingPos.Row == crownRow)
-                {
-                    resultMoves.Add(Move.CreateCapture(
-                        initialFrom,
-                        landingPos,
-                        newPath,
-                        newCaptured,
-                        isPromotion: true));
-                }
-                else
-                {
-                    // Search recursively for further jumps from landingPos
-                    int countBefore = resultMoves.Count;
-                    FindManCaptures(state, initialFrom, landingPos, newPath, newCaptured, resultMoves);
-
-                    // If no further jumps from landingPos, this landing is the completed capture move
-                    if (resultMoves.Count == countBefore)
-                    {
-                        resultMoves.Add(Move.CreateCapture(
-                            initialFrom,
-                            landingPos,
-                            newPath,
-                            newCaptured,
-                            isPromotion: false));
-                    }
-                }
-            }
-        }
-    }
-
-    #endregion
-
-    #region Flying King Move Generation
-
-    private static void FindFlyingKingQuietMoves(
-        BoardState state,
-        Position from,
-        List<Move> quietMoves)
-    {
-        foreach (var (dRow, dCol) in AllDiagonals)
-        {
-            int step = 1;
-            while (true)
-            {
-                var dest = from.Offset(step * dRow, step * dCol);
-                if (!dest.IsValid || !dest.IsDarkSquare)
-                    break;
-
-                if (state.GetPiece(dest) != null)
-                    break; // Blocked by any piece
-
-                quietMoves.Add(Move.CreateQuiet(from, dest, isPromotion: false));
-                step++;
-            }
-        }
-    }
-
-    private static void FindFlyingKingCaptures(
-        BoardState state,
-        Position initialFrom,
-        Position currentPos,
-        List<Position> pathSoFar,
-        List<Position> capturedSoFar,
-        List<Move> resultMoves)
-    {
-        var playerColor = state.ActivePlayer;
-
-        foreach (var (dRow, dCol) in AllDiagonals)
-        {
-            int step = 1;
-            Position? enemyToJump = null;
-            var landingSquares = new List<Position>();
-
-            while (true)
-            {
-                var scanPos = currentPos.Offset(step * dRow, step * dCol);
-                if (!scanPos.IsValid || !scanPos.IsDarkSquare)
-                    break;
-
-                var pieceOnScan = state.GetPiece(scanPos);
-
-                if (enemyToJump == null)
-                {
-                    if (pieceOnScan == null)
-                    {
-                        // Empty square before reaching enemy - continue flying along ray
-                        step++;
-                        continue;
-                    }
-
-                    if (pieceOnScan.Value.Color == playerColor || capturedSoFar.Contains(scanPos))
-                    {
-                        // Friendly piece or already jumped piece blocks the ray
-                        break;
-                    }
-
-                    // Found un-jumped opponent piece
-                    enemyToJump = scanPos;
-                    step++;
-                }
-                else
-                {
-                    // Already passed the enemy piece: looking for landing squares beyond it
-                    if (pieceOnScan != null && scanPos != initialFrom)
-                    {
-                        // Blocked by another piece beyond the jumped enemy
-                        break;
-                    }
-
-                    // scanPos is an empty square beyond the enemy piece - valid landing square candidate
-                    landingSquares.Add(scanPos);
-                    step++;
-                }
-            }
-
-            if (enemyToJump != null && landingSquares.Count > 0)
-            {
-                var rayMoves = new List<Move>();
-                bool anyContinuation = false;
-
-                foreach (var landingPos in landingSquares)
-                {
-                    var newPath = new List<Position>(pathSoFar) { landingPos };
-                    var newCaptured = new List<Position>(capturedSoFar) { enemyToJump.Value };
-
-                    int countBefore = rayMoves.Count;
-                    FindFlyingKingCaptures(state, initialFrom, landingPos, newPath, newCaptured, rayMoves);
-
-                    if (rayMoves.Count > countBefore)
-                    {
-                        anyContinuation = true;
-                    }
-                }
-
-                if (anyContinuation)
-                {
-                    // Must continue capture sequence: keep only extended chains
-                    resultMoves.AddRange(rayMoves);
-                }
-                else
-                {
-                    // No landing square allows further jumping: all landing squares are valid terminal stops
-                    foreach (var landingPos in landingSquares)
-                    {
-                        var newPath = new List<Position>(pathSoFar) { landingPos };
-                        var newCaptured = new List<Position>(capturedSoFar) { enemyToJump.Value };
-
-                        resultMoves.Add(Move.CreateCapture(
-                            initialFrom,
-                            landingPos,
-                            newPath,
-                            newCaptured,
-                            isPromotion: false));
-                    }
-                }
-            }
-        }
-    }
-
-    #endregion
-
-    #region English King Move Generation
-
-    private static void FindEnglishKingQuietMoves(
-        BoardState state,
-        Position from,
-        List<Move> quietMoves)
-    {
-        foreach (var (dRow, dCol) in AllDiagonals)
-        {
-            var dest = from.Offset(dRow, dCol);
-            if (dest.IsValid && dest.IsDarkSquare && state.GetPiece(dest) == null)
-            {
-                quietMoves.Add(Move.CreateQuiet(from, dest, isPromotion: false));
-            }
-        }
-    }
-
-    private static void FindEnglishKingCaptures(
-        BoardState state,
-        Position initialFrom,
-        Position currentPos,
-        List<Position> pathSoFar,
-        List<Position> capturedSoFar,
-        List<Move> resultMoves)
-    {
-        var playerColor = state.ActivePlayer;
-
-        foreach (var (dRow, dCol) in AllDiagonals)
-        {
-            var jumpedPos = currentPos.Offset(dRow, dCol);
-            var landingPos = currentPos.Offset(2 * dRow, 2 * dCol);
-
-            if (!landingPos.IsValid || !landingPos.IsDarkSquare)
-                continue;
-
-            // Landing square must be empty (or start of path if circular jump)
-            if (state.GetPiece(landingPos) != null && landingPos != initialFrom)
-                continue;
-
-            // Must jump over opponent piece that hasn't been jumped yet in this sequence
-            var jumpedPiece = state.GetPiece(jumpedPos);
-            if (jumpedPiece.HasValue &&
-                jumpedPiece.Value.Color == playerColor.Opponent() &&
-                !capturedSoFar.Contains(jumpedPos))
-            {
-                var newPath = new List<Position>(pathSoFar) { landingPos };
-                var newCaptured = new List<Position>(capturedSoFar) { jumpedPos };
-
-                // Search recursively for further jumps from landingPos in all 4 directions
-                int countBefore = resultMoves.Count;
-                FindEnglishKingCaptures(state, initialFrom, landingPos, newPath, newCaptured, resultMoves);
-
-                // If no further jumps from landingPos, this landing is the completed capture move
-                if (resultMoves.Count == countBefore)
-                {
-                    resultMoves.Add(Move.CreateCapture(
-                        initialFrom,
-                        landingPos,
-                        newPath,
-                        newCaptured,
-                        isPromotion: false));
-                }
-            }
-        }
-    }
-
-    #endregion
 }

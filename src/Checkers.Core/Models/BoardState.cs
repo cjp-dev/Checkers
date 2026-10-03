@@ -1,157 +1,82 @@
-using Checkers.Core.Engine;
+using Checkers.Core.Bitboards;
 
 namespace Checkers.Core.Models;
 
 /// <summary>
-/// Snapshot representing the complete state of the 8x8 checkers board.
+/// Snapshot representing the complete state of the 8x8 checkers board,
+/// backed directly by a 64-bit <see cref="Bitboards.BitPosition"/> (4 × ulong bitboards).
 /// </summary>
 public sealed class BoardState
 {
-    private readonly Piece?[,] _grid;
+    private BitPosition _bitPosition;
 
-    public PieceColor ActivePlayer { get; set; } = PieceColor.White;
-    public int HalfMoveClock { get; set; } = 0;
+    /// <summary>
+    /// Gets the underlying value-type 64-bit bitboard position.
+    /// </summary>
+    public BitPosition BitPosition => _bitPosition;
+
+    public PieceColor ActivePlayer
+    {
+        get => _bitPosition.SideToMove;
+        set => _bitPosition.SideToMove = value;
+    }
+
+    public int HalfMoveClock
+    {
+        get => _bitPosition.HalfMoveClock;
+        set => _bitPosition.HalfMoveClock = value;
+    }
+
     public int FullMoveNumber { get; set; } = 1;
-    public ulong ZobristHash { get; set; }
 
-    public int WhitePiecesCount { get; private set; }
-    public int BlackPiecesCount { get; private set; }
-    public int WhiteKingsCount { get; private set; }
-    public int BlackKingsCount { get; private set; }
+    public ulong ZobristHash
+    {
+        get => _bitPosition.Hash;
+        set => _bitPosition.Hash = value;
+    }
+
+    public int WhitePiecesCount => _bitPosition.WhitePiecesCount;
+    public int BlackPiecesCount => _bitPosition.BlackPiecesCount;
+    public int WhiteKingsCount => _bitPosition.WhiteKingsCount;
+    public int BlackKingsCount => _bitPosition.BlackKingsCount;
 
     public BoardState()
     {
-        _grid = new Piece?[8, 8];
+        _bitPosition = new BitPosition
+        {
+            SideToMove = PieceColor.White
+        };
     }
 
-    private BoardState(Piece?[,] grid)
+    public BoardState(BitPosition bitPosition, int fullMoveNumber = 1)
     {
-        _grid = (Piece?[,])grid.Clone();
+        _bitPosition = bitPosition;
+        FullMoveNumber = fullMoveNumber;
     }
 
     public Piece? GetPiece(Position pos) =>
-        pos.IsValid ? _grid[pos.Row, pos.Col] : null;
+        _bitPosition.GetPiece(pos.Row, pos.Col);
 
     public Piece? GetPiece(int row, int col) =>
-        (row is >= 0 and < 8 && col is >= 0 and < 8) ? _grid[row, col] : null;
+        _bitPosition.GetPiece(row, col);
 
     public void SetPiece(Position pos, Piece? piece)
     {
         if (!pos.IsValid)
             throw new ArgumentOutOfRangeException(nameof(pos), "Position is outside board bounds.");
 
-        var current = _grid[pos.Row, pos.Col];
-        if (current.HasValue)
-        {
-            if (current.Value.Color == PieceColor.White)
-            {
-                WhitePiecesCount--;
-                if (current.Value.IsKing) WhiteKingsCount--;
-            }
-            else
-            {
-                BlackPiecesCount--;
-                if (current.Value.IsKing) BlackKingsCount--;
-            }
-        }
-
-        _grid[pos.Row, pos.Col] = piece;
-
-        if (piece.HasValue)
-        {
-            if (piece.Value.Color == PieceColor.White)
-            {
-                WhitePiecesCount++;
-                if (piece.Value.IsKing) WhiteKingsCount++;
-            }
-            else
-            {
-                BlackPiecesCount++;
-                if (piece.Value.IsKing) BlackKingsCount++;
-            }
-        }
+        _bitPosition.SetPiece(pos.Row, pos.Col, piece);
     }
 
-    public ulong RecalculateHash()
-    {
-        ulong hash = Zobrist.GetTurnKey(ActivePlayer);
-        for (int r = 0; r < 8; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var piece = _grid[r, c];
-                if (piece.HasValue)
-                {
-                    hash ^= Zobrist.GetPieceKey(r, c, piece.Value);
-                }
-            }
-        }
-        ZobristHash = hash;
-        return hash;
-    }
+    public ulong RecalculateHash() =>
+        _bitPosition.RecalculateHash();
 
-    public BoardState Clone()
-    {
-        var clone = new BoardState(_grid)
-        {
-            ActivePlayer = this.ActivePlayer,
-            HalfMoveClock = this.HalfMoveClock,
-            FullMoveNumber = this.FullMoveNumber,
-            ZobristHash = this.ZobristHash,
-            WhitePiecesCount = this.WhitePiecesCount,
-            BlackPiecesCount = this.BlackPiecesCount,
-            WhiteKingsCount = this.WhiteKingsCount,
-            BlackKingsCount = this.BlackKingsCount
-        };
-        return clone;
-    }
+    public BoardState Clone() =>
+        new(_bitPosition, FullMoveNumber);
 
-    public static BoardState CreateEmpty(PieceColor activePlayer = PieceColor.White)
-    {
-        var state = new BoardState
-        {
-            ActivePlayer = activePlayer
-        };
-        state.RecalculateHash();
-        return state;
-    }
+    public static BoardState CreateEmpty(PieceColor activePlayer = PieceColor.White) =>
+        new(BitPosition.CreateEmpty(activePlayer), fullMoveNumber: 1);
 
-    public static BoardState CreateInitial()
-    {
-        var state = new BoardState
-        {
-            ActivePlayer = PieceColor.White,
-            HalfMoveClock = 0,
-            FullMoveNumber = 1
-        };
-
-        // Black pieces on dark squares of rows 0, 1, 2
-        for (int r = 0; r <= 2; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var pos = new Position(r, c);
-                if (pos.IsDarkSquare)
-                {
-                    state.SetPiece(pos, new Piece(PieceColor.Black, PieceType.Man));
-                }
-            }
-        }
-
-        // White pieces on dark squares of rows 5, 6, 7
-        for (int r = 5; r <= 7; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var pos = new Position(r, c);
-                if (pos.IsDarkSquare)
-                {
-                    state.SetPiece(pos, new Piece(PieceColor.White, PieceType.Man));
-                }
-            }
-        }
-
-        state.RecalculateHash();
-        return state;
-    }
+    public static BoardState CreateInitial() =>
+        new(BitPosition.CreateInitial(), fullMoveNumber: 1);
 }

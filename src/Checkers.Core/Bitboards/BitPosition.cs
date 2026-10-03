@@ -11,6 +11,9 @@ namespace Checkers.Core.Bitboards;
 /// </summary>
 public struct BitPosition
 {
+    public const ulong InitialBlackMen = 0x0000000000AA55AAUL;
+    public const ulong InitialWhiteMen = 0x55AA550000000000UL;
+
     public ulong WhiteMen;
     public ulong BlackMen;
     public ulong WhiteKings;
@@ -61,102 +64,144 @@ public struct BitPosition
         get => BitOperations.PopCount(BlackMen | BlackKings);
     }
 
-    /// <summary>
-    /// Converts a <see cref="BoardState"/> into a <see cref="BitPosition"/>.
-    /// </summary>
-    public static BitPosition FromBoardState(BoardState state)
+    public readonly int WhiteKingsCount
     {
-        ulong wm = 0UL, bm = 0UL, wk = 0UL, bk = 0UL;
-
-        for (int r = 0; r < 8; r++)
-        {
-            for (int c = 0; c < 8; c++)
-            {
-                var piece = state.GetPiece(r, c);
-                if (!piece.HasValue)
-                    continue;
-
-                ulong bit = 1UL << ((r << 3) + c);
-                if (piece.Value.Color == PieceColor.White)
-                {
-                    if (piece.Value.IsKing)
-                        wk |= bit;
-                    else
-                        wm |= bit;
-                }
-                else
-                {
-                    if (piece.Value.IsKing)
-                        bk |= bit;
-                    else
-                        bm |= bit;
-                }
-            }
-        }
-
-        return new BitPosition
-        {
-            WhiteMen = wm,
-            BlackMen = bm,
-            WhiteKings = wk,
-            BlackKings = bk,
-            Hash = state.ZobristHash,
-            HalfMoveClock = state.HalfMoveClock,
-            SideToMove = state.ActivePlayer
-        };
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => BitOperations.PopCount(WhiteKings);
     }
 
-    /// <summary>
-    /// Converts this <see cref="BitPosition"/> back into a <see cref="BoardState"/> snapshot.
-    /// </summary>
-    public readonly BoardState ToBoardState(int fullMoveNumber)
+    public readonly int BlackKingsCount
     {
-        var state = new BoardState
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => BitOperations.PopCount(BlackKings);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly Piece? GetPiece(int row, int col)
+    {
+        if ((uint)row >= 8u || (uint)col >= 8u)
+            return null;
+
+        ulong bit = 1UL << ((row << 3) + col);
+        if ((Occupied & bit) == 0UL)
+            return null;
+
+        if ((WhiteMen & bit) != 0UL)
+            return Piece.WhiteMan;
+        if ((BlackMen & bit) != 0UL)
+            return Piece.BlackMan;
+        if ((WhiteKings & bit) != 0UL)
+            return Piece.WhiteKing;
+        return Piece.BlackKing;
+    }
+
+    public void SetPiece(int row, int col, Piece? piece)
+    {
+        ulong clearMask = ~(1UL << ((row << 3) + col));
+        WhiteMen &= clearMask;
+        BlackMen &= clearMask;
+        WhiteKings &= clearMask;
+        BlackKings &= clearMask;
+
+        if (piece.HasValue)
         {
-            ActivePlayer = SideToMove,
-            HalfMoveClock = HalfMoveClock,
-            FullMoveNumber = fullMoveNumber
-        };
+            ulong bit = ~clearMask;
+            if (piece.Value.Color == PieceColor.White)
+            {
+                if (piece.Value.IsKing)
+                    WhiteKings |= bit;
+                else
+                    WhiteMen |= bit;
+            }
+            else
+            {
+                if (piece.Value.IsKing)
+                    BlackKings |= bit;
+                else
+                    BlackMen |= bit;
+            }
+        }
+    }
+
+    public ulong RecalculateHash()
+    {
+        ulong hash = Zobrist.GetTurnKey(SideToMove);
 
         ulong wm = WhiteMen;
-        while (wm != 0)
+        while (wm != 0UL)
         {
             int sq = BitOperations.TrailingZeroCount(wm);
             wm &= wm - 1;
-            state.SetPiece(BitboardMasks.Positions[sq], new Piece(PieceColor.White, PieceType.Man));
+            hash ^= Zobrist.GetPieceKey(sq, Zobrist.WhiteManIndex);
         }
 
         ulong wk = WhiteKings;
-        while (wk != 0)
+        while (wk != 0UL)
         {
             int sq = BitOperations.TrailingZeroCount(wk);
             wk &= wk - 1;
-            state.SetPiece(BitboardMasks.Positions[sq], new Piece(PieceColor.White, PieceType.King));
+            hash ^= Zobrist.GetPieceKey(sq, Zobrist.WhiteKingIndex);
         }
 
         ulong bm = BlackMen;
-        while (bm != 0)
+        while (bm != 0UL)
         {
             int sq = BitOperations.TrailingZeroCount(bm);
             bm &= bm - 1;
-            state.SetPiece(BitboardMasks.Positions[sq], new Piece(PieceColor.Black, PieceType.Man));
+            hash ^= Zobrist.GetPieceKey(sq, Zobrist.BlackManIndex);
         }
 
         ulong bk = BlackKings;
-        while (bk != 0)
+        while (bk != 0UL)
         {
             int sq = BitOperations.TrailingZeroCount(bk);
             bk &= bk - 1;
-            state.SetPiece(BitboardMasks.Positions[sq], new Piece(PieceColor.Black, PieceType.King));
+            hash ^= Zobrist.GetPieceKey(sq, Zobrist.BlackKingIndex);
         }
 
-        state.ZobristHash = Hash;
-        return state;
+        Hash = hash;
+        return hash;
+    }
+
+    public static BitPosition CreateEmpty(PieceColor activePlayer = PieceColor.White)
+    {
+        var pos = new BitPosition
+        {
+            SideToMove = activePlayer
+        };
+        pos.RecalculateHash();
+        return pos;
+    }
+
+    public static BitPosition CreateInitial()
+    {
+        var pos = new BitPosition
+        {
+            WhiteMen = InitialWhiteMen,
+            BlackMen = InitialBlackMen,
+            WhiteKings = 0UL,
+            BlackKings = 0UL,
+            HalfMoveClock = 0,
+            SideToMove = PieceColor.White
+        };
+        pos.RecalculateHash();
+        return pos;
     }
 
     /// <summary>
+    /// Extracts the underlying <see cref="BitPosition"/> from a <see cref="BoardState"/> in O(1) time.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static BitPosition FromBoardState(BoardState state) => state.BitPosition;
+
+    /// <summary>
+    /// Wraps this <see cref="BitPosition"/> in a <see cref="BoardState"/> snapshot in O(1) time.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly BoardState ToBoardState(int fullMoveNumber) => new(this, fullMoveNumber);
+
+    /// <summary>
     /// Applies a <see cref="BitMove"/> using copy-make and incremental Zobrist hash updates.
-    /// Produces the exact same ZobristHash as <see cref="RuleEngine.ApplyMove"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly BitPosition Apply(in BitMove move)

@@ -4,7 +4,7 @@
 
 ## In short
 
-The search engine decides which move the computer will play. Both `BitboardMinimaxPlayer` (the default allocation-free 64-bit bitboard search engine; see [Chapter 15 – Bitboards](15-bitboards.md)) and `MinimaxPlayer` (the classic array-based search engine) use the **Negamax formulation of the Alpha-Beta pruning algorithm with Iterative Deepening** and produce 100% node-for-node identical search trees.
+The search engine decides which move the computer will play. `MinimaxPlayer` uses the **Negamax formulation of the Alpha-Beta pruning algorithm with Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make search (`BitPosition` and `BitboardMoveGenerator`; see [Chapter 15 – Bitboards](15-bitboards.md)).
 
 The search configuration is customized in the **Game -> Settings...** dialog matching Stello and Connect-4:
 * **Fixed depth:** 1 to 20 plies (default: 8 plies)

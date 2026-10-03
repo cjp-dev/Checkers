@@ -178,7 +178,7 @@ public class MainViewModelTests
         vm.Settings.Mode.Should().Be(TimeControlMode.FixedDepth);
         vm.Settings.Depth.Should().Be(12);
         vm.SettingsBadgeText.Should().Be("12 plies");
-        var player = vm.CreateAiPlayer().Should().BeOfType<BitboardMinimaxPlayer>().Subject;
+        var player = vm.CreateAiPlayer().Should().BeOfType<MinimaxPlayer>().Subject;
         player.Depth.Should().Be(12);
     }
 
@@ -822,13 +822,13 @@ public class MainViewModelTests
         };
 
         var vm = new MainViewModel(dialogService: dialogService);
-        var initialAi = (BitboardMinimaxPlayer)vm.CreateAiPlayer();
+        var initialAi = (MinimaxPlayer)vm.CreateAiPlayer();
         initialAi.TranspositionTable!.Capacity.Should().Be(1_048_576);
 
         await vm.EditSettingsCommand.ExecuteAsync(null);
 
         vm.Settings.TranspositionTableEntries.Should().Be(16_777_216);
-        var updatedAi = (BitboardMinimaxPlayer)vm.CreateAiPlayer();
+        var updatedAi = (MinimaxPlayer)vm.CreateAiPlayer();
         updatedAi.TranspositionTable!.Capacity.Should().Be(16_777_216);
     }
 }
