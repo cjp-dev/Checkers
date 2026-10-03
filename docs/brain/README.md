@@ -62,12 +62,13 @@ flowchart TD
 | 12 | [App integration](12-app-integration.md) | **Available** | Shared ViewModels, WPF desktop, Blazor WebAssembly, cooperative search yielding, live analysis |
 | 13 | [Glossary](13-glossary.md) | **Available** | Checkers and draughts terms used across these documents |
 | 14 | [References](14-references.md) | **Available** | Official rules, algorithmic literature, and source references |
+| 15 | [Bitboards](15-bitboards.md) | **Available** | 64-bit bitboard representation, shift/mask move generation, ray scanning, and Array vs. Bitboard benchmarks |
 
 ---
 
 ## Reading paths
 
-- **Engine Fundamentals & Rules:** Read chapters [01](01-overview.md), [02](02-board-and-coordinates.md), [03](03-rules-and-move-generation.md), and [04](04-game-record.md).
+- **Engine Fundamentals & Rules:** Read chapters [01](01-overview.md), [02](02-board-and-coordinates.md), [03](03-rules-and-move-generation.md), [04](04-game-record.md), and [15](15-bitboards.md).
 - **Game Application & UI Integration:** Read chapters [01](01-overview.md), [04](04-game-record.md), and [12](12-app-integration.md).
-- **AI & Engine Search:** Read chapters [01](01-overview.md), [05](05-evaluation.md), [06](06-move-ordering.md), [07](07-search.md), [08](08-transposition-table.md), and [10](10-time-control.md).
+- **AI & Engine Search:** Read chapters [01](01-overview.md), [05](05-evaluation.md), [06](06-move-ordering.md), [07](07-search.md), [08](08-transposition-table.md), [10](10-time-control.md), and [15](15-bitboards.md).
 - **Reference & Vocabulary:** Check chapters [13](13-glossary.md) and [14](14-references.md).

@@ -33,6 +33,11 @@ public static class Zobrist
         return BitConverter.ToUInt64(buffer, 0);
     }
 
+    public const int WhiteManIndex = 0;
+    public const int WhiteKingIndex = 1;
+    public const int BlackManIndex = 2;
+    public const int BlackKingIndex = 3;
+
     public static int GetPieceIndex(Piece piece) =>
         (piece.Color == PieceColor.White ? 0 : 2) + (piece.IsKing ? 1 : 0);
 
@@ -43,6 +48,11 @@ public static class Zobrist
         return PieceTable[sq, p];
     }
 
+    public static ulong GetPieceKey(int squareIndex, int pieceIndex) =>
+        PieceTable[squareIndex, pieceIndex];
+
     public static ulong GetTurnKey(PieceColor activePlayer) =>
         activePlayer == PieceColor.Black ? BlackToMoveKey : 0UL;
+
+    public static ulong TurnToggleKey => BlackToMoveKey;
 }

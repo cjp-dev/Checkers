@@ -238,8 +238,26 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
   5. **Documentation in `docs/brain`:**
      * The full methodology, position dataset, comparative tables for both Standard and Deep benchmarks, and CPU L3 cache vs capacity analysis are published in `docs/brain/08-transposition-table.md`.
 
-### 4.4 Future Engine Optimizations
-* **Quiescence Search:** Extend capture lines past search horizon to avoid the horizon effect.
+### 4.4 64-Bit Bitboard Engine (`Checkers.Core.Bitboards`) & Comparative Benchmarks
+* **64-Bit Bitboard Representation (`BitPosition` & `BitMove`):**
+  * `BitPosition` (`struct`, 48 bytes) stores `WhiteMen`, `BlackMen`, `WhiteKings`, and `BlackKings` as four `ulong` bitboards (`sq = row * 8 + col`), along with incremental 64-bit Zobrist `Hash`, `HalfMoveClock`, and `SideToMove`.
+  * `BitMove` (`readonly record struct`, 16 bytes) stores `ulong Captured`, `byte From`, `byte To`, and `bool IsPromotion` with zero heap allocations.
+* **Bitboard Move Generation, Evaluation & Copy-Make Search:**
+  * `BitboardMoveGenerator`: $O(1)$ bitwise `HasAnyLegalMove` check, shift-and-mask move generation for Men and English 1-Step Kings, and `LeadingZeroCount` / `TrailingZeroCount` diagonal ray scanning for International Flying Kings.
+  * `BitboardEvaluation`: Hardware `BitOperations.PopCount` material, rank-advancement, center-control, and king-centralization evaluation.
+  * `BitboardMinimaxPlayer`: Value-type copy-make search (`BitPosition next = pos.Apply(in move)`), preallocated per-ply `BitMove[][]` buffers, and zero-allocation in-place move ordering.
+  * `EngineFactory`: Selects `BoardEngine.Bitboard` (default for GUI and `GameSession`) or `BoardEngine.Array` with **100% node-for-node search equivalence**.
+* **40-Position Comparative Benchmark Summary (`Checkers.Benchmark -- --engines [--deep]`):**
+  * **Standard Depths (7–9 Plies, 100% Node Equivalence across all 40 positions):**
+    - **International Draughts:** **65.10x speedup** without TT (`3,776 ms` $\rightarrow$ `58 ms`) and **24.00x speedup** with 1M TT (`1,128 ms` $\rightarrow$ `47 ms`).
+    - **English Checkers:** **63.23x speedup** without TT (`3,857 ms` $\rightarrow$ `61 ms`) and **23.65x speedup** with 1M TT (`1,088 ms` $\rightarrow$ `46 ms`).
+  * **Deep Search (7–14 Plies, ~5s/pos baseline, ~95M nodes, 100% Node Equivalence):**
+    - **International Draughts:** **50.43x speedup** without TT (`148,822 ms` $\rightarrow$ `2,951 ms`, **32.47M nodes/s**) and **25.13x speedup** with 1M TT (`17,941 ms` $\rightarrow$ `714 ms`, **208.43x combined speedup**).
+    - **English Checkers:** **53.78x speedup** without TT (`142,038 ms` $\rightarrow$ `2,641 ms`, **35.63M nodes/s**) and **25.61x speedup** with 1M TT (`16,342 ms` $\rightarrow$ `638 ms`, **222.63x combined speedup**).
+  * Documented in `docs/brain/15-bitboards.md`.
+
+### 4.5 Future Engine Optimizations
+* **Endgame Tablebases:** Solved endgame databases / heuristics for small-piece positions.
 * **Opening Book:** Pre-calculated opening repertoire lookup.
 
 ---
@@ -255,6 +273,7 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 | **Phase 4** | **Computer Settings, Time Controls & Engine Polish** | • **Computer Settings Dialog** matching Stello & Connect-4 (Fixed depth, Time per move, Time per game, Transposition Table size $1\text{M}$–$16\text{M}$ entries)<br>• **Chess clock / time management** with iterative deepening & clock countdown/refund on undo<br>• **Transposition table** (64-bit Zobrist hashing, 16-byte compact entry, replacement scheme)<br>• **40-position empirical benchmarks** (Standard: 70.5% reduction, 3.22x speedup; Deep: 88.4% reduction, 8.16x speedup, 40,384 extra nodes saved at 16M)<br>• **Quiescence search** & capture chain extension<br>• Document chapters `08-transposition-table.md`, `10-time-control.md` | **COMPLETED** |
 | **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs/brain` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | **COMPLETED** |
 | **Phase 6** | **Multi-Variant Support (English Checkers & International Flying Kings)** | • `CheckersVariant` domain enum (`International`, `English`)<br>• 1-step King move generation & 4-direction single-hop multi-jumps in `RuleEngine`<br>• Variant-aware `EvaluationFunction` (King values 300 vs 170, King centralization)<br>• Radio button variant selection in desktop `SettingsWindow.xaml` & web `DialogHost.razor`<br>• PDN `[Variant ...]` tag serialization & deserialization<br>• Full unit test coverage for English Checkers rules & moves | **COMPLETED** |
+| **Phase 7** | **64-Bit Bitboard Engine & Comparative Benchmarks** | • `BitPosition` (`4 × ulong`), `BitMove` (`16B`), and `BitboardMasks`<br>• `BitboardMoveGenerator` (shift/mask + `LeadingZeroCount`/`TrailingZeroCount` ray scans)<br>• `BitboardEvaluation` (`BitOperations.PopCount`) & `BitboardRuleEngine`<br>• Allocation-free `BitboardMinimaxPlayer` & `EngineFactory` (defaulting GUI to Bitboard)<br>• 100% node-for-node equivalence across 40 positions in both variants (50x–65x No-TT speedup, 24x–25.6x TT speedup)<br>• Document chapter `15-bitboards.md` | **COMPLETED** |
 
 ---
 
@@ -262,6 +281,6 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 
 - **Platform:** .NET 10 (C# 13)
 - **Compiler Warnings:** 0 warnings across all projects (Debug & Release builds)
-- **Total Automated Unit Tests:** 118 tests (100% pass rate)
-  - `Checkers.Core.Tests`: 78 passing tests
+- **Total Automated Unit Tests:** 165 tests (100% pass rate)
+  - `Checkers.Core.Tests`: 125 passing tests
   - `Checkers.App.Tests`: 40 passing tests

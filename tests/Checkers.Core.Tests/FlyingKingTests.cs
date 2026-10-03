@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class FlyingKingTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public FlyingKingTests() : this(new RuleEngine()) { }
+
+    protected FlyingKingTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void FlyingKing_CanSlideAcrossMultipleEmptySquares()

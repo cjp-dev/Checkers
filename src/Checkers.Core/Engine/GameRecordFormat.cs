@@ -77,7 +77,7 @@ public static partial class GameRecordFormat
             var variant = tags.TryGetValue("Variant", out var varStr) && varStr.Equals("English", StringComparison.OrdinalIgnoreCase)
                 ? CheckersVariant.English
                 : CheckersVariant.International;
-            session = new GameSession(new RuleEngine(variant));
+            session = new GameSession(EngineFactory.CreateRuleEngine(variant));
         }
 
         // 2. Strip tags from text

@@ -8,7 +8,11 @@ namespace Checkers.Core.Tests;
 
 public class EnglishCheckersTests
 {
-    private readonly RuleEngine _engine = new(CheckersVariant.English);
+    private readonly IRuleEngine _engine;
+
+    public EnglishCheckersTests() : this(new RuleEngine(CheckersVariant.English)) { }
+
+    protected EnglishCheckersTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void EnglishKing_QuietMoves_CanMoveInAllFourDirections_ExactlyOneSquare()

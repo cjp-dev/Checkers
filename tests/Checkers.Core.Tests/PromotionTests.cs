@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class PromotionTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public PromotionTests() : this(new RuleEngine()) { }
+
+    protected PromotionTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void QuietMove_ReachingBackRank_PromotesToKing()

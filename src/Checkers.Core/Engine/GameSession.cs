@@ -40,7 +40,7 @@ public sealed class GameSession
 
     public GameSession(IRuleEngine? ruleEngine = null)
     {
-        _ruleEngine = ruleEngine ?? new RuleEngine();
+        _ruleEngine = ruleEngine ?? EngineFactory.CreateRuleEngine();
         CurrentState = BoardState.CreateInitial();
         StartNewGame();
     }

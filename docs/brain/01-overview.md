@@ -43,13 +43,15 @@ flowchart LR
 | `BoardState` | `Checkers.Core.Models` | Snapshot of the 8x8 board: piece grid, active turn, move clocks, piece counts, and Zobrist hash. |
 | `CheckersVariant` | `Checkers.Core.Models` | Rule variant enum: `International` (Flying Kings) or `English` (1-step Kings). |
 | `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`WhiteWon`, `BlackWon`, `Draw`) and exact reasons. |
-| `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine: legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
+| `IRuleEngine`, `BitboardRuleEngine`, `RuleEngine` | `Checkers.Core.Engine` | Pure rule engines (Bitboard default, Array classic): legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
+| `EngineFactory` | `Checkers.Core.Engine` | Factory creating matching rule engines, evaluators, and Minimax players for `BoardEngine.Bitboard` (default) or `BoardEngine.Array`. |
+| `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardEvaluation` | `Checkers.Core.Bitboards` | 64-bit bitboard representation (`4 × ulong`), value-type moves, shift/mask & ray-scan move generation, and hardware `PopCount` evaluation. |
 | `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist hashing for rapid state identification, threefold repetition detection, and transposition caching. |
 | `GameRecordFormat` | `Checkers.Core.Engine` | PDN (Portable Draughts Notation) serializer and parser with metadata tags (`[Variant ...]`, `[TimeControlMode ...]`). |
 | `GameSession` | `Checkers.Core.Engine` | High-level coordinator managing current board state, move history, Undo/Redo stacks, and lifecycle events. |
 | `IEvaluationFunction` & `EvaluationFunction` | `Checkers.Core.AI` | Heuristic evaluation functions tailored per variant: material weights, advancement, center control, and king centralization. |
 | `SearchLimits` | `Checkers.Core.AI` | Value object encapsulating time control and depth bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`). |
-| `MinimaxPlayer` | `Checkers.Core.AI` | High-performance Negamax $\alpha$-$\beta$ engine with iterative deepening, transposition table, quiescence search, and live search telemetry. |
+| `BitboardMinimaxPlayer` & `MinimaxPlayer` | `Checkers.Core.AI` | High-performance Negamax $\alpha$-$\beta$ engines (allocation-free copy-make bitboard search & array search) with iterative deepening, transposition table, quiescence search, and live search telemetry. |
 | `TranspositionTable` | `Checkers.Core.AI` | High-speed power-of-two 64-bit Zobrist cache storing bounds (`Exact`, `LowerBound`, `UpperBound`), scores, depths, and hash moves. |
 
 ---

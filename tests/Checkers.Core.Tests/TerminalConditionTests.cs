@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class TerminalConditionTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public TerminalConditionTests() : this(new RuleEngine()) { }
+
+    protected TerminalConditionTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void OpponentPiecesEliminated_DeclaresWinner()

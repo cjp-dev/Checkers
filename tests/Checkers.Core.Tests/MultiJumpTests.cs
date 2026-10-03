@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class MultiJumpTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public MultiJumpTests() : this(new RuleEngine()) { }
+
+    protected MultiJumpTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void DoubleJump_ExecutesZigZagAndRemovesBothPieces()

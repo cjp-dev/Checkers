@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class RegularMoveTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public RegularMoveTests() : this(new RuleEngine()) { }
+
+    protected RegularMoveTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void InitialBoard_WhiteHasSevenValidOpeningMoves()

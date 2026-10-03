@@ -122,6 +122,7 @@ public static class BenchmarkSuite
         Func<BoardState, int, IReadOnlyList<Move>, bool> stopCondition)
     {
         int seed = initialSeed;
+        var englishEngine = new RuleEngine(CheckersVariant.English);
 
         for (int attempt = 0; attempt < 200; attempt++)
         {
@@ -145,8 +146,13 @@ public static class BenchmarkSuite
                     stopCondition(state, moveCount, legalMoves) &&
                     HasNonTrivialBranching(state, legalMoves, ruleEngine))
                 {
-                    seenHashes.Add(state.ZobristHash);
-                    return state;
+                    var englishMoves = englishEngine.GetLegalMoves(state);
+                    if (englishMoves.Count >= 2 &&
+                        HasNonTrivialBranching(state, englishMoves, englishEngine))
+                    {
+                        seenHashes.Add(state.ZobristHash);
+                        return state;
+                    }
                 }
 
                 // Pick a move with slight bias toward captures
@@ -190,8 +196,9 @@ public static class BenchmarkSuite
         if (branchingChildren < 2)
             return false;
 
-        var probePlayer = new MinimaxPlayer(
+        var probePlayer = new BitboardMinimaxPlayer(
             limits: SearchLimits.FixedDepth(5),
+            variant: ruleEngine.Variant,
             useTranspositionTable: false,
             useQuiescence: true);
         probePlayer.GetMoveAsync(state, legalMoves).AsTask().GetAwaiter().GetResult();

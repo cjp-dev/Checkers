@@ -110,6 +110,9 @@ The `BoardState` class represents an instantaneous snapshot of the entire game:
 * `int WhiteKingsCount`, `BlackKingsCount`: Fast $O(1)$ crowned king totals.
 * `ulong ZobristHash`: Cached 64-bit hash.
 
+### `BitPosition` (64-Bit Bitboard Representation)
+For high-speed move generation and Alpha-Beta tree search, `BitPosition` (`Checkers.Core.Bitboards`) packs the 8×8 board into four 64-bit unsigned integers (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), where bit `sq = Row * 8 + Col` (`0..63`) corresponds to `(Row, Col)`. See [Chapter 15 – Bitboards](15-bitboards.md) for the complete architecture and benchmarks.
+
 ---
 
 ## Initial setup

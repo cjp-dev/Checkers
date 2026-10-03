@@ -6,7 +6,11 @@ namespace Checkers.Core.Tests;
 
 public class MandatoryCaptureTests
 {
-    private readonly RuleEngine _engine = new();
+    private readonly IRuleEngine _engine;
+
+    public MandatoryCaptureTests() : this(new RuleEngine()) { }
+
+    protected MandatoryCaptureTests(IRuleEngine engine) => _engine = engine;
 
     [Fact]
     public void MandatoryCapture_ExcludesQuietMoves_WhenCaptureExists()
