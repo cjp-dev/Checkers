@@ -4,9 +4,9 @@
 
 ## In short
 
-The solution [Checkers.slnx](../../Checkers.slnx) is designed with **Clean Architecture** to ensure that the core game rules, piece movement, and state logic are 100% independent of any visual presentation layer.
+The solution [Checkers.slnx](../../Checkers.slnx) is built with **Clean Architecture** so that the core game rules, bitboard state representation, move generation, and AI search engine are 100% independent of any visual presentation framework.
 
-The core library is `Checkers.Core`: it has zero UI dependencies, produces deterministic state transitions, and targets **.NET 10**. Presentation layers (`Checkers.Wpf` and `Checkers.Web`) consume the shared application layer `Checkers.App`, which coordinates the game loop, asynchronous AI dispatching, and view models.
+The domain library `Checkers.Core` has zero UI dependencies, produces deterministic state transitions, and targets **.NET 10**. Two presentation clients (`Checkers.Wpf` for Windows desktop and `Checkers.Web` for Blazor WebAssembly) consume the shared application layer `Checkers.App`, which coordinates the game loop, asynchronous AI dispatching, chess clocks, and MVVM view models.
 
 ---
 
@@ -14,21 +14,44 @@ The core library is `Checkers.Core`: it has zero UI dependencies, produces deter
 
 | Project | Type | Role & Contents |
 |---|---|---|
-| `Checkers.Core` | Class library (`net10.0`) | Board representation, rules engine, move generator, flying kings, Zobrist hashing, and game session. |
-| `Checkers.App` | Class library (`net10.0`) | *(Phase 2)* Shared ViewModels (`CommunityToolkit.Mvvm`), game loop coordinator, audio service, and Markdig documentation parser. |
-| `Checkers.Wpf` | WPF Application (`net10.0-windows`) | *(Phase 2)* Desktop presentation layer: 60 FPS board rendering, click-to-move, animations, and Undo/Redo. |
-| `Checkers.Web` | Blazor WebAssembly (`net10.0`) | *(Phase 5)* Web presentation layer: Ahead-Of-Time (AOT) compiled client with responsive board UI and Markdig `/docs` viewer. |
-| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | Full unit test suite validating all rule edge cases, captures, flying kings, promotions, and terminal conditions. |
-| `Checkers.App.Tests` | xUnit (`net10.0`) | *(Phase 2)* Unit tests for ViewModels, session flow, and chapter documentation loader. |
+| `Checkers.Core` | Class library (`net10.0`) | 64-bit bitboards (`BitPosition`, `BitMove`), rules engine, move generator, Zobrist hashing, Negamax $\alpha$-$\beta$ AI, transposition table, PDN serializer, and benchmark runners. |
+| `Checkers.App` | Class library (`net10.0`) | Shared MVVM ViewModels (`CommunityToolkit.Mvvm`), game loop coordinator, chess clock management, and platform service abstractions (`ISoundService`, `IDialogService`, `IGameFileService`). |
+| `Checkers.Wpf` | WPF Application (`net10.0-windows`) | Desktop presentation client: 60 FPS board rendering, click-to-move, drag-and-drop, sound effects, Settings dialog, and live search telemetry pane. |
+| `Checkers.Web` | Blazor WebAssembly (`net10.0`) | Web presentation client: Ahead-Of-Time (AOT) compiled WebAssembly app with responsive board UI, cooperative AI search yielding, and integrated Markdig/KaTeX/Mermaid `/docs` viewer. |
+| `Checkers.Benchmark` | Console CLI (`net10.0`) | Automated 40-position empirical benchmark runner measuring search depth, node reductions, transposition table sizing ($1\text{M}$ vs. $16\text{M}$), and throughput. |
+| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 96 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, search, and PDN persistence. |
+| `Checkers.App.Tests` | xUnit (`net10.0`) | 40 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, and UI command workflows. |
 
 ```mermaid
-flowchart LR
-    WPF["Checkers.Wpf<br/>(Desktop)"] --> App["Checkers.App<br/>(Shared ViewModels)"]
-    Web["Checkers.Web<br/>(Blazor WebAssembly)"] --> App
-    WPF --> Core["Checkers.Core<br/>(Rules & Engine)"]
-    Web --> Core
+flowchart TD
+    subgraph Presentation ["Presentation Layer"]
+        WPF["Checkers.Wpf<br/>(Windows Desktop)"]
+        Web["Checkers.Web<br/>(Blazor WebAssembly + /docs)"]
+        CLI["Checkers.Benchmark<br/>(Empirical CLI Suite)"]
+    end
+
+    subgraph Application ["Application Layer"]
+        App["Checkers.App<br/>(Shared MVVM ViewModels & Services)"]
+    end
+
+    subgraph Domain ["Domain & AI Engine"]
+        Core["Checkers.Core<br/>(64-Bit Bitboards, Rules, Negamax AI, TT, PDN)"]
+    end
+
+    subgraph Verification ["Automated Test Suites"]
+        CoreTests["Checkers.Core.Tests (96 tests)"]
+        AppTests["Checkers.App.Tests (40 tests)"]
+    end
+
+    WPF --> App
+    Web --> App
     App --> Core
-    Tests["Checkers.Core.Tests"] --> Core
+    WPF --> Core
+    Web --> Core
+    CLI --> Core
+    CoreTests --> Core
+    AppTests --> App
+    AppTests --> Core
 ```
 
 ---
@@ -37,84 +60,81 @@ flowchart LR
 
 | Type | Namespace | Purpose |
 |---|---|---|
-| `Position` | `Checkers.Core.Models` | 8x8 row/col coordinates (0-indexed) with bidirectional mapping to Draughts 1–32 notation. |
-| `Piece` | `Checkers.Core.Models` | Immutable record struct representing a piece (`Color`, `Type`: Man or King). |
-| `Move` | `Checkers.Core.Models` | Atomic move record with `From`, `To`, full `Path`, `CapturedPositions`, `IsPromotion`, and `Notation`. |
-| `BoardState` | `Checkers.Core.Models` | Snapshot of the 8x8 board backed directly by a 64-bit `BitPosition` (`4 × ulong`), active turn, move clocks, piece counts, and Zobrist hash. |
-| `CheckersVariant` | `Checkers.Core.Models` | Rule variant enum: `International` (Flying Kings) or `English` (1-step Kings). |
-| `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`WhiteWon`, `BlackWon`, `Draw`) and exact reasons. |
-| `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardMasks` | `Checkers.Core.Bitboards` | 64-bit bitboard representation (`4 × ulong`), value-type moves, shift/mask & ray-scan move generation, and precomputed diagonal masks. |
+| `Position` | `Checkers.Core.Models` | $8 \times 8$ `(Row, Col)` coordinates (0-indexed) with $O(1)$ bidirectional mapping to Draughts $1\text{–}32$ notation. |
+| `Piece` | `Checkers.Core.Models` | Immutable `readonly record struct` representing a piece (`Color`: White/Black, `Type`: Man/King). |
+| `Move` | `Checkers.Core.Models` | Atomic move record with `From`, `To`, full `Path`, `CapturedPositions`, `IsPromotion`, and Draughts `Notation`. |
+| `BoardState` | `Checkers.Core.Models` | Snapshot of the $8 \times 8$ board backed directly by a 64-bit `BitPosition` (`4 × ulong`), active turn, move clocks, hardware `PopCount` piece totals, and Zobrist hash. |
+| `CheckersVariant` | `Checkers.Core.Models` | Rule variant enum: `International` (Flying Kings) or `English` (1-Step Kings). |
+| `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`InProgress`, `WhiteWon`, `BlackWon`, `Draw`) and exact win/draw causes. |
+| `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardMasks` | `Checkers.Core.Bitboards` | 48-byte value-type bitboard state (`4 × ulong`), 16-byte value-type move, parallel shift/mask & ray-scan move generator, and precomputed diagonal masks (see [Chapter 10](10-bitboards.md)). |
 | `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine backed by 64-bit bitboards: legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
-| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist hashing for rapid state identification, threefold repetition detection, and transposition caching. |
+| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist XOR hashing for rapid state identification, threefold repetition detection, and transposition table indexing. |
 | `GameRecordFormat` | `Checkers.Core.Engine` | PDN (Portable Draughts Notation) serializer and parser with metadata tags (`[Variant ...]`, `[TimeControlMode ...]`). |
 | `GameSession` | `Checkers.Core.Engine` | High-level coordinator managing current board state, move history, Undo/Redo stacks, and lifecycle events. |
-| `IEvaluationFunction` & `EvaluationFunction` | `Checkers.Core.AI` | Hardware `PopCount`-accelerated bitboard evaluation tailored per variant: material weights, advancement, center control, and king centralization. |
+| `IEvaluationFunction` & `EvaluationFunction` | `Checkers.Core.AI` | Hardware `BitOperations.PopCount`-accelerated bitboard evaluation tailored per variant: material weights, advancement, center control, king centralization, and back-rank defense. |
 | `SearchLimits` | `Checkers.Core.AI` | Value object encapsulating time control and depth bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`). |
 | `MinimaxPlayer` | `Checkers.Core.AI` | Allocation-free 64-bit bitboard Negamax $\alpha$-$\beta$ engine using value-type `BitPosition` copy-make, preallocated per-ply `BitMove` buffers, iterative deepening, transposition table, quiescence search, and live search telemetry. |
-| `TranspositionTable` | `Checkers.Core.AI` | High-speed power-of-two 64-bit Zobrist cache storing bounds (`Exact`, `LowerBound`, `UpperBound`), scores, depths, and hash moves. |
+| `TranspositionTable` | `Checkers.Core.AI` | High-speed power-of-two 64-bit Zobrist cache ($1\text{M}\text{–}16\text{M}$ entries) storing 16-byte entries (`Exact`, `LowerBound`, `UpperBound`), scores, depths, and hash moves. |
 
 ---
 
 ## Where the rules come from
 
-Checkers variants have evolved distinct traditions across different countries:
-- **English Checkers (American Draughts / Straight Checkers):** Standard 8x8 board with 12 pieces per player, where regular men move and jump forward diagonally, and Kings move and jump strictly 1 square in all 4 diagonal directions.
-- **International Draughts (Flying Kings):** 8x8 or 10x10 board, featuring **Flying Kings** (kings fly along any open diagonal distance and jump from afar) and **Free Choice** (player can choose any valid capture line, but must finish the chosen sequence).
-- **Russian / Brazilian Draughts:** 8x8 board with flying kings and backward captures for men.
+Checkers variants have evolved distinct competitive traditions across different regions:
 
-This project implements two selectable **8x8 Draughts variants**, configurable via the Settings dialog:
-1. **International Draughts (Flying Kings - Default):**
-   - Standard 8x8 board with 12 pieces per player.
-   - Regular men move and jump diagonally forward.
-   - Kings are **Flying Kings** (can slide and jump across arbitrary open diagonal spans).
-   - Captures are strictly mandatory with **Free Choice** among available capture branches.
-   - Reaching the crown row immediately crowns the piece and **ends the turn**.
-2. **English Checkers (American Draughts):**
-   - Standard 8x8 board with 12 pieces per player.
-   - Regular men move and jump diagonally forward.
-   - Kings move **strictly 1 square** diagonally in all 4 directions and capture adjacent opponent pieces landing on the immediate square behind.
-   - Strict mandatory captures with **Free Choice** among capture branches and multi-jump continuation.
-   - Reaching the crown row crowns the piece and ends the turn.
+| Rule Feature | **International Draughts (8×8 Flying Kings)** | **English Checkers (American Draughts)** |
+|---|---|---|
+| **Board & Initial Pieces** | $8 \times 8$ dark squares (32 active squares), 12 men per side | $8 \times 8$ dark squares (32 active squares), 12 men per side |
+| **Regular Man Quiet Move** | 1 square diagonally forward | 1 square diagonally forward |
+| **Regular Man Capture** | Short 2-square jump diagonally forward | Short 2-square jump diagonally forward |
+| **Crowned King Quiet Move** | **Flying King:** slides any open distance along 4 diagonals | **1-Step King:** moves strictly 1 square along 4 diagonals |
+| **Crowned King Capture** | **Flying Jump:** jumps distant enemy along open diagonal, lands on any empty square beyond | **Short Jump:** jumps adjacent enemy onto immediate vacant square behind |
+| **Multi-Jump Continuation** | Mandatory continuation along any landing square offering a follow-up jump | Mandatory continuation from landing square in all 4 diagonal directions |
+| **Capture Priority** | Strictly mandatory; **Free Choice** among valid capture sequences | Strictly mandatory; **Free Choice** among valid capture sequences |
+| **Crown-Row Promotion** | Reaching the back rank crowns the piece and **immediately ends the turn** | Reaching the back rank crowns the piece and **immediately ends the turn** |
+
+Both variants are selectable at any time via the **Game -> Settings...** dialog.
 
 ---
 
 ## The life of one move
 
-Here is how a turn executes within the game system:
+Here is how a single turn executes from user click or AI decision through validation, bitboard state transition, and UI notification:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Player as Human / AI
-    participant VM as BoardViewModel
+    participant VM as MainViewModel
     participant Session as GameSession
     participant Engine as RuleEngine
-    participant State as BoardState
+    participant State as BoardState / BitPosition
 
-    Player->>VM: Selects Move (e.g., 11-15)
+    Player->>VM: Selects Move (e.g., 11-15 or 29x18x4)
     VM->>Session: TryMakeMove(move)
     Session->>Engine: IsLegalMove(CurrentState, move)
     Engine-->>Session: Valid (true)
     Session->>Engine: ApplyMove(CurrentState, move)
-    Engine->>State: Clone(), Move piece, Remove captured, Crown if needed
+    Engine->>State: BitPosition.Apply(in bitMove)<br/>(Toggle bits, clear captured, crown, XOR Zobrist hash)
+    State-->>Engine: New BoardState
     Engine-->>Session: New BoardState
-    Session->>Engine: EvaluateGameStatus(NewState, history)
+    Session->>Engine: EvaluateGameStatus(NewState, stateHashHistory)
     Engine-->>Session: Status (InProgress / Win / Draw)
     Session->>VM: Fire MoveExecuted & GameOver events
-    VM->>Player: Update UI (highlight last move, play sound)
+    VM->>Player: Update 8x8 SquareViewModels, play sound, trigger AI if next turn
 ```
 
-1. **Move Submission:** A human player clicks an interactive square or the AI selects a move.
-2. **Validation:** `GameSession.TryMakeMove(move)` invokes `IRuleEngine.IsLegalMove(state, move)`.
-3. **Immutability & Mutation:** The engine creates an independent clone of the state, clears the source square, removes all jumped pieces, applies king promotion if applicable, toggles the active turn, updates the 40-move half-move clock, and recalculates the Zobrist hash.
-4. **Terminal Evaluation:** `EvaluateGameStatus` checks whether the opposing player has pieces or legal moves left, or if a draw condition (40-move rule, threefold repetition) is met.
-5. **Event Dispatch:** `GameSession` records the move into `MoveHistory`, clears the Redo stack, and fires `MoveExecuted` (and `GameOver` if terminal).
+1. **Move Submission:** A human player clicks/drags a piece to a highlighted destination square, or `MinimaxPlayer.GetMoveAsync` completes its search and returns a `Move`.
+2. **Validation:** `GameSession.TryMakeMove(move)` verifies legality via `IRuleEngine.IsLegalMove(state, move)`.
+3. **Bitboard Copy-Make Transition:** `RuleEngine.ApplyMove` converts the move to a 16-byte `BitMove` and invokes `BitPosition.Apply(in bitMove)`, which updates the four 64-bit bitboards (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), clears all jumped pieces via `& ~move.Captured`, crowns the piece if it reached the promotion rank, increments or resets `HalfMoveClock`, flips `SideToMove`, and incrementally XOR-updates the 64-bit Zobrist hash.
+4. **Terminal Evaluation:** `EvaluateGameStatus` checks whether the new active player has zero pieces (`OpponentPiecesEliminated`), zero legal moves via $O(1)$ bitwise mobility detection (`OpponentNoLegalMoves`), `HalfMoveClock >= 80` (`FortyMoveRuleWithoutCaptureOrPromotion`), or a Zobrist hash appearing 3 times (`ThreefoldRepetition`).
+5. **Event Dispatch:** `GameSession` appends the new state and move to history, clears the Redo stack, and raises `MoveExecuted` (and `GameOver` if terminal).
 
 ---
 
 ## Design principles
 
-1. **Zero UI Coupling:** `Checkers.Core` has no dependencies on WPF, Blazor, HTML, or GUI libraries. It can run in any environment (desktop, server, web worker, CLI).
-2. **Deterministic & Testable:** Rules and state generation are purely deterministic with no hidden random behavior or side effects.
-3. **Safety for Search Algorithms:** Board states are lightweight and safely cloneable, making them ideal for recursive Minimax trees and alpha-beta pruning.
-4. **Consistent Notation:** Bidirectional conversion between internal coordinates `(Row, Col)` and official Draughts 1–32 square numbers enables standard PDN (Portable Draughts Notation) compatibility.
+1. **Zero UI Coupling:** `Checkers.Core` has no dependencies on WPF, Blazor, HTML, or GUI libraries. It runs identically on desktop, web browser (WASM AOT), test runners, and CLI benchmarks.
+2. **Deterministic & Testable:** Rules, Zobrist hashes, and fixed-depth search trees are 100% deterministic with no hidden side effects.
+3. **Zero-Allocation Hot Path:** By representing board states as 48-byte `BitPosition` structs and moves as 16-byte `BitMove` structs in preallocated per-ply buffers, the search engine evaluates over **32–35 million nodes per second** with zero garbage collection pressure (see [Chapter 10 – Bitboards](10-bitboards.md)).
+4. **Standard Notation Compatibility:** Bidirectional $O(1)$ conversion between `(Row, Col)`, bit indices `0..63`, and official Draughts $1\text{–}32$ square numbers enables full Portable Draughts Notation (PDN) interoperability.

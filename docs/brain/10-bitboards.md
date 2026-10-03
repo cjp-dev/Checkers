@@ -1,4 +1,4 @@
-# 15 – Bitboards
+# 10 – Bitboards
 
 [Back to the index](README.md)
 
@@ -16,6 +16,8 @@ To maximize search throughput while preserving **100% behavioral and node-for-no
 Across the 40-position benchmark suite, the bitboard engine evaluated the **exact same number of nodes, leaf evaluations, and TT cutoffs** as the original `Piece?[8, 8]` array engine while delivering:
 - **63x–65x speedup** on standard depths (7–9 plies, No-TT) and **23.6x–24.0x speedup** with the 1M Transposition Table.
 - **50.4x–53.8x speedup** on deep searches (~5s/pos baseline, 7–14 plies, ~95M nodes, No-TT) and **25.1x–25.6x speedup** with the 1M Transposition Table (**>208x–222x combined speedup** over the uncached array baseline).
+
+![64-Bit Bitboard Representation and Parallel Diagonal Shifts](images/bitboard-shifts.svg)
 
 ---
 
@@ -51,9 +53,9 @@ To prevent horizontal wrap-around when shifting bits diagonally across files A (
 | `NotColGH` | `0x3F3F3F3F3F3F3F3FUL` | Excludes Columns 6 & 7 (2-square right jump guard) |
 | `Row0` | `0x00000000000000FFUL` | White promotion rank (`Row == 0`) |
 | `Row7` | `0xFF00000000000000UL` | Black promotion rank (`Row == 7`) |
-| `CenterMask` | `0x00003C3C3C3C0000UL` | Rows 2–5, Cols 2–5 (`+12` center control bonus) |
-| `KingCenterMask` | `0x0000181818180000UL` | Central 4×4 box (`+10` English king centralization) |
-| `Rays[4, 64]` | `ulong[4, 64]` | Diagonal ray masks (`UL`, `UR`, `DL`, `DR`) from square `sq` |
+| `CenterMask` | `0x0000142800000000UL` | Core dark squares `14, 15, 18, 19` (Rows 3–4, Cols 2–5: `+12` center control bonus) |
+| `KingCenterMask` | `0x0014281428000000UL` | Central 4×4 dark squares (Rows 2–5, Cols 2–5: `+10` English king centralization) |
+| `Rays[4, 64]` | `ulong[4, 64]` | Diagonal dark-square ray masks (`UL`, `UR`, `DL`, `DR`) from square `sq` |
 
 ### Diagonal Bit Shifts
 
@@ -362,7 +364,7 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 1. **50x–54x Raw Tree-Walk Acceleration (No-TT):**
    Without a transposition table, the array engine spends nearly 2.5 minutes (`148.8s` in International, `142.0s` in English) evaluating ~95M nodes (`~644k–662k nodes/s`), bound by `Piece?[8, 8]` heap cloning, `List<Move>` allocations, and 64-square loops. The bitboard engine walks the exact same 95M-node trees in **2.95s** (`International`, **32.47M nodes/s**) and **2.64s** (`English`, **35.63M nodes/s**).
 2. **Why TT Speedup Is ~25x vs. ~52x Without TT (Amdahl's Law & DRAM Latency):**
-   When the 1M-entry (24 MB) Transposition Table is enabled, every node probes and stores a 24-byte `TTEntry` in L3/main memory. In the array engine, a 15–20 ns L3/DRAM cache miss is negligible compared to ~1,550 ns of per-node array cloning and heap allocation. In the bitboard engine, where move generation, copy-make, and `PopCount` evaluation take only **~28–30 ns per node**, the L3/DRAM transposition table probe/store accounts for roughly half of the per-node execution time (`~65 ns/node` total, or **~15.5M nodes/s**). Even so, `Bitboard + 1M TT` finishes all 40 deep positions in **0.71s** (`International`) and **0.64s** (`English`)—a **25.1x–25.6x speedup** over `Array + 1M TT` and a **208x–222x combined speedup** over `Array No-TT`.
+   When the 1M-entry (16 MiB) Transposition Table is enabled, every node probes and stores a 16-byte `TranspositionEntry` in L3/main memory. In the array engine, a 15–20 ns L3/DRAM cache miss is negligible compared to ~1,550 ns of per-node array cloning and heap allocation. In the bitboard engine, where move generation, copy-make, and `PopCount` evaluation take only **~28–30 ns per node**, the L3/DRAM transposition table probe/store accounts for roughly half of the per-node execution time (`~65 ns/node` total, or **~15.5M nodes/s**). Even so, `Bitboard + 1M TT` finishes all 40 deep positions in **0.71s** (`International`) and **0.64s** (`English`)—a **25.1x–25.6x speedup** over `Array + 1M TT` and a **208x–222x combined speedup** over `Array No-TT`.
 3. **Flying Kings vs. 1-Step Kings Throughput:**
    English Checkers achieves slightly higher raw throughput (**35.63M nodes/s** vs. **32.47M nodes/s** in International, ~9.7% faster) because 1-Step Kings use pure shift-and-mask instructions, whereas International Flying Kings perform `LeadingZeroCount` / `TrailingZeroCount` ray scans when kings are on the board. However, both variants exceed 32 million nodes/second.
 

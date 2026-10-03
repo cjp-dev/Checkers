@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 410" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <rect width="860" height="410" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <text x="430" y="28" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1E293B">Static Evaluation Positional Zones &amp; Bitboard Masks</text>
+  <text x="430" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Evaluated in O(1) via Hardware BitOperations.PopCount(bitboard &amp; mask)</text>
+
+  <!-- 8x8 Board on the Left (origin 65, 65, cell 40x40) -->
+  <g transform="translate(65,65)">
+    <rect width="320" height="320" fill="#F8FAFC" stroke="#334155" stroke-width="2"/>
+
+    <!-- Row 0: Black Back Rank Defense (+15 pts) -->
+    <rect x="40" y="0" width="40" height="40" fill="#7C3AED"/><rect x="120" y="0" width="40" height="40" fill="#7C3AED"/><rect x="200" y="0" width="40" height="40" fill="#7C3AED"/><rect x="280" y="0" width="40" height="40" fill="#7C3AED"/>
+    <!-- Row 1 -->
+    <rect x="0" y="40" width="40" height="40" fill="#64748B"/><rect x="80" y="40" width="40" height="40" fill="#64748B"/><rect x="160" y="40" width="40" height="40" fill="#64748B"/><rect x="240" y="40" width="40" height="40" fill="#64748B"/>
+    <!-- Row 2 -->
+    <rect x="40" y="80" width="40" height="40" fill="#64748B"/><rect x="120" y="80" width="40" height="40" fill="#2563EB"/><rect x="200" y="80" width="40" height="40" fill="#2563EB"/><rect x="280" y="80" width="40" height="40" fill="#64748B"/>
+    <!-- Row 3 -->
+    <rect x="0" y="120" width="40" height="40" fill="#64748B"/><rect x="80" y="120" width="40" height="40" fill="#16A34A"/><rect x="160" y="120" width="40" height="40" fill="#16A34A"/><rect x="240" y="120" width="40" height="40" fill="#64748B"/>
+    <!-- Row 4 -->
+    <rect x="40" y="160" width="40" height="40" fill="#64748B"/><rect x="120" y="160" width="40" height="40" fill="#16A34A"/><rect x="200" y="160" width="40" height="40" fill="#16A34A"/><rect x="280" y="160" width="40" height="40" fill="#64748B"/>
+    <!-- Row 5 -->
+    <rect x="0" y="200" width="40" height="40" fill="#64748B"/><rect x="80" y="200" width="40" height="40" fill="#2563EB"/><rect x="160" y="200" width="40" height="40" fill="#2563EB"/><rect x="240" y="200" width="40" height="40" fill="#64748B"/>
+    <!-- Row 6 -->
+    <rect x="40" y="240" width="40" height="40" fill="#64748B"/><rect x="120" y="240" width="40" height="40" fill="#64748B"/><rect x="200" y="240" width="40" height="40" fill="#64748B"/><rect x="280" y="240" width="40" height="40" fill="#64748B"/>
+    <!-- Row 7: White Back Rank Defense (+15 pts) -->
+    <rect x="0" y="280" width="40" height="40" fill="#7C3AED"/><rect x="80" y="280" width="40" height="40" fill="#7C3AED"/><rect x="160" y="280" width="40" height="40" fill="#7C3AED"/><rect x="240" y="280" width="40" height="40" fill="#7C3AED"/>
+
+    <!-- Bounding boxes for CenterMask & KingCenterMask -->
+    <rect x="80" y="80" width="160" height="160" fill="none" stroke="#F59E0B" stroke-width="3" stroke-dasharray="6,4"/>
+    <rect x="80" y="120" width="160" height="80" fill="none" stroke="#10B981" stroke-width="2.5"/>
+
+    <!-- Square labels -->
+    <g fill="#FFFFFF" font-size="10.5" font-weight="700" text-anchor="middle" dominant-baseline="central">
+      <text x="60" y="20">+15</text><text x="140" y="20">+15</text><text x="220" y="20">+15</text><text x="300" y="20">+15</text>
+      <text x="140" y="100">+10K</text><text x="220" y="100">+10K</text>
+      <text x="100" y="140">+12</text><text x="180" y="140">+12</text>
+      <text x="140" y="180">+12</text><text x="220" y="180">+12</text>
+      <text x="100" y="220">+10K</text><text x="180" y="220">+10K</text>
+      <text x="20" y="300">+15</text><text x="100" y="300">+15</text><text x="180" y="300">+15</text><text x="260" y="300">+15</text>
+    </g>
+  </g>
+
+  <!-- Advancement Gradient Scale -->
+  <g transform="translate(398,65)" font-size="10.5" font-weight="600" fill="#334155">
+    <text x="0" y="24">R0: +35 / +42</text>
+    <text x="0" y="64">R1: +30 / +36</text>
+    <text x="0" y="104">R2: +25 / +30</text>
+    <text x="0" y="144">R3: +20 / +24</text>
+    <text x="0" y="184">R4: +15 / +18</text>
+    <text x="0" y="224">R5: +10 / +12</text>
+    <text x="0" y="264">R6: +5  / +6</text>
+    <text x="0" y="304">R7: +0  (Home)</text>
+  </g>
+
+  <!-- Right Panel: Legend & Formulas -->
+  <g transform="translate(495,70)">
+    <rect x="0" y="0" width="340" height="310" rx="8" fill="#FFFFFF" stroke="#CBD5E0" stroke-width="1.2"/>
+    <text x="16" y="26" font-size="13.5" font-weight="700" fill="#1E293B">Heuristic Scoring Components</text>
+
+    <!-- 1. Material -->
+    <circle cx="24" cy="52" r="7" fill="#0F172A"/>
+    <text x="40" y="56" font-size="12" font-weight="700" fill="#1E293B">1. Material Balance</text>
+    <text x="40" y="73" font-size="11" fill="#475569">Man = 100  |  Intl King = 300  |  English King = 170</text>
+
+    <!-- 2. Center Control -->
+    <rect x="17" y="90" width="14" height="14" rx="3" fill="#16A34A"/>
+    <text x="40" y="102" font-size="12" font-weight="700" fill="#1E293B">2. Center Control (+12 pts)</text>
+    <text x="40" y="119" font-size="11" fill="#475569">Core dark squares 14, 15, 18, 19 (Rows 3–4, Cols 2–5)</text>
+
+    <!-- 3. King Centralization -->
+    <rect x="17" y="136" width="14" height="14" rx="3" fill="#2563EB" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="40" y="148" font-size="12" font-weight="700" fill="#1E293B">3. King Centralization (+10 pts, English)</text>
+    <text x="40" y="165" font-size="11" fill="#475569">Central 4×4 box (Rows 2–5, Cols 2–5: 8 dark squares)</text>
+
+    <!-- 4. Back-Rank Defense -->
+    <rect x="17" y="182" width="14" height="14" rx="3" fill="#7C3AED"/>
+    <text x="40" y="194" font-size="12" font-weight="700" fill="#1E293B">4. Back-Rank Defense (+15 pts)</text>
+    <text x="40" y="211" font-size="11" fill="#475569">Men guarding Row 7 (White) or Row 0 (Black)</text>
+
+    <!-- 5. Advancement -->
+    <rect x="17" y="228" width="14" height="14" rx="3" fill="#64748B"/>
+    <text x="40" y="240" font-size="12" font-weight="700" fill="#1E293B">5. White Man Advancement (R6 → R0)</text>
+    <text x="40" y="257" font-size="11" fill="#475569">(7 - Row) × 5 pts (Intl)  or  (7 - Row) × 6 pts (English)</text>
+    <text x="40" y="274" font-size="11" fill="#475569">Black Man Advancement: Row × 5 or Row × 6 pts</text>
+
+    <line x1="16" y1="286" x2="324" y2="286" stroke="#E2E8F0"/>
+    <text x="170" y="302" text-anchor="middle" font-size="11" font-weight="600" fill="#1E293B">Negamax Output: +(White − Black) for White, −(White − Black) for Black</text>
+  </g>
+</svg>

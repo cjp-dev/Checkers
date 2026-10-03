@@ -1,94 +1,84 @@
-# 10 – Time control
+# 09 – Time control
 
 [Back to the index](README.md)
 
 ## In short
 
-How long the computer player is permitted to think is configured via the **Game -> Settings...** modal dialog, matching the design of Stello and Connect-4. 
+How long the computer player is permitted to think is configured via the **Game -> Settings...** modal dialog, matching the design of Stello and Connect-4.
 
-The search engine employs **Iterative Deepening** bounded by a **soft limit** (which prevents initiating a new ply iteration when insufficient time remains) and a **hard limit** (which aborts mid-search if the time budget expires, falling back to the completed result of the previous finished depth).
+The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) bounded by two time thresholds:
+1. **Soft Limit ($T_{\text{soft}}$):** Checked *between* depth iterations ($d \rightarrow d + 1$). Prevents starting a new ply iteration when less than $\frac{1}{3}$ of the move budget remains.
+2. **Hard Limit ($T_{\text{hard}}$):** Checked every $1{,}024$ nodes *inside* `NegaMax` and `Quiescence`. Aborts an in-progress iteration immediately if the budget expires, returning `bestMoveOverall` from the last completed depth $d - 1$.
 
 ---
 
 ## The three time control modes
 
-[SearchLimits.cs](../../src/Checkers.Core/AI/SearchLimits.cs) and [GameSettings.cs](../../src/Checkers.App/Models/GameSettings.cs):
+[`SearchLimits.cs`](../../src/Checkers.Core/AI/SearchLimits.cs) and [`GameSettings.cs`](../../src/Checkers.App/Models/GameSettings.cs):
 
-| Mode | Limits Factory | UI Range | Description |
-|---|---|---|---|
-| **Fixed depth** | `SearchLimits.FixedDepth(plies)` | 1–20 plies (default: 8) | Fixed search depth. Iterative deepening explores depths $1, 2, \dots, D$. |
-| **Time per move** | `SearchLimits.TimePerMove(time)` | 1–60 seconds (default: 5) | Fixed time allocation for each individual move. |
-| **Time per game** | `SearchLimits.TimePerGame(remaining)` | 1–60 minutes (default: 5) | Shared chess clock distributed across all remaining moves in the game. |
+| Mode | Factory Method | UI Slider Range | Max Iterative Depth | Description |
+|---|---|:---:|:---:|---|
+| **Fixed depth** | `SearchLimits.FixedDepth(plies)` | $1\text{–}20$ plies (default: $8$) | $D = \text{Depth}$ | Explores depths $1, 2, \dots, D$ with no wall-clock timeout ($T_{\text{soft}} = T_{\text{hard}} = \infty$). |
+| **Time per move** | `SearchLimits.TimePerMove(time)` | $1\text{–}60\text{ s}$ (default: $5\text{ s}$) | $20$ plies | Allocates a fixed wall-clock budget $T$ for every computer turn. |
+| **Time per game** | `SearchLimits.TimePerGame(remaining)` | $1\text{–}60\text{ min}$ (default: $5\text{ min}$) | $20$ plies | Shared chess clock dynamically apportioned across the remaining moves of the match. |
 
 ---
 
-## Soft and hard time limits
+## Soft and hard time budget equations
 
-When searching under time controls, the engine calculates soft and hard thresholds:
+Let $P = |W| + |B|$ be the total number of pieces remaining on the board (`state.WhitePiecesCount + state.BlackPiecesCount`).
 
-| Mode | Move Budget | Soft Limit | Hard Limit |
-|---|---|---|---|
-| **Time per move** | The setting $T$ | $\frac{2}{3} \cdot T$ | $T$ |
-| **Time per game** | $\max\left(10\ \text{ms},\, \frac{\text{remaining}}{\text{clamp}(\text{piecesLeft},\, 2,\, 25)}\right)$ | $\frac{2}{3} \cdot \text{budget}$ | $\text{budget}$ |
-| **Fixed depth** | $\infty$ | None | None |
+### 1. Time per Move
+Given user setting $T_{\text{move}}$ (in milliseconds):
 
-### Dynamic time per game allocation
-In **Time per game** mode, the remaining clock is distributed dynamically across remaining moves:
-- Early and middle game (more pieces on the board): smaller slices are allocated to preserve time for complex tactical phases.
-- Late game: more time per move is allocated to calculate precise king endings.
-- When the clock is fully exhausted, a safety minimum of 10 ms is provided so the engine can always return a valid move.
+$$T_{\text{hard}} = T_{\text{move}}, \qquad T_{\text{soft}} = \left\lfloor \frac{2}{3}\, T_{\text{hard}} \right\rfloor$$
 
-### Iterative deepening time lifecycle
+### 2. Dynamic Time per Game Allocation
+Given remaining clock time $T_{\text{rem}}$ (in milliseconds), the engine estimates the number of remaining moves as $\hat{M} = \text{clamp}(P, 2, 25)$ and allocates:
+
+$$T_{\text{hard}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{rem}}}{\min\bigl(25, \max(2, |W| + |B|)\bigr)} \right\rfloor\right), \qquad T_{\text{soft}} = \left\lfloor \frac{2}{3}\, T_{\text{hard}} \right\rfloor$$
+
+* **Opening & Middlegame ($P \approx 16\text{–}24$):** Allocates $\frac{1}{24}$ to $\frac{1}{16}$ of the remaining clock per turn, preserving clock reserve for complex middle-game tactics.
+* **Endgame ($P \le 6$):** Allocates larger fractions of the remaining clock to calculate deep king endgames accurately.
+* **Clock Exhaustion Guard (`10 ms` floor):** Even in extreme time trouble ($T_{\text{rem}} \approx 0$), at least $10\text{ ms}$ is granted so depth $1$ completes cleanly and returns a legal move.
+
+### Iterative Deepening Time Lifecycle
 
 ```mermaid
-gantt
-    title Search timeline for a 6-second move budget
-    dateFormat x
-    axisFormat %S s
-    tickInterval 1second
-    section Search
-    Depth 1 to 5 completed               : 0, 3200
-    Depth 6 completed                     : 3200, 3900
-    section Cutoff
-    Soft limit (4.0s) reached            : milestone, 4000, 0ms
-    New Depth 7 aborted / skipped         : 4000, 4000
-    section Hard Bound
-    Hard limit (6.0s)                     : milestone, 6000, 0ms
+flowchart LR
+    Start["Start Turn<br/>Stopwatch.StartNew()"] --> D1["Complete Depth 1<br/>(Always finishes)"]
+    D1 --> CheckSoft{"Elapsed >= T_soft<br/>(2/3 of budget)?"}
+    CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>from completed depth d"]
+    CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1"]
+    NextD --> NodeCheck{"Every 1,024 nodes:<br/>Elapsed >= T_hard?"}
+    NodeCheck -- "No (Completed d+1)" --> SavePV["Update bestMoveOverall<br/>& Promote PV move"]
+    SavePV --> CheckSoft
+    NodeCheck -- "Yes (Hard Abort)" --> Discard["Discard partial depth d+1"]
+    Discard --> Return
 ```
 
-1. **Between depth iterations:** If elapsed time has reached or exceeded the **soft limit** ($\ge \frac{2}{3}$ of the budget), the engine stops iterating and plays the best move from the last finished depth.
-2. **During depth iterations:** The **hard limit** is checked every 512 nodes evaluated. If the hard limit expires mid-search, the current depth is abandoned and the move from the previous completed depth is played.
+Because branching factor $b$ causes depth $d + 1$ to take roughly $\sqrt{b} \approx 2.5\times\text{–}4\times$ longer than depth $d$, if $\ge \frac{2}{3}$ of the budget has already been consumed finishing depth $d$, depth $d + 1$ is unlikely to complete before $T_{\text{hard}}$. Stopping at $T_{\text{soft}}$ avoids wasting the remaining $\frac{1}{3}$ of the clock on an aborted search!
 
 ---
 
-## Clock management & Undo refunds
+## Chess clock management & Undo refunds
 
-In `TimePerGame` mode, the application tracks the clock continuously:
-- **Deduction:** Thinking time elapsed during the AI turn is deducted from the remaining computer clock.
-- **Display:** The live countdown is displayed in the board banner (`[Clock: 4:32]`) and the right sidebar card.
-- **Undo Refund:** The engine records `_timeLeftAtPly[ply]`. If the human player takes back a move (`Ctrl+Z`), the computer clock is restored to the exact time available at that ply.
-
----
-
-## Cancellation & UI responsiveness
-
-AI search executes asynchronously on a background thread (`Task.Run` in WPF; cooperatively yielded in WebAssembly) and observes a `CancellationToken`:
-- Starting a **New Game** (`Ctrl+N`), **Opening** a file (`Ctrl+O`), or pressing **Undo** (`Ctrl+Z`) cancels running AI tasks immediately.
-- The UI remains completely responsive at 60 FPS while the computer thinks, displaying a thinking progress bar and updating the analysis pane in real time.
+In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainViewModel.cs) manages the computer's chess clock across the game lifecycle:
+1. **Snapshot Before Search:** Before each move at ply $k$, the remaining computer clock is recorded in `_timeLeftAtPly[k]`.
+2. **Elapsed Deduction:** While the computer searches, a UI timer updates the live countdown banner (`[Clock: 4:32]`) and sidebar clock card. Upon move completion, elapsed thinking time is subtracted from `_computerTimeRemaining`.
+3. **Exact Undo Refund:** If the human player presses **Undo** (`Ctrl+Z`), `MainViewModel` restores `_computerTimeRemaining` to the exact value saved in `_timeLeftAtPly` for that ply, preventing Undo from draining the computer's clock.
 
 ---
 
-## Settings Dialog & Variant Selection
+## Settings Dialog Configuration
 
-The **Game -> Settings...** modal dialog consolidates all game rules and engine limits into a unified interface:
+The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs)) consolidates all rule, time control, and memory settings:
 
 1. **Checkers Rules & Variant:**
-   - **International Draughts (Flying Kings):** Kings fly across open diagonals; long-distance captures with free choice among branches.
-   - **English Checkers (1-Step Kings):** Kings move strictly 1 square in 4 directions; short captures with 4-direction multi-jump chains.
-2. **Computer Limits:**
-   - Radio selection between **Fixed Depth**, **Time per Move**, and **Time per Game**.
-   - Interactive sliders with immediate numeric feedback.
-3. **Mid-Game Variant Safety Guard:**
-   - If the variant is changed while a game is actively in progress with moves on the board, `MainViewModel` prompts the player:
-     > *"Changing the checkers variant requires starting a new game. Do you want to start a new game now with the new rules?"*
-   - If the user confirms, a fresh game starts under the new rule engine. If cancelled, the active game and rules remain intact.
+   - **International Draughts (Flying Kings):** Kings slide and capture across open diagonals with mandatory continuation.
+   - **English Checkers (1-Step Kings):** Kings move and jump strictly 1 step in all 4 diagonal directions.
+   - *Mid-Game Safety Prompt:* If the user changes the variant while a game has moves on the board, `MainViewModel` prompts for confirmation before starting a fresh game under the new rule set.
+2. **Computer Search Limits:**
+   - Radio selection between **Fixed Depth** ($1\text{–}20$ plies), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
+3. **Transposition Table Capacity:**
+   - Selector from **$1,048,576$ entries ($16\text{ MiB}$, default)** up to **$16,777,216$ entries ($256\text{ MiB}$)** ([Chapter 08](08-transposition-table.md)).

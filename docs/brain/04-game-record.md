@@ -4,15 +4,17 @@
 
 ## In short
 
-Every checkers move played is tracked as an atomic `Move` record with complete path history and Draughts notation (`11-15`, `29x18x4`). 
+Every move played in a match is recorded as an immutable `Move` object containing its full path, captured squares, promotion flag, and standard Draughts notation (`11-15`, `29x18x4`).
 
-The `GameSession` coordinator manages the game lifecycle, turn transitions, Undo/Redo stacks, and win/draw detection (piece elimination, blocked pieces, 40-move rule, and threefold repetition).
+The [`GameSession`](../../src/Checkers.Core/Engine/GameSession.cs) coordinator acts as the single source of truth for an active game, managing turn transitions, linear Undo/Redo stacks, terminal win/draw evaluation, and Portable Draughts Notation (PDN) file persistence via [`GameRecordFormat`](../../src/Checkers.Core/Engine/GameRecordFormat.cs).
 
 ---
 
 ## The Move record and Draughts Notation
 
-A move is represented by the immutable `Move` class:
+The domain layer uses two complementary move representations:
+1. **`BitMove` (`readonly record struct`, 16 bytes):** Used inside the high-speed bitboard move generator and Negamax search tree (`ulong Captured`, `byte From`, `byte To`, `bool IsPromotion`).
+2. **`Move` (`sealed record`):** Used by `GameSession`, UI view models, move history, and PDN serialization, storing the full ordered path of visited squares:
 
 ```csharp
 public sealed record Move
@@ -28,127 +30,95 @@ public sealed record Move
 ```
 
 ### Standard Draughts Move Notation
-The engine automatically formats human-readable Draughts notation using the 1–32 square numbers:
-* **Quiet Move (`-`):** Formatted as `From-To` (e.g., `11-15` or `24-19`).
-* **Capture Move (`x`):** Formatted as the full visited sequence of squares (e.g., `11x18` for a single jump, or `29x18x4` for a multi-jump sequence).
-
-If a move involves non-standard coordinates outside the 1–32 dark squares, coordinate fallback `(Row, Col)` is used.
+`Move` automatically formats standard algebraic Draughts notation using the $1\text{–}32$ dark-square numbering ([Chapter 02](02-board-and-coordinates.md)):
+* **Quiet Move (`-`):** Joins start and destination with a hyphen, e.g., `11-15` or `24-19`.
+* **Single Capture (`x`):** Joins start and landing square with `x`, e.g., `17x10`.
+* **Multi-Jump Capture (`x`):** Joins every intermediate landing square in `Path` with `x`, e.g., `29x18x4`, unambiguously recording the exact branch taken when multiple jump paths reach the same final square.
 
 ---
 
-## GameSession coordinator
+## GameSession coordinator & Undo/Redo state machine
 
-`GameSession` acts as the single source of truth for ongoing gameplay. It coordinates the `RuleEngine`, tracks state history, and emits event notifications:
+`GameSession` coordinates `IRuleEngine`, maintains synchronized state and move histories, and manages the `_redoStack`:
 
 ```mermaid
-flowchart TD
-    StateHist["_stateHistory: List<BoardState>"]
-    MoveHist["_moveHistory: List<Move>"]
-    RedoStack["_redoStack: Stack<(BoardState, Move)>"]
-    
-    MakeMove["TryMakeMove(move)"] --> PushState["Append to _stateHistory & _moveHistory"]
-    PushState --> ClearRedo["Clear _redoStack"]
-    PushState --> FireMoveEvent["Fire MoveExecuted event"]
-    
-    Undo["Undo()"] --> PopUndo["Remove latest from _stateHistory & _moveHistory"]
-    PopUndo --> PushRedo["Push to _redoStack"]
-    PopUndo --> RestoreState["CurrentState = _stateHistory[^1]"]
-    
-    Redo["Redo()"] --> PopRedo["Pop from _redoStack"]
-    PopRedo --> RestoreRedo["Restore to _stateHistory & _moveHistory"]
+stateDiagram-v2
+    [*] --> InProgress : StartNewGame() /CreateInitial()
+    InProgress --> InProgress : TryMakeMove(move)<br/>Push to _stateHistory & _moveHistory<br/>Clear _redoStack
+    InProgress --> InProgress : Undo()<br/>Pop latest state & move → Push to _redoStack
+    InProgress --> InProgress : Redo()<br/>Pop from _redoStack → Restore state & move
+    InProgress --> GameOver : EvaluateGameStatus() != InProgress<br/>Fire GameOver event
+    GameOver --> InProgress : Undo() / StartNewGame()
 ```
 
-### Undo and Redo Mechanics
-* **`Undo()`:** Pops the latest state and move, pushes them onto `_redoStack`, and restores `CurrentState` to the previous board snapshot.
-* **`Redo()`:** Re-applies the popped move from `_redoStack`, updating state history.
-* **Branching Protection:** Executing a new move (`TryMakeMove`) clears the `_redoStack` to prevent non-linear history divergence.
+### Undo and Redo Invariants
+Let $S = [s_0, s_1, \dots, s_k]$ be `_stateHistory` (where $s_0$ is the initial board) and $M = [m_1, \dots, m_k]$ be `_moveHistory`:
+* Always $|S| = |M| + 1$, and `CurrentState` $= s_k$.
+* **`Undo()`** (valid when $k \ge 1$): Pops $s_k$ and $m_k$, pushes $(s_k, m_k)$ onto `_redoStack`, and restores `CurrentState` $= s_{k-1}$.
+* **`Redo()`** (valid when `_redoStack` is non-empty): Pops $(s_{k+1}, m_{k+1})$ from `_redoStack` and appends them back to $S$ and $M$.
+* **Branching Guard:** Executing a new move via `TryMakeMove(m)` clears `_redoStack` so history remains strictly linear.
 
 ---
 
 ## Terminal conditions and game evaluation
 
-After every move, `RuleEngine.EvaluateGameStatus` checks the current state and history:
+After every move, `RuleEngine.EvaluateGameStatus(state, stateHashHistory)` evaluates four terminal conditions in priority order:
 
-```csharp
-public (GameStatus Status, GameOverReason Reason) EvaluateGameStatus(
-    BoardState state,
-    IReadOnlyList<ulong>? stateHashHistory = null);
-```
+| Priority | Condition | Mathematical Criterion | Result (`GameStatus`) | `GameOverReason` |
+|:---:|---|---|---|---|
+| **1** | **Pieces Eliminated** | $\text{PopCount}(\text{OwnPieces}) = 0$ | Opponent Wins | `OpponentPiecesEliminated` |
+| **2** | **No Legal Moves (Blocked)** | $\neg\text{HasAnyLegalMove}(s, \text{variant})$ | Opponent Wins | `OpponentNoLegalMoves` |
+| **3** | **Forty-Move Rule** | $\text{HalfMoveClock} \ge 80$ | `Draw` | `FortyMoveRuleWithoutCaptureOrPromotion` |
+| **4** | **Threefold Repetition** | $\bigl|\{i : H(s_i) = H(s_{\text{current}})\}\bigr| \ge 3$ | `Draw` | `ThreefoldRepetition` |
 
 ### 1. Opponent Pieces Eliminated (`Win`)
-If the active player has zero remaining pieces on the board:
-* If it is White's turn and White has 0 pieces: **Black Wins** (`OpponentPiecesEliminated`).
-* If it is Black's turn and Black has 0 pieces: **White Wins** (`OpponentPiecesEliminated`).
+If the side to move has zero pieces remaining (`pos.White == 0UL` on White's turn, or `pos.Black == 0UL` on Black's turn), the opposing player wins immediately.
 
 ### 2. Blocked Legal Moves (`Win`)
-If the active player still possesses pieces on the board, but `GetLegalMoves(state)` returns 0 legal moves:
-* The player is completely trapped.
-* The opponent is declared the winner (`OpponentNoLegalMoves`).
+In Checkers, stalemating the opponent is a **win**, not a draw. If the side to move still has pieces on the board but every piece is blocked from moving or jumping (`BitboardMoveGenerator.HasAnyLegalMove` returns `false` in $O(1)$ bitwise time), the trapped player loses.
 
 ### 3. Forty-Move Rule (`Draw`)
-The `BoardState.HalfMoveClock` increments after every quiet move and resets to `0` whenever a capture or promotion occurs:
-* 40 full moves = **80 half-moves** without any capture or promotion.
-* When `HalfMoveClock >= 80`, the game is drawn (`FortyMoveRuleWithoutCaptureOrPromotion`).
+`HalfMoveClock` increments by $+1$ on every quiet move and resets to $0$ whenever a capture or crown-row promotion occurs:
+
+$$\text{HalfMoveClock}_{t+1} = \begin{cases} 0 & \text{if } |\text{Captured}(m_t)| > 0 \lor \text{IsPromotion}(m_t) \\ \text{HalfMoveClock}_t + 1 & \text{otherwise} \end{cases}$$
+
+When $\text{HalfMoveClock} \ge 80$ (40 full moves by each player without progress), the game is drawn.
 
 ### 4. Threefold Repetition (`Draw`)
-Each board snapshot includes a 64-bit `ZobristHash` incorporating all piece positions, kings, and the active player turn:
-* The `GameSession` passes `stateHashHistory` to the rule engine.
-* If the current `ZobristHash` appears 3 or more times in `stateHashHistory`, the game is declared a draw (`ThreefoldRepetition`).
-
----
-
-## Event notifications
-
-The session exposes strongly-typed .NET events that decoupled UI frontends (WPF, Blazor) subscribe to:
-
-```csharp
-// Fired when a move has been validated and applied
-public event EventHandler<MoveExecutedEventArgs>? MoveExecuted;
-
-// Fired when the game reaches a win or draw condition
-public event EventHandler<GameOverEventArgs>? GameOver;
-```
-
-These events enable sound playback, board animation triggers, and game-over modals without requiring presentation layers to poll the engine.
+Every `BoardState` carries a 64-bit `ZobristHash` encoding exact piece placements and `ActivePlayer`. `GameSession` maintains `_stateHashHistory`; if the resulting `ZobristHash` appears 3 or more times in the game's history, the game is drawn by `ThreefoldRepetition`.
 
 ---
 
 ## Game record persistence & Portable Draughts Notation (PDN)
 
-[GameRecordFormat.cs](../../src/Checkers.Core/Engine/GameRecordFormat.cs) implements full serialization and parsing for games saved to disk or exported to the web.
+[`GameRecordFormat.cs`](../../src/Checkers.Core/Engine/GameRecordFormat.cs) serializes and parses complete matches using the standard **Portable Draughts Notation (PDN)** format (`.pdn` / `.checkers`).
 
-### 1. PDN Structure & Tags
-Saved game files (`.checkers` or `.pdn`) use standard tag pairs followed by numbered moves:
+### 1. PDN File Structure & Metadata Tags
+Saved files consist of seven header tag pairs followed by numbered full-move pairs:
 
 ```pdn
 [Event "Checkers Match"]
-[Variant "English"]
+[Variant "International"]
 [GameMode "HumanVsComputer"]
 [TimeControlMode "TimePerGame"]
 [Depth "8"]
 [SecondsPerMove "5"]
 [MinutesPerGame "5"]
 
-1. 11-15 24-19 2. 9-14 22-17 3. 5-9 17x10 4. 6x15 25-22
+1. 21-17 11-15 2. 23-19 8-11 3. 17-14 9x18 4. 22x15 11x18
 ```
 
-Supported metadata tags include:
-* `Variant`: `"International"` or `"English"`.
-* `GameMode`: `"HumanVsHuman"`, `"HumanVsComputer"`, `"ComputerVsComputer"`.
-* `TimeControlMode`: `"FixedDepth"`, `"TimePerMove"`, `"TimePerGame"`.
-* `Depth`: Target ply depth for fixed depth mode.
-* `SecondsPerMove`: Budget for time per move.
-* `MinutesPerGame`: Clock allotment for time per game.
+### 2. Parsing & Replay Verification Pipeline
 
-### 2. Move Formatting
-Moves are serialized into standard notation:
-* **Quiet moves:** `From-To` (e.g., `11-15`).
-* **Captures:** `FromxLanding` (e.g., `17x10`), and multi-jumps traverse each landing square (`29x18x4`).
-* Moves are grouped under full-move numbers (`1. White Black 2. White Black ...`).
+```mermaid
+flowchart LR
+    File["PDN Text (.pdn / .checkers)"] --> Tags["Parse [Key &quot;Value&quot;] Headers<br/>(Default Variant = International)"]
+    Tags --> Session["Create GameSession +<br/>RuleEngine(Variant)"]
+    Session --> Strip["Strip {comments}, ;comments,<br/>move numbers & result tokens"]
+    Strip --> Replay["For each move token:<br/>Match against GetLegalMoves()<br/>& call TryMakeMove()"]
+    Replay --> Valid{"All moves legal?"}
+    Valid -- "Yes" --> Done["Return reconstructed GameRecord<br/>(Full Undo history intact)"]
+    Valid -- "No" --> Err["Throw FormatException<br/>with illegal move token"]
+```
 
-### 3. Parsing & Variant Reconstruction
-When `GameRecordFormat.Parse(text)` loads a game:
-1. It tokenizes tags and strips bracket/brace comments (`{ ... }` and `; ...`).
-2. It detects the `Variant` tag. If absent, it gracefully defaults to `CheckersVariant.International` ensuring 100% backward compatibility with legacy saves.
-3. It constructs a new `GameSession` equipped with a matching `RuleEngine(variant)`.
-4. It parses each move notation token (`11-15`, `17x10`), matches it against the current state's `LegalMoves`, and applies it to reproduce the exact move history and final board state.
+Because `GameRecordFormat.Parse` replays every move through `GameSession.TryMakeMove` from the initial board, loading a file reconstructs the full `_stateHistory` and `_moveHistory`, allowing the user to immediately press **Undo** (`Ctrl+Z`) to step backward through a loaded game.

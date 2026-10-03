@@ -4,75 +4,104 @@
 
 ## In short
 
-In game-tree search, the efficiency of **Alpha-Beta pruning** depends heavily on the order in which moves are searched:
-* **Worst ordering:** If moves are explored from worst to best, no branches are pruned, and the engine must visit all $O(b^d)$ positions (same as brute-force minimax).
-* **Optimal ordering:** If the best move is explored first at every node, Alpha-Beta searches only $O(b^{d/2})$ positions—effectively **doubling the depth** the engine can reach in the same time!
+In Alpha-Beta game-tree search, the number of nodes visited to reach depth $d$ with branching factor $b$ depends dramatically on the **order** in which candidate moves are explored:
+* **Worst-case ordering** (searching moves from worst to best): No branches are pruned, visiting all:
+  $$N_{\text{worst}}(b, d) = O(b^d)$$
+* **Optimal ordering** (searching the strongest move first at every node): Alpha-Beta prunes every suboptimal sibling after examining only one refutation reply, reducing complexity to:
+  $$N_{\text{best}}(b, d) = O\bigl(b^{\lceil d/2 \rceil} + b^{\lfloor d/2 \rfloor} - 1\bigr) = O\bigl(b^{d/2}\bigr)$$
+
+By reducing the effective branching factor from $b$ to $\sqrt{b}$, strong move ordering allows the engine to search **twice as deep** within the same time budget.
 
 ---
 
 ## Move ordering pipeline in `MinimaxPlayer`
 
-`MinimaxPlayer.cs` sorts candidate legal moves before traversing recursive branches:
+At every interior node, [`MinimaxPlayer.cs`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) orders the generated `Span<BitMove>` slice in-place before expanding child subtrees:
 
 ```mermaid
 flowchart TD
-    Legal[Legal Moves] --> HashMove["1. Transposition Table Hash Move<br/>Previously proven best move tried first"]
-    HashMove --> CapCount["2. Number of Captures (Descending)<br/>Multi-jumps explored next"]
-    CapCount --> Prom["3. Promotion Moves<br/>Crowning moves explored next"]
-    Prom --> Quiet["4. Quiet Moves<br/>Normal positional slides"]
-    Quiet --> Search[Alpha-Beta Search Tree]
+    Gen["BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves"] --> Key["Compute Tactical Priority Key:<br/>K(m) = (CaptureCount &lt;&lt; 1) | IsPromotion"]
+    Key --> Sort["In-Place Stable Insertion Sort<br/>by K(m) descending"]
+    Sort --> TTCheck{"Did Transposition Table probe<br/>return a valid Hash Move?"}
+    TTCheck -- "Yes" --> PromoteTT["Move matching (ttFrom, ttTo)<br/>shifted to moves[0]"]
+    TTCheck -- "No" --> Ready["Ordered Span&lt;BitMove&gt; ready for<br/>Negamax Alpha-Beta loop"]
+    PromoteTT --> Ready
 ```
 
-### 1. Hash Move from Transposition Table
-Before searching children at any node, the engine probes the 64-bit Zobrist Transposition Table (`TranspositionTable.TryProbe`). If an entry exists for the current position with a stored `BestMoveFrom` and `BestMoveTo`, that **Hash Move** is immediately moved to index 0 of candidate moves. In iterative deepening, this guarantees that the principal variation from iteration $d-1$ is examined first at iteration $d$.
+### Priority Tiers
 
-### 2. Multi-Jumps First
-Moves that capture 2 or more pieces dramatically shift material and create immediate tactical threats. Searching multi-jumps first rapidly raises $\alpha$ (the lower bound), allowing subsequent inferior moves to be pruned immediately.
+| Priority | Move Category | Tactical Key $K(m)$ | Rationale |
+|:---:|---|:---:|---|
+| **1 (Highest)** | **Transposition Table Hash Move** | Moved to `moves[0]` | Proven best move (or $\beta$-cutoff refutation) from a previous search depth or transposed branch. |
+| **2** | **Multi-Jump Captures + Promotion** | $(c \ll 1) \mid 1$, $c \ge 2$ | Captures multiple enemy pieces and crowns a king in a single turn. |
+| **3** | **Multi-Jump Captures** | $(c \ll 1)$, $c \ge 2$ | Captures $2, 3, \dots$ pieces; largest material swings are searched first. |
+| **4** | **Single Capture + Promotion** | $(1 \ll 1) \mid 1 = 3$ | Captures 1 piece and crowns a king. |
+| **5** | **Single Capture** | $(1 \ll 1) = 2$ | Standard 1-piece jump capture. |
+| **6** | **Quiet Promotion** | $(0 \ll 1) \mid 1 = 1$ | Non-capturing slide onto the crown row, creating a new King (+200 pts in International, +70 pts in English). |
+| **7 (Lowest)** | **Quiet Moves** | $0$ | Positional slides that neither capture nor promote. |
 
-### 3. Single Captures
-Under the mandatory capture rule, if any capture is available, only captures are generated. Ordering captures by piece count guarantees that the most devastating tactical blows are evaluated before smaller exchanges.
+### Principal Variation (PV) Ordering at the Root
 
-### 4. Promotions
-Advancing a man onto the crown row generates an agile King (Flying King in International, or 1-step King in English Checkers). Promotions are explored immediately following captures.
-
-### 5. Quiet Moves
-Positional slides that do not capture or promote are evaluated last.
-
-### 6. Principal Variation (PV) Ordering at Root
-At the root of the search tree during iterative deepening, the best move found in each finished depth iteration is dynamically moved to the head of `currentOrder`:
+At the root node (`ply == 0`) during Iterative Deepening ([Chapter 07](07-search.md)), the move that achieved the highest score at depth $d$ is promoted to the very front of `currentOrder` before starting depth $d + 1$:
 
 ```csharp
-currentOrder.Remove(bestMoveThisDepth);
-currentOrder.Insert(0, bestMoveThisDepth);
+currentOrder.Remove(bestEntryThisDepth.Value);
+currentOrder.Insert(0, bestEntryThisDepth.Value);
 ```
 
-This ensures that subsequent iterations immediately examine the current best move with the widest possible $\alpha$-$\beta$ window.
+This guarantees that depth $d + 1$ immediately searches the Principal Variation first, establishing a tight lower bound $\alpha$ at the root before testing any alternative root moves.
 
 ---
 
-## Code implementation
+## Zero-allocation in-place implementation
 
-In `MinimaxPlayer.cs`:
+Because move ordering runs millions of times per second inside `NegaMax` and `Quiescence`, allocating LINQ iterators or `List<Move>` objects would bottleneck the garbage collector. Instead, `OrderBitMoves` sorts `Span<BitMove>` in-place on preallocated stack/ply memory:
 
 ```csharp
-private static IReadOnlyList<Move> OrderMoves(IEnumerable<Move> moves, Move? ttMove = null)
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+private static void OrderBitMoves(Span<BitMove> moves, byte ttFrom, byte ttTo, bool hasTtMove)
 {
-    var list = moves
-        .OrderByDescending(m => m.CapturedPositions.Count) // Multi-jumps first
-        .ThenByDescending(m => m.IsPromotion ? 1 : 0)     // Promotions next
-        .ToList();
-
-    if (ttMove != null)
+    // 1. In-place insertion sort by (CaptureCount << 1) | IsPromotion descending
+    for (int i = 1; i < moves.Length; i++)
     {
-        int index = list.FindIndex(m => m.From == ttMove.From && m.To == ttMove.To);
-        if (index > 0)
+        BitMove current = moves[i];
+        int currentKey = (current.CaptureCount << 1) | (current.IsPromotion ? 1 : 0);
+        if (currentKey == 0)
+            continue; // Fast path: quiet non-promoting moves stay in generation order
+
+        int j = i - 1;
+        while (j >= 0)
         {
-            var move = list[index];
-            list.RemoveAt(index);
-            list.Insert(0, move); // Prioritize hash move
+            int prevKey = (moves[j].CaptureCount << 1) | (moves[j].IsPromotion ? 1 : 0);
+            if (prevKey >= currentKey)
+                break;
+            moves[j + 1] = moves[j];
+            j--;
         }
+        moves[j + 1] = current;
     }
 
-    return list;
+    // 2. Promote Transposition Table Hash Move to index 0
+    if (hasTtMove)
+    {
+        for (int i = 0; i < moves.Length; i++)
+        {
+            if (moves[i].From == ttFrom && moves[i].To == ttTo)
+            {
+                if (i > 0)
+                {
+                    BitMove ttMove = moves[i];
+                    for (int j = i; j > 0; j--)
+                    {
+                        moves[j] = moves[j - 1];
+                    }
+                    moves[0] = ttMove;
+                }
+                break;
+            }
+        }
+    }
 }
 ```
+
+Notice the `if (currentKey == 0) continue;` fast-path optimization: in quiet positions where no promotions exist, `OrderBitMoves` scans the span in a single register pass without moving a single struct, then shifts the Transposition Table hash move to `moves[0]`.

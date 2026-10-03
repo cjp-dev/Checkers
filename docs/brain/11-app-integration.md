@@ -1,13 +1,13 @@
-# 12 – App integration
+# 11 – App integration
 
 [Back to the index](README.md)
 
 ## In short
 
-The solution achieves complete separation of concerns by placing all game rules and search logic in `Checkers.Core`, while user interface logic and state coordination reside in the shared `Checkers.App` library.
+The solution achieves strict separation of concerns by placing all game rules, bitboards, and AI search logic in `Checkers.Core`, while user interface state coordination and view models reside in the shared `Checkers.App` library.
 
 Two client applications consume `Checkers.App`:
-1. **`Checkers.Wpf`:** High-performance desktop presentation layer targeting .NET 10 on Windows.
+1. **`Checkers.Wpf`:** Native Windows desktop client targeting `.NET 10` (`net10.0-windows`).
 2. **`Checkers.Web`:** Responsive Blazor WebAssembly client compiled Ahead-Of-Time (AOT) to WebAssembly and hosted statically (e.g., Azure Static Web Apps).
 
 ---
@@ -18,23 +18,23 @@ Two client applications consume `Checkers.App`:
 flowchart TD
     subgraph Presentation ["Presentation Layer"]
         WPF["Checkers.Wpf<br/>(WPF Desktop Client)"]
-        Web["Checkers.Web<br/>(Blazor WebAssembly)"]
+        Web["Checkers.Web<br/>(Blazor WebAssembly + /docs)"]
     end
 
     subgraph Application ["Application Layer (Checkers.App)"]
         MainVM["MainViewModel"]
         AnalysisVM["AnalysisViewModel"]
         SettingsVM["SettingsViewModel"]
-        SquareVM["SquareViewModel"]
-        Services["Service Interfaces:<br/>• ISoundService<br/>• IDialogService<br/>• IGameFileService"]
+        SquareVM["SquareViewModel (8×8)"]
+        Services["Platform Abstractions:<br/>• ISoundService<br/>• IDialogService<br/>• IGameFileService"]
     end
 
-    subgraph Domain ["Domain Engine (Checkers.Core)"]
+    subgraph Domain ["Domain & AI Engine (Checkers.Core)"]
         Session["GameSession"]
-        RuleEngine["RuleEngine"]
-        AI["MinimaxPlayer & Evaluators"]
-        Zobrist["Zobrist Hashing & TT"]
-        PDN["GameRecordFormat"]
+        RuleEngine["RuleEngine & BitboardMoveGenerator"]
+        AI["MinimaxPlayer & EvaluationFunction"]
+        Zobrist["Zobrist Hashing & TranspositionTable"]
+        PDN["GameRecordFormat (PDN)"]
     end
 
     WPF --> MainVM
@@ -56,50 +56,76 @@ flowchart TD
 ## Shared ViewModels (`Checkers.App`)
 
 ### `MainViewModel`
-The primary coordinator for interactive gameplay:
-* **Board state representation:** Maintains an $8 \times 8$ grid of `SquareViewModel` objects and an observable `BoardSquares` collection bound to XAML/HTML templates.
-* **Game modes:** Supports `HumanVsHuman`, `HumanVsComputer`, and `ComputerVsComputer`.
-* **Selection & Move Validation:** Intercepts square clicks or drag-and-drop operations, identifies valid destinations, highlights mandatory capture sources in red, and executes legal moves.
-* **Undo/Redo & Clocks:** Maintains undo availability, coordinates move history lists, and restores chess clocks when moves are retracted.
-* **AI Turn Dispatch:** Monitors turn transitions, cancels running searches when new moves occur, and triggers computer moves asynchronously.
+[`MainViewModel.cs`](../../src/Checkers.App/ViewModels/MainViewModel.cs) is the central coordinator for interactive gameplay:
+* **Board State Synchronization:** Maintains an $8 \times 8$ array and observable `BoardSquares` collection of `SquareViewModel` instances bound to XAML/Razor templates.
+* **Game Modes:** Supports `HumanVsHuman`, `HumanVsComputer`, and `ComputerVsComputer`.
+* **Selection, Drag-and-Drop & Mandatory Capture Highlighting:** Intercepts square clicks and drag-and-drop gestures, computes legal destination squares, highlights pieces with mandatory captures, and executes legal moves.
+* **Persistent Transposition Table Lifecycle:** Retains a single `TranspositionTable` instance across moves within a match (calling `NewSearch()` to increment the 6-bit generation age) and clears/resizes it when starting a new game or changing table capacity in Settings.
+* **Undo/Redo & Chess Clocks:** Coordinates linear Undo/Redo stacks and refunds elapsed thinking time (`_timeLeftAtPly`) when moves are taken back in `TimePerGame` mode ([Chapter 09](09-time-control.md)).
 
 ### `AnalysisViewModel`
-Maintains real-time engine telemetry during computer thinking:
-* Properties: `Move`, `Depth`, `Value`, `BestMove`, `Nodes`, `Evaluations`, `Time`.
-* **`Updated` Event:** Exposes `public event Action? Updated;` raised immediately whenever new telemetry is received or when the pane is reset.
+[`AnalysisViewModel.cs`](../../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:
+* Observable properties: `Move`, `Depth`, `Value`, `BestMove`, `Nodes`, `Evaluations`, `Time`.
+* **`Updated` Event:** Raises `public event Action? Updated;` whenever a new `SearchAnalysis` snapshot arrives so Blazor components can trigger `InvokeAsync(StateHasChanged)`.
 
 ### `SettingsViewModel`
-Backs the **Game -> Settings...** modal dialog:
-* Radio toggles for **International Draughts (Flying Kings)** vs. **English Checkers (1-Step Kings)**.
-* Sliders for **Fixed Depth** (1–20), **Time per Move** (1–60s), and **Time per Game** (1–60m).
+[`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs) backs the **Game -> Settings...** modal dialog:
+* Rule variant selection: **International Draughts (Flying Kings)** vs. **English Checkers (1-Step Kings)**.
+* Time control mode & sliders: **Fixed Depth** ($1\text{–}20$), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
+* Transposition Table size selector: **$1,048,576$ ($16\text{ MiB}$)** up to **$16,777,216$ ($256\text{ MiB}$)** entries.
 
 ---
 
-## Presentation layer differences
-
-Although both frontends bind to the exact same `MainViewModel`, desktop and web environments have distinct execution and UI characteristics:
+## Presentation layer comparison
 
 | Feature | WPF Desktop (`Checkers.Wpf`) | Blazor WebAssembly (`Checkers.Web`) |
 |---|---|---|
-| **Runtime Model** | Multi-threaded CLR (.NET 10) | Single-threaded WebAssembly (.NET 10 AOT) |
-| **Search Execution** | Background ThreadPool (`Task.Run`) | Cooperative macrotask yielding (`Task.Delay(1)`) |
-| **Telemetry Dispatch** | `Dispatcher.BeginInvoke` via `Progress<T>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
-| **File I/O** | Native `OpenFileDialog` / `SaveFileDialog` | Browser file picker & blob downloads (`fileService.js`) |
-| **Audio Playback** | System sound / procedural sounds | HTML5 Audio Elements (`checkers.playSound`) |
-| **Documentation** | Built-in web links | Integrated `/docs` route with Markdig renderer |
+| **Runtime Model** | Multi-threaded CLR (`.NET 10`) | Single-threaded WebAssembly (`.NET 10` AOT) |
+| **AI Search Execution** | Background ThreadPool (`Task.Run`) | Cooperative macrotask yielding (`await Task.Delay(1)`) |
+| **Telemetry Marshaling** | `Dispatcher` via `Progress<SearchAnalysis>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
+| **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (`fileService.js`) |
+| **Audio Synthesis** | Procedural PCM wave synthesis (`SoundService`) | Web Audio / HTML5 audio interop (`checkers.playSound`) |
+| **Documentation Viewer** | Links to documentation | Integrated `/docs` route (`BrainDocs.cs` + Markdig + KaTeX + Mermaid) |
 
 ---
 
 ## Desktop ThreadPool vs. WebAssembly Cooperative Yielding
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Browser Event Loop / Home.razor
+    participant VM as MainViewModel / AnalysisViewModel
+    participant AI as MinimaxPlayer (WASM Single Thread)
+
+    UI->>VM: Human completes move → Trigger AI turn
+    VM->>AI: GetMoveAsync(state, legalMoves, progress, ct)
+    loop Iterative Deepening (d = 1 .. MaxDepth)
+        AI->>AI: NegaMax bitboard search (d plies)
+        AI->>VM: progress.Report(SearchAnalysis)
+        AI->>UI: await Task.Delay(1, ct) [Yield macrotask]
+        UI->>VM: BrowserSynchronizationContext dispatches Progress callback
+        VM->>UI: Analysis.Updated fires → InvokeAsync(StateHasChanged)
+        UI->>UI: Browser repaints DOM & thinking progress bar (60 FPS)
+        UI-->>AI: Resume C# continuation for depth d + 1
+    end
+    AI-->>VM: Return bestMoveOverall
+    VM->>UI: Apply move & update board
+```
+
 ### Desktop WPF
-In WPF, UI rendering occurs on the main STA thread while `Task.Run` executes the minimax search on a separate worker thread. The `Progress<SearchAnalysis>` instance marshals updates back to the UI thread via `Dispatcher`, allowing continuous 60 FPS animations and live analysis numbers without stalling the search.
+In WPF, UI rendering runs on the main STA thread while `Task.Run` executes `MinimaxPlayer.GetMoveAsync` on a background ThreadPool worker. `Progress<SearchAnalysis>` automatically marshals callbacks onto the WPF `Dispatcher`, keeping animations and telemetry updates smooth at 60 FPS.
 
 ### Blazor WebAssembly
-In standard WebAssembly, all C# code shares the browser's single execution thread with the DOM renderer:
-* If the search ran in a tight synchronous loop, the browser could not process pending message queue items or render frames until search finished.
-* To solve this, `MinimaxPlayer.GetMoveAsync` is `async ValueTask<Move>`. Whenever `progress != null`, it awaits `Task.Delay(1, cancellationToken)`:
-  1. At every completed depth iteration ($d = 1 \dots D$).
-  2. Between root moves if $\ge 150\text{ms}$ have elapsed since the last report.
-  3. On single forced moves.
-* Each `Task.Delay(1)` schedules a macrotask on the browser event loop. During this brief slice, the browser executes posted `Progress<T>` callbacks, fires `AnalysisViewModel.Updated`, calls `InvokeAsync(StateHasChanged)` in `Home.razor`, and repaints the DOM before resuming C# search calculations.
+In standard WebAssembly, C# code shares the browser's single UI thread with the DOM renderer:
+* If `MinimaxPlayer` ran synchronously without yielding, the browser could not process queued `Progress<T>` callbacks or repaint the screen until the entire search finished.
+* By awaiting `Task.Delay(1, cancellationToken)` after each completed depth iteration and on $\ge 150\text{ ms}$ heartbeats, `MinimaxPlayer` yields a macrotask slice to the browser event loop. During that slice, `BrowserSynchronizationContext` invokes the pending `Progress<SearchAnalysis>` handler, `AnalysisViewModel.Updated` triggers `StateHasChanged()`, and the browser paints the updated depth, node count, and evaluation score in real time.
+
+---
+
+## Integrated Documentation Pipeline (`BrainDocs.cs`)
+
+In `Checkers.Web`, the contents of `docs/brain/` (including Markdown chapters and `images/*.svg` diagrams) are copied into `wwwroot/content/brain/` during build (`CopyBrainDocs` target in `Checkers.Web.csproj`) and rendered dynamically at `/docs`:
+1. **Chapter Discovery:** [`BrainDocs.cs`](../../src/Checkers.Web/Services/BrainDocs.cs) parses `README.md` and extracts all links matching `^\d\d-[a-z0-9-]+\.md$` to build the ordered sidebar Table of Contents and Previous/Next chapter navigation.
+2. **Markdown to HTML:** Markdig (`UseAutoIdentifiers(AutoIdentifierOptions.GitHub)` + `UseAdvancedExtensions()`) compiles Markdown tables, code blocks, math spans (`$...$`, `$$...$$`), and `mermaid` fenced blocks into semantic HTML and rewrites relative image and chapter URLs.
+3. **Client-Side Math & Diagrams:** [`docs.js`](../../src/Checkers.Web/wwwroot/js/docs.js) lazy-loads **KaTeX** to typeset LaTeX equations and **Mermaid.js** to render architectural flowcharts, sequence diagrams, and state machines.

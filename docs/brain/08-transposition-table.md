@@ -4,88 +4,121 @@
 
 ## In short
 
-Many different move orders lead to the exact same board configuration (a *transposition*). The **transposition table** (hash table) caches the evaluation, depth, search bound, and best move found for every searched position using 64-bit deterministic Zobrist hashing. 
+In Checkers, many different move sequences transpose into the exact same board configuration. The **Transposition Table** (`TranspositionTable.cs`) is a direct-mapped, power-of-two hash table indexed by the 64-bit Zobrist hash ([Chapter 02](02-board-and-coordinates.md)) that caches the search depth, evaluation score, alpha-beta bound type, generation age, and best move for previously searched positions.
 
-When the search encounters a position again — either across different branches or during successive iterations of **iterative deepening** — the cached entry provides an immediate cutoff or seeds move ordering by trying the proven best move first.
+When `MinimaxPlayer` encounters a position again—either via a different move order in the current tree or across successive iterations of Iterative Deepening ([Chapter 07](07-search.md))—it probes the table in $O(1)$ time to:
+1. **Trigger an immediate $\alpha$-$\beta$ cutoff** if the cached entry was searched to at least the required remaining depth (`entry.Depth >= depth`) and its bound satisfies the current window.
+2. **Seed move ordering** ([Chapter 06](06-move-ordering.md)) by searching the stored `BestMoveFrom` $\rightarrow$ `BestMoveTo` first even when the cached depth is shallower than `depth`.
 
-In our empirical benchmarks across 40 diverse, non-trivial positions:
-- **Standard Benchmark (7–9 plies, ~0.1s/position):** The transposition table delivered a **70.5% reduction in evaluated nodes** (`2,408,731` $\rightarrow$ `711,546` nodes) and a **3.22x speedup** (`3,855 ms` $\rightarrow$ `1,198 ms`).
-- **Deep Benchmark (9–13 plies, ~2.4s/position, up to 6.6s):** Pruning efficiency scaled even higher to an **84.8% reduction in evaluated nodes** (`62,882,064` $\rightarrow$ `9,546,749` nodes in $1\text{M}$ TT / `9,517,400` in $16\text{M}$ TT) and a **6.03x overall speedup** (`96,088 ms` $\rightarrow$ `15,931 ms`), with **492,949 direct hash cutoffs** and **93.8% fewer hash collisions** in the $16,777,216$-entry table (`99,743` $\rightarrow$ `6,151` collisions).
+In our 40-position empirical benchmark suite:
+- **Standard Benchmark ($7\text{–}9$ plies, ~0.1s/position):** The transposition table delivered a **70.5% reduction in evaluated nodes** (`2,408,731` $\rightarrow$ `711,546` nodes) and a **3.22× speedup** (`3,855 ms` $\rightarrow$ `1,198 ms`).
+- **Deep Benchmark ($7\text{–}14$ plies, ~3.9s/position baseline):** Pruning efficiency scaled to an **88.4% reduction in evaluated nodes** (`95,898,151` $\rightarrow$ `11,117,122` nodes in $1\text{M}$ TT / `11,076,738` in $16\text{M}$ TT) and an **8.16× overall speedup** (`154,278 ms` $\rightarrow$ `18,900 ms`), with **532,359 direct hash cutoffs** and **93.6% fewer hash collisions** in the $16,777,216$-entry table (`142,781` $\rightarrow$ `9,165` collisions).
 
 ---
 
-## The entry
+## Compact 16-byte cache-aligned entry layout
 
-[TranspositionTable.cs](../../src/Checkers.Core/AI/TranspositionTable.cs):
+[`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **4 entries fit into a single 64-byte CPU cache line**:
 
-Each `TranspositionEntry` is packed into a compact **16-byte struct** so that 4 entries fit cleanly into a single 64-byte CPU cache line:
+```
+┌───────────────────────────────┬───────────────┬───────┬───────────┬──────────┬──────────┐
+│          Key (8 B)            │  Score (4 B)  │ Depth │ Bound|Age │ MoveFrom │  MoveTo  │
+│         ulong (0..7)          │  int (8..11)  │ (12)  │   (13)    │   (14)   │   (15)   │
+└───────────────────────────────┴───────────────┴───────┴───────────┴──────────┴──────────┘
+ 0                             7 8            11   12        13          14         15
+```
 
 | Bytes | Field | Type | Contents |
 |---|---|---|---|
-| 0–7 | `Key` | `ulong` | 64-bit Zobrist hash |
-| 8–11 | `Score` | `int` | Evaluation score (ply-normalized for mate/win) |
-| 12 | `Depth` | `sbyte` | Remaining search depth when stored |
-| 13 | `Bound` + `Age` | `byte` | Low 2 bits: `TranspositionBound`; High 6 bits: search generation `Age` ($0\dots 63$) |
-| 14 | `BestMoveFrom` | `byte` | Encoded 6-bit source square coordinate (`(Row << 3) \| Col \| 0x40`) |
-| 15 | `BestMoveTo` | `byte` | Encoded 6-bit target square coordinate (`(Row << 3) \| Col \| 0x40`) |
+| `0–7` | `Key` | `ulong` | Full 64-bit Zobrist hash key for exact collision verification |
+| `8–11` | `Score` | `int` | Centipawn or ply-normalized mate score |
+| `12` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded |
+| `13` | `BoundAndAge` | `byte` | Low 2 bits: `TranspositionBound` ($1..3$); High 6 bits: search generation `Age` ($0..63$) |
+| `14` | `BestMoveFrom` | `byte` | Encoded 6-bit source square (`(Row << 3) \| Col \| 0x40`, or `0` if none) |
+| `15` | `BestMoveTo` | `byte` | Encoded 6-bit destination square (`(Row << 3) \| Col \| 0x40`, or `0` if none) |
 
-### Search bounds
+### Alpha-Beta Search Bounds
 
-| Bound | Condition | Meaning |
+Because Alpha-Beta searches within a window $[\alpha, \beta]$, not every node finishes with an exact minimax value:
+
+| Bound Flag | Storage Condition | Meaning & Cutoff Condition on Probe (`entry.Depth >= depth`) |
 |---|---|---|
-| `Exact` | $\alpha < \text{score} < \beta$ | True minimax score within the current search window. |
-| `LowerBound` | $\text{score} \ge \beta$ | Beta-cutoff: the position was so good for the player that the opponent would never allow this branch. True score is at least this value. |
-| `UpperBound` | $\text{score} \le \alpha$ | Alpha fail-low: no move was able to improve upon alpha. True score is at most this value. |
+| **`Exact`** | $\alpha < \text{score} < \beta$ | Every child move was searched without a $\beta$-cutoff, and at least one move improved $\alpha$. **Always returns `score` immediately.** |
+| **`LowerBound`** | $\text{score} \ge \beta$ | A fail-high $\beta$-cutoff occurred; the true minimax score is *at least* `score`. **Triggers cutoff if $\text{score} \ge \beta$.** |
+| **`UpperBound`** | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** |
+
+---
+
+## Probe and Store Pipeline
+
+```mermaid
+flowchart TD
+    Probe["TryProbe(key, depth, α, β, ply)"] --> Index["Compute slot index = (int)(key & _mask)"]
+    Index --> Match{"entry.Key == key<br/>& Bound != None?"}
+    Match -- "No (Miss)" --> Miss["Return false"]
+    Match -- "Yes (Hit)" --> ExtractMove["Decode BestMoveFrom & BestMoveTo<br/>for move ordering"]
+    ExtractMove --> CheckDepth{"Is entry.Depth >= depth?"}
+    CheckDepth -- "No (Too shallow)" --> OrderOnly["Return true with hasCutoff = false<br/>(Use Hash Move at index 0)"]
+    CheckDepth -- "Yes (Sufficient depth)" --> Norm["Denormalize mate score for current ply"]
+    Norm --> CheckBound{"Does Bound satisfy [α, β]?<br/>• Exact<br/>• LowerBound & score >= β<br/>• UpperBound & score <= α"}
+    CheckBound -- "Yes" --> Cutoff["Increment Cutoffs<br/>Return true with hasCutoff = true"]
+    CheckBound -- "No" --> OrderOnly
+```
 
 ---
 
 ## Memory layout & configurable sizing
 
-The table is sized to an exact power-of-two number of entries, allowing ultra-fast bitwise masking instead of modulo division:
+The table capacity $N = 2^k$ is always an exact power of two, replacing slow integer modulo division (`key % N`) with a single-cycle bitwise AND mask:
 
-$$
-\text{index} = \text{key} \land \text{mask}
-$$
+$$\text{index} = \text{key} \land (N - 1)$$
 
-The capacity is user-configurable in the **Settings Dialog** (in both WPF Desktop and Blazor WebAssembly) across five power-of-two steps from **$1,048,576$ ($2^{20}$, default)** up to **$16,777,216$ ($2^{24}$, matching Connect-4)**:
+The capacity is user-configurable in the **Game -> Settings...** dialog across five power-of-two tiers from **$1,048,576$ ($2^{20}$, default)** up to **$16,777,216$ ($2^{24}$, matching Connect-4)**:
 
-| Setting | Entries | Memory (16 B / entry) | Use Case |
+| Setting | Entries ($N = 2^k$) | Memory ($16\text{ B} \times N$) | Target Environment |
 |---|---|---|---|
-| **Default ($2^{20}$)** | $1,048,576$ | 16 MiB | Default desktop and web client (fits in CPU L3 cache) |
-| **Medium ($2^{21}$)** | $2,097,152$ | 32 MiB | Extended time-per-move play |
-| **Large ($2^{22}$)** | $4,194,304$ | 64 MiB | Deep analysis |
-| **Extra Large ($2^{23}$)** | $8,388,608$ | 128 MiB | Long clock games |
-| **Maximum ($2^{24}$)** | $16,777,216$ | 256 MiB | Maximum capacity (matching Connect-4) |
-| **Lightweight / Tests** | $65,536$ | 1 MiB | Unit tests & fast verification |
+| **Default ($2^{20}$)** | $1,048,576$ | $16\text{ MiB}$ | Default desktop & web client (fits inside CPU L3 cache) |
+| **Medium ($2^{21}$)** | $2,097,152$ | $32\text{ MiB}$ | Extended time-per-move play |
+| **Large ($2^{22}$)** | $4,194,304$ | $64\text{ MiB}$ | Deep tactical analysis |
+| **Extra Large ($2^{23}$)** | $8,388,608$ | $128\text{ MiB}$ | Long clock games |
+| **Maximum ($2^{24}$)** | $16,777,216$ | $256\text{ MiB}$ | Maximum capacity (matching Connect-4) |
+| **Lightweight / Tests ($2^{16}$)** | $65,536$ | $1\text{ MiB}$ | Fast unit test execution |
 
-If allocating a larger table fails on a memory-constrained device (`OutOfMemoryException`), `TranspositionTable` automatically falls back to `DefaultEntries` ($1,048,576$) and sets `UsesFallbackCapacity = true`.
-
----
-
-## Replacement strategy
-
-Each slot holds one entry. When a new entry maps to an occupied slot:
-1. **Same position:** Replace immediately with the updated depth or tighter bound.
-2. **Older age:** Replace entries stored during earlier searches (`existing.Age != currentAge`).
-3. **Depth-preferred:** Replace if the new search explored deeper or equal depth (`depth >= existing.Depth`).
-
-In `MainViewModel`, the `TranspositionTable` instance is retained across moves within the same game (and cleared on `NewGame` or variant change). Calling `NewSearch()` at the start of each computer turn increments the 6-bit generation age so entries from earlier turns are prioritized for replacement while preserving deeper transpositions that remain relevant.
+If allocating a larger array throws `OutOfMemoryException` on a memory-constrained browser device, `TranspositionTable` gracefully falls back to `DefaultEntries` ($1,048,576$) and sets `UsesFallbackCapacity = true`.
 
 ---
 
-## Score normalization (win distance)
+## Age & Depth-Preferred Replacement Strategy
 
-When a forced win or loss is detected ($|\text{score}| \ge 90,000$), storing the raw score would distort the win distance if probed from a different ply depth:
-- **Storing:** $\text{storedScore} = \text{score} + \text{ply}$ (for wins) or $\text{score} - \text{ply}$ (for losses).
-- **Retrieving:** $\text{retrievedScore} = \text{storedScore} - \text{ply}$ (for wins) or $\text{storedScore} + \text{ply}$ (for losses).
+When `Store` maps a position to slot `index`, an existing entry in that slot is overwritten if and only if at least one of the following holds:
+1. **Empty Slot:** `existing.Bound == TranspositionBound.None`
+2. **Same Position Update:** `existing.Key == key` (updates the position with deeper search or fresher bound)
+3. **Stale Generation Age:** `existing.Age != _currentAge` (the entry was created during an earlier move in the game)
+4. **Deeper or Equal Subtree:** `depth >= existing.Depth` (preserves deep subtrees that took many nodes to compute against shallow leaf overwrites)
 
-This preserves exact mate-in-$N$ distance invariant across all search depths and branches.
+Whenever a different key (`existing.Key != key`) occupies a slot of the current search generation (`existing.Age == _currentAge`), `Collisions` is incremented. By the **occupancy load formula**, after $M$ stores into a table of size $N$, the expected number of index collisions grows quadratically at low load factors:
+
+$$\mathbb{E}[\text{Collisions}] \approx M - N\left(1 - \left(1 - \frac{1}{N}\right)^M\right) \approx \frac{M^2}{2N}$$
+
+Thus, increasing $N$ by $16\times$ (from $2^{20}$ to $2^{24}$) theoretically reduces index collisions by $\approx 16\times$ ($93.75\%$), closely matching our empirical measurement of **$93.6\%$ collision reduction** (`142,781` $\rightarrow$ `9,165`).
+
+---
+
+## Score normalization (win distance invariance)
+
+As described in [Chapter 07](07-search.md#distance-to-mate-scoring), a forced win or loss score ($|\text{score}| \ge 90{,}000$) depends on the `ply` distance from the root: $\pm 100{,}000 \mp \text{ply}$. If stored raw at $\text{ply}_1$ and retrieved via a transposition at $\text{ply}_2 \neq \text{ply}_1$, the mate distance would be corrupted.
+
+To make stored mate scores independent of the root path length, `TranspositionTable` normalizes mate scores relative to the node itself:
+
+$$\text{NormalizeForStore}(\text{score}, \text{ply}) = \begin{cases} \text{score} + \text{ply} & \text{if } \text{score} \ge +90{,}000 \\ \text{score} - \text{ply} & \text{if } \text{score} \le -90{,}000 \\ \text{score} & \text{otherwise} \end{cases}$$
+
+$$\text{NormalizeForRetrieve}(\text{stored}, \text{ply}) = \begin{cases} \text{stored} - \text{ply} & \text{if } \text{stored} \ge +90{,}000 \\ \text{stored} + \text{ply} & \text{if } \text{stored} \le -90{,}000 \\ \text{stored} & \text{otherwise} \end{cases}$$
 
 ---
 
 ## Empirical Benchmark 1: Standard Depth (7–9 Plies, ~0.1s / Position)
 
-To scientifically quantify the performance gains of the Transposition Table and compare the default capacity ($1,048,576$ entries) against the maximum capacity ($16,777,216$ entries), an automated empirical benchmark was first run at standard interactive depths (7–9 plies) across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules.
+To scientifically quantify the performance gains of the Transposition Table and compare the default capacity ($1,048,576$ entries) against the maximum capacity ($16,777,216$ entries), an automated empirical benchmark was first run at standard interactive depths (7–9 plies) across 40 unique, non-trivial positions sampled from self-play under the International Flying Kings rules (`docs/brain/tt_benchmark_results.json`).
 
 ### Table 1A: Baseline vs Default Transposition Table ($1,048,576$ entries) — Standard Depth
 
@@ -293,7 +326,7 @@ To test how the Transposition Table and its configurable capacities ($1,048,576$
 | **Total Default TT Nodes ($1\text{M}$)** | $711,546$ | **$11,117,122$** | $15.6\times$ more TT nodes |
 | **Total Max TT Nodes ($16\text{M}$)** | $711,485$ | **$11,076,738$** | **Saves $40,384$ additional nodes** ($662\times$ larger node savings than at 7–9 plies) |
 | **Overall Node Reduction %** | **70.5%** | **88.4%** ($1\text{M}$) / **88.45%** ($16\text{M}$) | **+17.9 percentage points higher pruning efficiency** |
-| **Peak Single-Position Reduction** | **87.3%** (Pos 3) | **97.1%** (Pos 3: `2,152,631` $\rightarrow$ `62,373` nodes) | **32.53x single-position speedup** (`3,416 ms` $\rightarrow$ `105 ms`) |
+| **Peak Single-Position Reduction** | **92.3%** (Pos 7) | **97.1%** (Pos 3: `2,152,631` $\rightarrow$ `62,373` nodes) | **32.53x single-position speedup** (`3,416 ms` $\rightarrow$ `105 ms`) |
 | **Total Baseline Time** | $3,855\text{ ms}$ ($3.86\text{s}$) | **$154,278\text{ ms}$ ($154.28\text{s}$)** | $40.0\times$ longer baseline runtime |
 | **Total Default TT Time ($1\text{M}$)** | $1,198\text{ ms}$ ($1.20\text{s}$) | **$18,900\text{ ms}$ ($18.90\text{s}$)** | Saves **135.4 seconds** across 40 positions |
 | **Total Max TT Time ($16\text{M}$)** | $1,214\text{ ms}$ ($1.21\text{s}$) | **$19,142\text{ ms}$ ($19.14\text{s}$)** | Saves **135.1 seconds** across 40 positions |
@@ -305,17 +338,13 @@ To test how the Transposition Table and its configurable capacities ($1,048,576$
 ### Key Conclusions
 1. **Transposition Pruning Efficiency Scales Exponentially with Depth (`70.5%` $\rightarrow$ `88.4%`):**
    - Increasing search depth by $2\text{–}5$ plies expanded the unpruned baseline search tree by **$39.8\times$** (from `2.41M` to `95.90M` nodes), while the Transposition Table tree grew by only **$15.6\times$** (from `711.5K` to `11.12M` nodes).
-   - Because deeper search trees contain exponentially more transpositions (different move orders converging on the same board configuration), overall node reduction jumped from **70.5% to 88.4%** (pruning **84.78 million nodes**!), and overall speedup more than doubled from **3.22x to 8.16x** (reducing total runtime from **154.3 seconds** down to **18.9 seconds**).
-   - On individual positions with high transposition density, speedup reached **32.53x** (Position 3 at 11 plies: `2,152,631` $\rightarrow$ `62,373` nodes, **97.1% reduction**, `3,416 ms` $\rightarrow$ `105 ms`), **16.76x** (Position 36 at 12 plies), **16.46x** (Position 12 at 10 plies), and **16.21x** (Position 24 at 11 plies).
-2. **Hash Collisions Scale Quadratically (`235x` Growth) and $16\text{M}$ Entries Saves $662\times$ More Nodes:**
+   - Because deeper search trees contain exponentially more transpositions (different move orders converging on the same board configuration), overall node reduction jumped from **70.5% to 88.4%** (pruning **84.78 million nodes**), and overall speedup more than doubled from **3.22× to 8.16×** (reducing total runtime from **154.3 seconds** down to **18.9 seconds**).
+   - On individual positions with high transposition density, speedup reached **32.53×** (Position 3 at 11 plies: `2,152,631` $\rightarrow$ `62,373` nodes, **97.1% reduction**, `3,416 ms` $\rightarrow$ `105 ms`), **16.76×** (Position 36 at 12 plies), **16.46×** (Position 12 at 10 plies), and **16.21×** (Position 24 at 11 plies).
+2. **Hash Collisions Scale Quadratically (`235×` Growth) and $16\text{M}$ Entries Saves $662\times$ More Nodes:**
    - While TT nodes grew by $15.6\times$, hash collisions in the $1,048,576$-entry table grew by **$234.8\times$** (from `608` to `142,781`) due to the birthday-paradox load factor as hundreds of thousands of interior nodes were stored per position.
    - In the shallow benchmark, the $16,777,216$-entry table saved only **61 nodes** over the $1,048,576$-entry table. In the deep benchmark, eliminating **133,616 collisions** (`142,781` $\rightarrow$ `9,165`, a **93.6% reduction**) enabled the $16,777,216$-entry table to save **40,384 evaluated nodes** across the 40 positions — **$662\times$ larger node savings** than in the shallow test.
-   - On individual deep positions, the $16\text{M}$ table saved **7,189 nodes** and **10 ms** on Position 33 (`415,579` $\rightarrow$ `408,390` nodes, `776 ms` $\rightarrow$ `766 ms`), **2,871 nodes** on Position 13 (`337,093` $\rightarrow$ `334,222`), **2,335 nodes** on Position 22 (`601,181` $\rightarrow$ `598,846`), **2,242 nodes** on Position 4 (`483,930` $\rightarrow$ `481,688`), and **2,187 nodes** on Position 18 (`447,196` $\rightarrow$ `445,009`).
 3. **CPU Cache Locality vs Table Capacity Trade-Off:**
    - Despite evaluating **40,384 fewer nodes**, the $16,777,216$-entry table (**256 MiB**) took **19,142 ms** compared to **18,900 ms** for the $1,048,576$-entry table (**16 MiB**) — a ~1.28% wall-clock difference (`242 ms` over `19s`), though on several individual positions (Positions 5, 7, 12, 13, 18, 27, 33, 37) the $16\text{M}$ table was already faster in wall-clock time.
-   - This occurs because a 16 MiB table fits largely inside modern CPU L3 cache, whereas random Zobrist probes across a 256 MiB array incur main-memory DRAM latency and TLB page misses. At ~250K–600K TT nodes per isolated test position, the node savings and DRAM latency are nearly in equilibrium.
-   - In long time-control games where the persistent table is retained across dozens of moves without clearing, or in ultra-deep searches ($> 2\text{M}$ TT nodes per turn) where the $1\text{M}$ table saturates, increasing the table size via the Settings Dialog ($2\text{M}$–$16\text{M}$ entries) prevents deep transposition thrashing and yields net wall-clock gains.
+   - This occurs because a 16 MiB table fits largely inside modern CPU L3 cache, whereas random Zobrist probes across a 256 MiB array incur main-memory DRAM latency and TLB page misses.
+   - In long time-control games where the persistent table is retained across dozens of moves without clearing, or in ultra-deep bitboard searches ($> 2\text{M}$ TT nodes per turn) where the $1\text{M}$ table saturates, increasing the table size via the Settings Dialog ($2\text{M}\text{–}16\text{M}$ entries) prevents deep transposition thrashing.
 4. **100% Search Consistency:** Across both benchmarks and all 40 positions, Baseline, Default TT ($1\text{M}$), and Max TT ($16\text{M}$) produced identical best moves and identical evaluation scores.
-
-
-

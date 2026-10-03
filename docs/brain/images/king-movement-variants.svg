@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 445" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <defs>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#16A34A"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#DC2626"/>
+    </marker>
+    <marker id="arrowGray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="860" height="445" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <!-- LEFT PANEL: English Checkers (1-Step King) -->
+  <text x="215" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">English Checkers (1-Step King)</text>
+  <text x="215" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Moves 1 square in 4 directions • Jumps adjacent enemy onto immediate square behind</text>
+
+  <g transform="translate(55,62)">
+    <rect width="320" height="320" fill="#F1F5F9" stroke="#334155" stroke-width="2"/>
+    <!-- Dark squares -->
+    <g fill="#B07D4F">
+      <rect x="40" y="0" width="40" height="40"/><rect x="120" y="0" width="40" height="40"/><rect x="200" y="0" width="40" height="40"/><rect x="280" y="0" width="40" height="40"/>
+      <rect x="0" y="40" width="40" height="40"/><rect x="80" y="40" width="40" height="40"/><rect x="160" y="40" width="40" height="40"/><rect x="240" y="40" width="40" height="40"/>
+      <rect x="40" y="80" width="40" height="40"/><rect x="120" y="80" width="40" height="40"/><rect x="200" y="80" width="40" height="40"/><rect x="280" y="80" width="40" height="40"/>
+      <rect x="0" y="120" width="40" height="40"/><rect x="80" y="120" width="40" height="40"/><rect x="160" y="120" width="40" height="40"/><rect x="240" y="120" width="40" height="40"/>
+      <rect x="40" y="160" width="40" height="40"/><rect x="120" y="160" width="40" height="40"/><rect x="200" y="160" width="40" height="40"/><rect x="280" y="160" width="40" height="40"/>
+      <rect x="0" y="200" width="40" height="40"/><rect x="80" y="200" width="40" height="40"/><rect x="160" y="200" width="40" height="40"/><rect x="240" y="200" width="40" height="40"/>
+      <rect x="40" y="240" width="40" height="40"/><rect x="120" y="240" width="40" height="40"/><rect x="200" y="240" width="40" height="40"/><rect x="280" y="240" width="40" height="40"/>
+      <rect x="0" y="280" width="40" height="40"/><rect x="80" y="280" width="40" height="40"/><rect x="160" y="280" width="40" height="40"/><rect x="240" y="280" width="40" height="40"/>
+    </g>
+
+    <!-- Highlight 1-step quiet destinations (R3C2, R5C2, R5C4) -->
+    <rect x="82" y="122" width="36" height="36" fill="none" stroke="#38BDF8" stroke-width="2.5" stroke-dasharray="4,3"/>
+    <rect x="82" y="202" width="36" height="36" fill="none" stroke="#38BDF8" stroke-width="2.5" stroke-dasharray="4,3"/>
+    <rect x="162" y="202" width="36" height="36" fill="none" stroke="#38BDF8" stroke-width="2.5" stroke-dasharray="4,3"/>
+
+    <!-- Highlight 1-hop jump landing (R2C5) -->
+    <rect x="202" y="82" width="36" height="36" fill="#DCFCE7" fill-opacity="0.45" stroke="#16A34A" stroke-width="2.5"/>
+
+    <!-- Quiet arrows (gray dashed) -->
+    <line x1="140" y1="180" x2="105" y2="145" stroke="#64748B" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+    <line x1="140" y1="180" x2="105" y2="215" stroke="#64748B" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+    <line x1="140" y1="180" x2="175" y2="215" stroke="#64748B" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+
+    <!-- Capture arrow R4C3 (140,180) -> R2C5 (220,100) -->
+    <line x1="140" y1="180" x2="216" y2="104" stroke="#16A34A" stroke-width="3" marker-end="url(#arrowGreen)"/>
+
+    <!-- Black Enemy at R3C4 (180, 140) -->
+    <circle cx="180" cy="140" r="14" fill="#1E293B" stroke="#F8FAFC" stroke-width="1.5"/>
+    <text x="180" y="144" text-anchor="middle" font-size="11" font-weight="700" fill="#F87171">×</text>
+
+    <!-- White King at R4C3 (140, 180) -->
+    <circle cx="140" cy="180" r="15" fill="#FFFFFF" stroke="#1E293B" stroke-width="2"/>
+    <text x="140" y="185" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">♔</text>
+  </g>
+
+  <!-- RIGHT PANEL: International Draughts (Flying King + Mandatory Continuation) -->
+  <text x="645" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">International Draughts (Flying King &amp; Continuation Rule)</text>
+  <text x="645" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Flies across empty diagonal • Must choose Landing A when it enables a follow-up jump</text>
+
+  <g transform="translate(485,62)">
+    <rect width="320" height="320" fill="#F1F5F9" stroke="#334155" stroke-width="2"/>
+    <!-- Dark squares -->
+    <g fill="#B07D4F">
+      <rect x="40" y="0" width="40" height="40"/><rect x="120" y="0" width="40" height="40"/><rect x="200" y="0" width="40" height="40"/><rect x="280" y="0" width="40" height="40"/>
+      <rect x="0" y="40" width="40" height="40"/><rect x="80" y="40" width="40" height="40"/><rect x="160" y="40" width="40" height="40"/><rect x="240" y="40" width="40" height="40"/>
+      <rect x="40" y="80" width="40" height="40"/><rect x="120" y="80" width="40" height="40"/><rect x="200" y="80" width="40" height="40"/><rect x="280" y="80" width="40" height="40"/>
+      <rect x="0" y="120" width="40" height="40"/><rect x="80" y="120" width="40" height="40"/><rect x="160" y="120" width="40" height="40"/><rect x="240" y="120" width="40" height="40"/>
+      <rect x="40" y="160" width="40" height="40"/><rect x="120" y="160" width="40" height="40"/><rect x="200" y="160" width="40" height="40"/><rect x="280" y="160" width="40" height="40"/>
+      <rect x="0" y="200" width="40" height="40"/><rect x="80" y="200" width="40" height="40"/><rect x="160" y="200" width="40" height="40"/><rect x="240" y="200" width="40" height="40"/>
+      <rect x="40" y="240" width="40" height="40"/><rect x="120" y="240" width="40" height="40"/><rect x="200" y="240" width="40" height="40"/><rect x="280" y="240" width="40" height="40"/>
+      <rect x="0" y="280" width="40" height="40"/><rect x="80" y="280" width="40" height="40"/><rect x="160" y="280" width="40" height="40"/><rect x="240" y="280" width="40" height="40"/>
+    </g>
+
+    <!-- Landing A at R2C5 (200,80) - Valid continuing square -->
+    <rect x="202" y="82" width="36" height="36" fill="#DCFCE7" fill-opacity="0.55" stroke="#16A34A" stroke-width="2.5"/>
+    <text x="220" y="96" text-anchor="middle" font-size="9.5" font-weight="700" fill="#14532D">Land A</text>
+
+    <!-- Landing B at R1C6 (240,40) - Rejected dead-end square when A has continuation -->
+    <rect x="242" y="42" width="36" height="36" fill="#FEE2E2" fill-opacity="0.55" stroke="#DC2626" stroke-width="2.5" stroke-dasharray="3,2"/>
+    <text x="260" y="58" text-anchor="middle" font-size="9.5" font-weight="700" fill="#7F1D1D">Land B</text>
+
+    <!-- Final Landing at R0C3 (120,0) -->
+    <rect x="122" y="2" width="36" height="36" fill="#DCFCE7" fill-opacity="0.55" stroke="#16A34A" stroke-width="2.5"/>
+
+    <!-- Flying Jump 1: R6C1 (60,260) -> through empty R5C2, R4C3 -> over Enemy1 R3C4 (180,140) -> Land A R2C5 (220,100) -->
+    <line x1="60" y1="260" x2="215" y2="105" stroke="#16A34A" stroke-width="3" marker-end="url(#arrowGreen)"/>
+    <!-- Flying Jump 2 (Continuation): Land A R2C5 (220,100) -> over Enemy2 R1C4 (180,60) -> R0C3 (140,20) -->
+    <line x1="220" y1="100" x2="145" y2="25" stroke="#16A34A" stroke-width="3" marker-end="url(#arrowGreen)"/>
+
+    <!-- Disallowed stop on Land B -->
+    <line x1="224" y1="96" x2="254" y2="66" stroke="#DC2626" stroke-width="2" stroke-dasharray="3,3" marker-end="url(#arrowRed)"/>
+
+    <!-- Enemy 1 at R3C4 (180,140) -->
+    <circle cx="180" cy="140" r="14" fill="#1E293B" stroke="#F8FAFC" stroke-width="1.5"/>
+    <text x="180" y="144" text-anchor="middle" font-size="11" font-weight="700" fill="#F87171">1</text>
+
+    <!-- Enemy 2 at R1C4 (180,60) -->
+    <circle cx="180" cy="60" r="14" fill="#1E293B" stroke="#F8FAFC" stroke-width="1.5"/>
+    <text x="180" y="64" text-anchor="middle" font-size="11" font-weight="700" fill="#F87171">2</text>
+
+    <!-- White Flying King at R6C1 (60,260) -->
+    <circle cx="60" cy="260" r="15" fill="#FFFFFF" stroke="#1E293B" stroke-width="2"/>
+    <text x="60" y="265" text-anchor="middle" font-size="14" font-weight="700" fill="#D97706">♔</text>
+  </g>
+
+  <!-- Legend -->
+  <text x="215" y="408" text-anchor="middle" font-size="11.5" fill="#334155">Green solid arrow: Mandatory capture (overrides dashed quiet moves)</text>
+  <text x="645" y="408" text-anchor="middle" font-size="11.5" fill="#334155">Land A continues to jump Enemy 2 → stopping at Land B is illegal</text>
+  <text x="430" y="430" text-anchor="middle" font-size="11" fill="#64748B">In both variants: Captures are strictly mandatory, with Free Choice among valid completed capture sequences.</text>
+</svg>

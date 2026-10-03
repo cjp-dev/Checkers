@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 440" width="100%" height="auto" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <defs>
+    <radialGradient id="blackPiece" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#4A5568"/>
+      <stop offset="100%" stop-color="#1A202C"/>
+    </radialGradient>
+    <radialGradient id="whitePiece" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#CBD5E0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="860" height="440" rx="10" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <!-- LEFT PANEL: Initial Setup & 1-32 Draughts Notation -->
+  <text x="215" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">Standard 1–32 Draughts Numbering &amp; Initial Setup</text>
+  <text x="215" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Index = 4 · Row + ⌊Col / 2⌋ + 1  (Playable Dark Squares: (Row + Col) mod 2 = 1)</text>
+
+  <!-- Column headers Left -->
+  <g font-size="11" font-weight="600" fill="#475569" text-anchor="middle">
+    <text x="79" y="66">C0</text><text x="119" y="66">C1</text><text x="159" y="66">C2</text><text x="199" y="66">C3</text>
+    <text x="239" y="66">C4</text><text x="279" y="66">C5</text><text x="319" y="66">C6</text><text x="359" y="66">C7</text>
+  </g>
+  <!-- Row headers Left -->
+  <g font-size="11" font-weight="600" fill="#475569" text-anchor="end">
+    <text x="52" y="96">R0</text><text x="52" y="136">R1</text><text x="52" y="176">R2</text><text x="52" y="216">R3</text>
+    <text x="52" y="256">R4</text><text x="52" y="296">R5</text><text x="52" y="336">R6</text><text x="52" y="376">R7</text>
+  </g>
+
+  <!-- Left 8x8 Board Grid (origin 59, 72, cell 40x40) -->
+  <g transform="translate(59,72)">
+    <rect width="320" height="320" fill="#F1F5F9" stroke="#334155" stroke-width="2"/>
+    <!-- Row 0 -->
+    <rect x="40" y="0" width="40" height="40" fill="#8B5A2B"/><rect x="120" y="0" width="40" height="40" fill="#8B5A2B"/><rect x="200" y="0" width="40" height="40" fill="#8B5A2B"/><rect x="280" y="0" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 1 -->
+    <rect x="0" y="40" width="40" height="40" fill="#8B5A2B"/><rect x="80" y="40" width="40" height="40" fill="#8B5A2B"/><rect x="160" y="40" width="40" height="40" fill="#8B5A2B"/><rect x="240" y="40" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 2 -->
+    <rect x="40" y="80" width="40" height="40" fill="#8B5A2B"/><rect x="120" y="80" width="40" height="40" fill="#8B5A2B"/><rect x="200" y="80" width="40" height="40" fill="#8B5A2B"/><rect x="280" y="80" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 3 -->
+    <rect x="0" y="120" width="40" height="40" fill="#8B5A2B"/><rect x="80" y="120" width="40" height="40" fill="#8B5A2B"/><rect x="160" y="120" width="40" height="40" fill="#8B5A2B"/><rect x="240" y="120" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 4 -->
+    <rect x="40" y="160" width="40" height="40" fill="#8B5A2B"/><rect x="120" y="160" width="40" height="40" fill="#8B5A2B"/><rect x="200" y="160" width="40" height="40" fill="#8B5A2B"/><rect x="280" y="160" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 5 -->
+    <rect x="0" y="200" width="40" height="40" fill="#8B5A2B"/><rect x="80" y="200" width="40" height="40" fill="#8B5A2B"/><rect x="160" y="200" width="40" height="40" fill="#8B5A2B"/><rect x="240" y="200" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 6 -->
+    <rect x="40" y="240" width="40" height="40" fill="#8B5A2B"/><rect x="120" y="240" width="40" height="40" fill="#8B5A2B"/><rect x="200" y="240" width="40" height="40" fill="#8B5A2B"/><rect x="280" y="240" width="40" height="40" fill="#8B5A2B"/>
+    <!-- Row 7 -->
+    <rect x="0" y="280" width="40" height="40" fill="#8B5A2B"/><rect x="80" y="280" width="40" height="40" fill="#8B5A2B"/><rect x="160" y="280" width="40" height="40" fill="#8B5A2B"/><rect x="240" y="280" width="40" height="40" fill="#8B5A2B"/>
+
+    <!-- Black Men (1..12) -->
+    <g stroke="#CBD5E0" stroke-width="1.2" fill="url(#blackPiece)">
+      <circle cx="60" cy="20" r="14"/><circle cx="140" cy="20" r="14"/><circle cx="220" cy="20" r="14"/><circle cx="300" cy="20" r="14"/>
+      <circle cx="20" cy="60" r="14"/><circle cx="100" cy="60" r="14"/><circle cx="180" cy="60" r="14"/><circle cx="260" cy="60" r="14"/>
+      <circle cx="60" cy="100" r="14"/><circle cx="140" cy="100" r="14"/><circle cx="220" cy="100" r="14"/><circle cx="300" cy="100" r="14"/>
+    </g>
+    <!-- White Men (21..32) -->
+    <g stroke="#475569" stroke-width="1.2" fill="url(#whitePiece)">
+      <circle cx="20" cy="220" r="14"/><circle cx="100" cy="220" r="14"/><circle cx="180" cy="220" r="14"/><circle cx="260" cy="220" r="14"/>
+      <circle cx="60" cy="260" r="14"/><circle cx="140" cy="260" r="14"/><circle cx="220" cy="260" r="14"/><circle cx="300" cy="260" r="14"/>
+      <circle cx="20" cy="300" r="14"/><circle cx="100" cy="300" r="14"/><circle cx="180" cy="300" r="14"/><circle cx="260" cy="300" r="14"/>
+    </g>
+
+    <!-- Draughts Numbers 1..32 -->
+    <g font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="central">
+      <g fill="#F8FAFC">
+        <text x="60" y="20">1</text><text x="140" y="20">2</text><text x="220" y="20">3</text><text x="300" y="20">4</text>
+        <text x="20" y="60">5</text><text x="100" y="60">6</text><text x="180" y="60">7</text><text x="260" y="60">8</text>
+        <text x="60" y="100">9</text><text x="140" y="100">10</text><text x="220" y="100">11</text><text x="300" y="100">12</text>
+      </g>
+      <g fill="#FEF3C7">
+        <text x="20" y="140">13</text><text x="100" y="140">14</text><text x="180" y="140">15</text><text x="260" y="140">16</text>
+        <text x="60" y="180">17</text><text x="140" y="180">18</text><text x="220" y="180">19</text><text x="300" y="180">20</text>
+      </g>
+      <g fill="#1E293B">
+        <text x="20" y="220">21</text><text x="100" y="220">22</text><text x="180" y="220">23</text><text x="260" y="220">24</text>
+        <text x="60" y="260">25</text><text x="140" y="260">26</text><text x="220" y="260">27</text><text x="300" y="260">28</text>
+        <text x="20" y="300">29</text><text x="100" y="300">30</text><text x="180" y="300">31</text><text x="260" y="300">32</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- RIGHT PANEL: 64-Bit Bitboard Layout (sq = Row * 8 + Col) -->
+  <text x="645" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">64-Bit Bitboard Bit Layout (sq = 0..63)</text>
+  <text x="645" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">sq = Row × 8 + Col  |  DarkSquares = 0x55AA55AA55AA55AAUL</text>
+
+  <!-- Column headers Right -->
+  <g font-size="11" font-weight="600" fill="#475569" text-anchor="middle">
+    <text x="509" y="66">C0</text><text x="549" y="66">C1</text><text x="589" y="66">C2</text><text x="629" y="66">C3</text>
+    <text x="669" y="66">C4</text><text x="709" y="66">C5</text><text x="749" y="66">C6</text><text x="789" y="66">C7</text>
+  </g>
+  <!-- Row headers Right -->
+  <g font-size="11" font-weight="600" fill="#475569" text-anchor="end">
+    <text x="482" y="96">R0</text><text x="482" y="136">R1</text><text x="482" y="176">R2</text><text x="482" y="216">R3</text>
+    <text x="482" y="256">R4</text><text x="482" y="296">R5</text><text x="482" y="336">R6</text><text x="482" y="376">R7</text>
+  </g>
+
+  <!-- Right 8x8 Board Grid (origin 489, 72) -->
+  <g transform="translate(489,72)">
+    <rect width="320" height="320" fill="#F8FAFC" stroke="#334155" stroke-width="2"/>
+    <!-- Dark squares in slate blue -->
+    <rect x="40" y="0" width="40" height="40" fill="#1E3A5F"/><rect x="120" y="0" width="40" height="40" fill="#1E3A5F"/><rect x="200" y="0" width="40" height="40" fill="#1E3A5F"/><rect x="280" y="0" width="40" height="40" fill="#1E3A5F"/>
+    <rect x="0" y="40" width="40" height="40" fill="#1E3A5F"/><rect x="80" y="40" width="40" height="40" fill="#1E3A5F"/><rect x="160" y="40" width="40" height="40" fill="#1E3A5F"/><rect x="240" y="40" width="40" height="40" fill="#1E3A5F"/>
+    <rect x="40" y="80" width="40" height="40" fill="#1E3A5F"/><rect x="120" y="80" width="40" height="40" fill="#1E3A5F"/><rect x="200" y="80" width="40" height="40" fill="#1E3A5F"/><rect x="280" y="80" width="40" height="40" fill="#1E3A5F"/>
+    <rect x="0" y="120" width="40" height="40" fill="#2B6CB0"/><rect x="80" y="120" width="40" height="40" fill="#2B6CB0"/><rect x="160" y="120" width="40" height="40" fill="#2B6CB0"/><rect x="240" y="120" width="40" height="40" fill="#2B6CB0"/>
+    <rect x="40" y="160" width="40" height="40" fill="#2B6CB0"/><rect x="120" y="160" width="40" height="40" fill="#2B6CB0"/><rect x="200" y="160" width="40" height="40" fill="#2B6CB0"/><rect x="280" y="160" width="40" height="40" fill="#2B6CB0"/>
+    <rect x="0" y="200" width="40" height="40" fill="#1E3A5F"/><rect x="80" y="200" width="40" height="40" fill="#1E3A5F"/><rect x="160" y="200" width="40" height="40" fill="#1E3A5F"/><rect x="240" y="200" width="40" height="40" fill="#1E3A5F"/>
+    <rect x="40" y="240" width="40" height="40" fill="#1E3A5F"/><rect x="120" y="240" width="40" height="40" fill="#1E3A5F"/><rect x="200" y="240" width="40" height="40" fill="#1E3A5F"/><rect x="280" y="240" width="40" height="40" fill="#1E3A5F"/>
+    <rect x="0" y="280" width="40" height="40" fill="#1E3A5F"/><rect x="80" y="280" width="40" height="40" fill="#1E3A5F"/><rect x="160" y="280" width="40" height="40" fill="#1E3A5F"/><rect x="240" y="280" width="40" height="40" fill="#1E3A5F"/>
+
+    <!-- Bit numbers 0..63 -->
+    <g font-family="Consolas, monospace" font-size="11" text-anchor="middle" dominant-baseline="central">
+      <!-- Light squares (inactive) -->
+      <g fill="#94A3B8">
+        <text x="20" y="20">0</text><text x="100" y="20">2</text><text x="180" y="20">4</text><text x="260" y="20">6</text>
+        <text x="60" y="60">9</text><text x="140" y="60">11</text><text x="220" y="60">13</text><text x="300" y="60">15</text>
+        <text x="20" y="100">16</text><text x="100" y="100">18</text><text x="180" y="100">20</text><text x="260" y="100">22</text>
+        <text x="60" y="140">25</text><text x="140" y="140">27</text><text x="220" y="140">29</text><text x="300" y="140">31</text>
+        <text x="20" y="180">32</text><text x="100" y="180">34</text><text x="180" y="180">36</text><text x="260" y="180">38</text>
+        <text x="60" y="220">41</text><text x="140" y="220">43</text><text x="220" y="220">45</text><text x="300" y="220">47</text>
+        <text x="20" y="260">48</text><text x="100" y="260">50</text><text x="180" y="260">52</text><text x="260" y="260">54</text>
+        <text x="60" y="300">57</text><text x="140" y="300">59</text><text x="220" y="300">61</text><text x="300" y="300">63</text>
+      </g>
+      <!-- Dark squares (active bits) -->
+      <g fill="#FFFFFF" font-weight="700">
+        <text x="60" y="20">1</text><text x="140" y="20">3</text><text x="220" y="20">5</text><text x="300" y="20">7</text>
+        <text x="20" y="60">8</text><text x="100" y="60">10</text><text x="180" y="60">12</text><text x="260" y="60">14</text>
+        <text x="60" y="100">17</text><text x="140" y="100">19</text><text x="220" y="100">21</text><text x="300" y="100">23</text>
+        <text x="20" y="140">24</text><text x="100" y="140">26</text><text x="180" y="140">28</text><text x="260" y="140">30</text>
+        <text x="60" y="180">33</text><text x="140" y="180">35</text><text x="220" y="180">37</text><text x="300" y="180">39</text>
+        <text x="20" y="220">40</text><text x="100" y="220">42</text><text x="180" y="220">44</text><text x="260" y="220">46</text>
+        <text x="60" y="260">49</text><text x="140" y="260">51</text><text x="220" y="260">53</text><text x="300" y="260">55</text>
+        <text x="20" y="300">56</text><text x="100" y="300">58</text><text x="180" y="300">60</text><text x="260" y="300">62</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Footer Legend -->
+  <text x="215" y="416" text-anchor="middle" font-size="11.5" fill="#334155">Black advances downward (Row 0 → 7)  •  White advances upward (Row 7 → 0)</text>
+  <text x="645" y="416" text-anchor="middle" font-size="11.5" fill="#334155">InitialBlackMen = 0x0000000000AA55AA  •  InitialWhiteMen = 0x55AA550000000000</text>
+</svg>

@@ -4,142 +4,160 @@
 
 ## In short
 
-In Checkers, pieces only move and capture on the **dark squares** of an 8x8 board. That means exactly 32 of the 64 squares are active, while the other 32 light squares remain empty throughout the entire game.
+In Checkers, pieces only occupy, move, and capture on the **dark squares** of an $8 \times 8$ board. Exactly 32 of the 64 squares are active playable squares, while the remaining 32 light squares are permanently empty.
 
-This chapter explains how coordinates are represented internally, how they map bidirectionally to standard Draughts 1–32 square numbers, and how deterministic 64-bit Zobrist hashing identifies unique board states.
+This chapter explains the three coordinate systems used by `Checkers.Core`, how they map to each other in $O(1)$ time, and how deterministic 64-bit Zobrist XOR hashing uniquely identifies every board state:
+1. **2D Grid Coordinates `(Row, Col)` (`0..7`, `0..7`):** Used by UI view models and board rendering.
+2. **Standard Draughts Notation (`1..32`):** Used by move history, human-readable notation (`11-15`), and PDN files.
+3. **64-Bit Bitboard Index (`sq = 0..63`):** Used by `BitPosition`, `BitboardMoveGenerator`, `EvaluationFunction`, and `Zobrist` for single-instruction bitwise operations.
+
+![Board coordinates, initial setup, and 64-bit bitboard layout](images/board-coordinates.svg)
 
 ---
 
-## Coordinate system and dark squares
+## Coordinate system and dark-square parity
 
-Internally, every square is addressed by a zero-indexed `Position(Row, Col)`:
-* `Row` ranges from `0` to `7` (`0` is Black's home rank; `7` is White's home rank).
-* `Col` ranges from `0` to `7` (`0` is file A; `7` is file H).
+Internally, a 2D square is addressed by a zero-indexed `Position(Row, Col)`:
+* `Row` ranges from `0` to `7` (`0` is Black's home rank at the top; `7` is White's home rank at the bottom).
+* `Col` ranges from `0` to `7` (`0` is the leftmost file A; `7` is the rightmost file H).
 
-A square is an active dark square if and only if the sum of its row and column is odd:
+A square `(Row, Col)` is an active **playable dark square** if and only if the sum of its row and column is odd:
 
-$$(\text{Row} + \text{Col}) \pmod 2 \neq 0$$
+$$(\text{Row} + \text{Col}) \bmod 2 = 1$$
 
-```
-   Col:  0   1   2   3   4   5   6   7
-Row 0:  [ ] [•] [ ] [•] [ ] [•] [ ] [•]   <- Black Home Row
-Row 1:  [•] [ ] [•] [ ] [•] [ ] [•] [ ]
-Row 2:  [ ] [•] [ ] [•] [ ] [•] [ ] [•]
-Row 3:  [•] [ ] [•] [ ] [•] [ ] [•] [ ]
-Row 4:  [ ] [•] [ ] [•] [ ] [•] [ ] [•]
-Row 5:  [•] [ ] [•] [ ] [•] [ ] [•] [ ]
-Row 6:  [ ] [•] [ ] [•] [ ] [•] [ ] [•]
-Row 7:  [•] [ ] [•] [ ] [•] [ ] [•] [ ]   <- White Home Row
-        ([•] = Playable Dark Square, [ ] = Inactive Light Square)
-```
-
-White pieces move **upward** (decreasing `Row` toward `0`).  
-Black pieces move **downward** (increasing `Row` toward `7`).
+* **White pieces** start on rows `5, 6, 7` and advance **upward** (decreasing `Row` toward crown row `0`, $\Delta_{\text{row}} = -1$).
+* **Black pieces** start on rows `0, 1, 2` and advance **downward** (increasing `Row` toward crown row `7`, $\Delta_{\text{row}} = +1$).
 
 ---
 
 ## Standard Draughts 1–32 Numbering
 
-Official Draughts literature, match records, and Portable Draughts Notation (PDN) number only the 32 playable dark squares from **1 to 32**, reading left-to-right, top-to-bottom starting from Black's back rank:
+Official Draughts literature, tournament records, and Portable Draughts Notation (PDN) number only the 32 playable dark squares from **1 to 32**, reading left-to-right, top-to-bottom starting from Black's back rank:
 
-| Row | Col 0 | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 | Col 6 | Col 7 |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **0** | — | **1** | — | **2** | — | **3** | — | **4** |
-| **1** | **5** | — | **6** | — | **7** | — | **8** | — |
-| **2** | — | **9** | — | **10** | — | **11** | — | **12** |
-| **3** | **13** | — | **14** | — | **15** | — | **16** | — |
-| **4** | — | **17** | — | **18** | — | **19** | — | **20** |
-| **5** | **21** | — | **22** | — | **23** | — | **24** | — |
-| **6** | — | **25** | — | **26** | — | **27** | — | **28** |
-| **7** | **29** | — | **30** | — | **31** | — | **32** | — |
+| Row | Col 0 | Col 1 | Col 2 | Col 3 | Col 4 | Col 5 | Col 6 | Col 7 | Bitboard Row Mask |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **0** | — | **1** (`sq 1`) | — | **2** (`sq 3`) | — | **3** (`sq 5`) | — | **4** (`sq 7`) | `0x00000000000000FF` |
+| **1** | **5** (`sq 8`) | — | **6** (`sq 10`) | — | **7** (`sq 12`) | — | **8** (`sq 14`) | — | `0x000000000000FF00` |
+| **2** | — | **9** (`sq 17`) | — | **10** (`sq 19`) | — | **11** (`sq 21`) | — | **12** (`sq 23`) | `0x0000000000FF0000` |
+| **3** | **13** (`sq 24`) | — | **14** (`sq 26`) | — | **15** (`sq 28`) | — | **16** (`sq 30`) | — | `0x00000000FF000000` |
+| **4** | — | **17** (`sq 33`) | — | **18** (`sq 35`) | — | **19** (`sq 37`) | — | **20** (`sq 39`) | `0x000000FF00000000` |
+| **5** | **21** (`sq 40`) | — | **22** (`sq 42`) | — | **23** (`sq 44`) | — | **24** (`sq 46`) | — | `0x0000FF0000000000` |
+| **6** | — | **25** (`sq 49`) | — | **26** (`sq 51`) | — | **27** (`sq 53`) | — | **28** (`sq 55`) | `0x00FF000000000000` |
+| **7** | **29** (`sq 56`) | — | **30** (`sq 58`) | — | **31** (`sq 60`) | — | **32** (`sq 62`) | — | `0xFF00000000000000` |
 
 ### Mathematical Mapping Formulas
 
-The mapping implemented in `Position.cs` computes this conversion in $O(1)$ time without lookup tables:
+[Position.cs](../../src/Checkers.Core/Models/Position.cs) and [BitboardMasks.cs](../../src/Checkers.Core/Bitboards/BitboardMasks.cs) convert between all three coordinate systems in $O(1)$ constant time:
 
-#### 1. From `(Row, Col)` to Draughts Index (1..32):
-Because there are 4 dark squares per row:
-$$\text{Index} = 4 \cdot \text{Row} + \lfloor\text{Col} / 2\rfloor + 1$$
+#### 1. Between `(Row, Col)` and 64-Bit Bitboard Index (`sq = 0..63`):
 
-#### 2. From Draughts Index (1..32) to `(Row, Col)`:
-Let $Z = \text{Index} - 1$ (zero-indexed, $0 \le Z \le 31$):
-$$\text{Row} = \lfloor Z / 4 \rfloor$$
-$$\text{ColInRow} = Z \bmod 4$$
-$$\text{Col} = \begin{cases} 2 \cdot \text{ColInRow} + 1 & \text{if } \text{Row is even} \\ 2 \cdot \text{ColInRow} & \text{if } \text{Row is odd} \end{cases}$$
+$$\text{sq} = 8 \cdot \text{Row} + \text{Col} = (\text{Row} \ll 3) \mid \text{Col}$$
+
+$$\text{Row} = \lfloor \text{sq} / 8 \rfloor = \text{sq} \gg 3, \qquad \text{Col} = \text{sq} \bmod 8 = \text{sq} \land 7$$
+
+#### 2. From `(Row, Col)` to Draughts Index ($1\dots 32$):
+Because every row contains exactly 4 dark squares:
+
+$$\text{Index} = 4 \cdot \text{Row} + \left\lfloor \frac{\text{Col}}{2} \right\rfloor + 1$$
+
+#### 3. From Draughts Index ($1\dots 32$) to `(Row, Col)`:
+Let $Z = \text{Index} - 1 \in \{0, 1, \dots, 31\}$:
+
+$$\text{Row} = \left\lfloor \frac{Z}{4} \right\rfloor, \qquad \text{ColInRow} = Z \bmod 4$$
+
+$$\text{Col} = 2 \cdot \text{ColInRow} + \bigl((\text{Row} + 1) \bmod 2\bigr) = \begin{cases} 2 \cdot \text{ColInRow} + 1 & \text{if Row is even} \\ 2 \cdot \text{ColInRow} & \text{if Row is odd} \end{cases}$$
 
 ---
 
-## Data structures
+## Core data structures
 
-### `Position`
-```csharp
-public readonly record struct Position(int Row, int Col)
-{
-    public bool IsValid => Row is >= 0 and < 8 && Col is >= 0 and < 8;
-    public bool IsDarkSquare => IsValid && (Row + Col) % 2 != 0;
-
-    public Position Offset(int dRow, int dCol) => new(Row + dRow, Col + dCol);
-
-    public int? ToDraughtsIndex();
-    public static Position FromDraughtsIndex(int index);
-    public static bool TryFromDraughtsIndex(int index, out Position position);
-}
+```mermaid
+classDiagram
+    class Position {
+        <<readonly record struct>>
+        +int Row
+        +int Col
+        +bool IsValid
+        +bool IsDarkSquare
+        +ToDraughtsIndex() int?
+        +FromDraughtsIndex(int index)$ Position
+    }
+    class Piece {
+        <<readonly record struct>>
+        +PieceColor Color
+        +PieceType Type
+        +bool IsMan
+        +bool IsKing
+        +Crown() Piece
+    }
+    class BitPosition {
+        <<struct (48 bytes)>>
+        +ulong WhiteMen
+        +ulong BlackMen
+        +ulong WhiteKings
+        +ulong BlackKings
+        +ulong Hash
+        +int HalfMoveClock
+        +PieceColor SideToMove
+        +Apply(in BitMove) BitPosition
+    }
+    class BoardState {
+        +BitPosition BitPosition
+        +PieceColor ActivePlayer
+        +int HalfMoveClock
+        +int FullMoveNumber
+        +ulong ZobristHash
+        +int WhitePiecesCount
+        +int BlackPiecesCount
+        +Clone() BoardState
+    }
+    BoardState *-- BitPosition : backed directly by
+    BoardState ..> Position : indexed by
+    BoardState ..> Piece : returns
 ```
-`Position` is a `readonly record struct`, meaning value comparisons (`==`), dictionary hashing, and stack allocations are fast and generate zero garbage collection overhead.
 
-### `Piece`
-```csharp
-public readonly record struct Piece(PieceColor Color, PieceType Type)
-{
-    public bool IsKing => Type == PieceType.King;
-    public bool IsMan => Type == PieceType.Man;
+### `Position` & `Piece`
+Both `Position` and `Piece` are immutable value types (`readonly record struct`), ensuring value semantics (`==`) and zero heap allocation overhead.
 
-    public Piece Crown() => new(Color, PieceType.King);
-}
-```
-* `PieceColor`: `White` (`0`) or `Black` (`1`).
-* `PieceType`: `Man` (`0`) or `King` (`1`).
-
-### `BoardState` & `BitPosition` (64-Bit Bitboard Representation)
-The `BoardState` class represents an instantaneous snapshot of the entire game, backed directly by a value-type `BitPosition` (`Checkers.Core.Bitboards`) with zero array allocations:
-* `BitPosition BitPosition`: Packs the 8×8 board into four 64-bit unsigned integers (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), where bit `sq = Row * 8 + Col` (`0..63`) corresponds to `(Row, Col)`.
+### `BoardState` & `BitPosition`
+[BoardState.cs](../../src/Checkers.Core/Models/BoardState.cs) is backed directly by a value-type [`BitPosition`](../../src/Checkers.Core/Bitboards/BitPosition.cs) (`4 × ulong` bitboards + `ulong Hash`) without allocating any 2D array:
+* `ulong WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`: Four 64-bit integers where bit `sq` is `1` if a piece of that color and type occupies square `sq`.
 * `PieceColor ActivePlayer`: Player whose turn it is (`White` moves first).
-* `int HalfMoveClock`: Counter tracking half-moves since the last capture or promotion (resets to 0 on captures/promotions; triggers draw at 80).
+* `int HalfMoveClock`: Plies elapsed since the last capture or promotion (triggers a draw at `80` half-moves = 40 full moves).
 * `int FullMoveNumber`: Incremented after each move completed by Black.
-* `int WhitePiecesCount`, `BlackPiecesCount`: Hardware `BitOperations.PopCount` $O(1)$ piece totals.
-* `int WhiteKingsCount`, `BlackKingsCount`: Hardware `BitOperations.PopCount` $O(1)$ crowned king totals.
-* `ulong ZobristHash`: Incrementally maintained 64-bit Zobrist hash.
+* `int WhitePiecesCount`, `BlackPiecesCount`, `WhiteKingsCount`, `BlackKingsCount`: Computed in a single CPU instruction via `BitOperations.PopCount`.
+* `ulong ZobristHash`: Incrementally maintained 64-bit Zobrist key.
 
-See [Chapter 15 – Bitboards](15-bitboards.md) for the complete bitboard architecture and empirical benchmarks comparing the bitboard representation against the original `Piece?[8, 8]` array engine.
+See [Chapter 10 – Bitboards](10-bitboards.md) for a deep dive into the bitboard operations and benchmarks.
 
 ---
 
 ## Initial setup
 
-The game begins via `BoardState.CreateInitial()`:
-- **Black:** 12 men on squares **1 through 12** (rows 0, 1, 2 on dark squares).
-- **Empty:** Squares **13 through 20** (rows 3 and 4) are vacant.
-- **White:** 12 men on squares **21 through 32** (rows 5, 6, 7 on dark squares).
-- **Turn:** `White` to move.
-- `HalfMoveClock = 0`, `FullMoveNumber = 1`.
+`BoardState.CreateInitial()` initializes a standard game in $O(1)$ using compile-time bitboard constants:
+- **Black (`InitialBlackMen = 0x0000000000AA55AAUL`):** 12 men on Draughts squares **1–12** (dark squares of rows 0, 1, 2).
+- **Empty (`13–20`):** Rows 3 and 4 are vacant.
+- **White (`InitialWhiteMen = 0x55AA550000000000UL`):** 12 men on Draughts squares **21–32** (dark squares of rows 5, 6, 7).
+- **Turn:** `White` to move (`HalfMoveClock = 0`, `FullMoveNumber = 1`).
 
 ---
 
-## Zobrist hashing
+## 64-bit Zobrist hashing
 
-Zobrist hashing maps any given board configuration and active turn to a single pseudo-random 64-bit integer (`ulong`).
+Zobrist hashing maps any board configuration and side-to-move to a deterministic 64-bit fingerprint (`ulong`). It powers:
+1. **Threefold Repetition Detection** ([Chapter 04](04-game-record.md)): Detecting in $O(1)$ per historical state whether the current position has occurred 3 times.
+2. **Transposition Table Caching** ([Chapter 08](08-transposition-table.md)): Indexing millions of evaluated search subtrees in $O(1)$ time.
 
-### Why Zobrist hashing is essential
-1. **Threefold Repetition Detection:** Rapidly checking if the current position has occurred 3 times in the move history without comparing arrays.
-2. **Transposition Table (Phase 4):** Enables the Minimax AI to cache evaluated sub-trees in a fixed-size hash table.
+### Key Generation and Incremental XOR Math
 
-### Key Generation and XOR Math
-At startup, `Zobrist.cs` initializes a fixed random table using a deterministic seed:
-* `PieceTable[64, 4]`: One 64-bit random number for each combination of 64 board squares and 4 piece configurations (White Man, White King, Black Man, Black King).
-* `BlackToMoveKey`: A 64-bit key XORed when it is Black's turn (0 if White's turn).
+At static initialization, [Zobrist.cs](../../src/Checkers.Core/Engine/Zobrist.cs) populates a table of 64-bit pseudo-random numbers using a fixed seed (`0x5A0B_7157_C0DE_2026`):
+* `PieceTable[64, 4]`: One 64-bit key $K_{\text{piece}}(\text{sq}, p)$ for each of the 64 squares and 4 piece types ($p \in \{0:\text{WhiteMan},\, 1:\text{WhiteKing},\, 2:\text{BlackMan},\, 3:\text{BlackKing}\}$).
+* `BlackToMoveKey` ($K_{\text{turn}}$): XORed into the hash whenever `ActivePlayer == PieceColor.Black`.
 
-The state hash $H$ is computed as:
+The full state hash $H(s)$ is defined as:
 
-$$H = K_{\text{turn}} \oplus \bigoplus_{(r,c)} K_{\text{piece}}(r, c, \text{piece})$$
+$$H(s) = \bigl(\mathbb{I}[\text{Black to move}] \cdot K_{\text{turn}}\bigr) \;\oplus\; \bigoplus_{\text{sq} \in \text{Occupied}(s)} K_{\text{piece}}\bigl(\text{sq}, \text{PieceAt}(\text{sq})\bigr)$$
 
-Because XOR ($\oplus$) is associative and self-inverting ($A \oplus B \oplus B = A$), updating the hash when a piece moves or is removed requires only a few XOR operations rather than rescanning the whole board.
+Because bitwise XOR ($\oplus$) is commutative, associative, and self-inverting ($x \oplus y \oplus y = x$), `BitPosition.Apply(in BitMove move)` updates the hash **incrementally** without rescanning the board:
+
+$$H_{\text{next}} = H_{\text{prev}} \;\oplus\; K_{\text{turn}} \;\oplus\; K_{\text{piece}}(\text{from}, p_{\text{start}}) \;\oplus\; K_{\text{piece}}(\text{to}, p_{\text{end}}) \;\oplus\; \bigoplus_{c \in \text{Captured}(m)} K_{\text{piece}}(c, p_c)$$
