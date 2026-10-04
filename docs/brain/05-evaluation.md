@@ -129,7 +129,7 @@ In addition, five classical Checkers formations from `board_eval.c` are detected
 
 ### 2. International Draughts (Flying Kings) Evaluation (`EvaluateInternational`)
 
-In International ($8 \times 8$ Flying Kings) Draughts, `EvaluateInternational` combines the shared `board_eval.c` terms (`WhiteManPst`/`BlackManPst`, `ConeWhite`/`ConeBlack` Runaway Checkers, `tail_pins`, and back-rank `Bridge`/`Triangle`/`Oreo` formations) with four Flying-King-specific adaptations:
+In International ($8 \times 8$ Flying Kings) Draughts, `EvaluateInternational` combines the shared `board_eval.c` terms (`WhiteManPst`/`BlackManPst`, `ConeWhite`/`ConeBlack` Runaway Checkers, `tail_pins`, and back-rank `Bridge`/`Triangle`/`Oreo` formations) with three $O(1)$ Flying-King-specific adaptations:
 
 1. **Flying King Material (`300 cp`) & Continuous Man Advancement (`+5` → `+6 cp/rank`):**
    Because crowning a Flying King yields a `+200 cp` material jump (`100 cp` $\to$ `300 cp`), Men receive continuous advancement credit (`+5 cp/rank` when $|A| > 12$, increasing to `+6 cp/rank` when $|A| \le 12$), balanced by full 4-square back-rank defense (`+15 cp` on all 4 home squares including the long-diagonal apex `(7,0)`/`(0,7)`) and central 16-square control (`+12 cp`).
@@ -143,6 +143,11 @@ In International ($8 \times 8$ Flying Kings) Draughts, `EvaluateInternational` c
    $$E_{\text{trade}}^{\text{Intl}}(W, B) = \mathbb{I}\bigl(E_{\text{mat}}^{\text{White}} - E_{\text{mat}}^{\text{Black}} \ge 80\bigr) \cdot \text{TradeBonus}(|B|)$$
 
    where $\text{TradeBonus}(|B|)$ rises from `+3 cp` per traded enemy piece in the middlegame up to `+45 cp` ($|B|=4$), `+65 cp` ($|B|=3$), `+90 cp` ($|B|=2$), `+120 cp` ($|B|=1$), and `+400 cp` ($|B|=0$). This guarantees that a player with `1 Flying King` (`300 cp`) vs. `2 Men` (`200 cp`) is recognized as `+100 cp` ahead in material (`+90 cp` trade bonus to the Flying King side) rather than awarding a piece-count bonus to the 2 Men.
+
+> [!NOTE]
+> **Why Simpler $O(1)$ Bitmasks Outperformed Heavier Scan 3.1 Ray-Mobility Terms on $8 \times 8$ (Phase 6b Experiment):**
+> We also tested porting five features from Fabien Letouzey's $10 \times 10$ International Draughts engine **Scan 3.1** (`scan_31/src/eval.cpp`): First-King material premium (`315 cp` vs. `285 cp`), per-King ray reachability (`safe` vs. `deny` mobility against enemy Man jump threats), Left/Right Wing Skew, tempo phase interpolation, and endgame draw scaling (`2K vs. 1K` scaled by `/ 8`).
+> In a 100-game match at `1000 ms/move`, the Scan-enhanced candidate scored **`56.0 / 100` (`+20 =72 −8`, `+41.9 ± 35.9 Elo`)**, slightly **below** the simpler Phase 6 evaluator's **`56.5 / 100` (`+22 =69 −9`, `+45.4 ± 37.8 Elo`)**. Because the per-King ray-mobility loop and wing-skew popcounts doubled raw evaluation latency (`13.1 ns/eval` $\to$ `26.4–31.3 ns/eval`) and draw scaling compressed endgame pruning margins, average search depth dropped by **`1.19 plies`** (`24.12 plies` $\to$ `22.93 plies`). On an $8 \times 8$ board, Phase 6's $O(1)$ diagonal masks (`FlyingKingMainDiagonalMask`, `FlyingKingInnerMask`, `FlyingKingShortCornerMask`) already capture the primary Flying-King geometry while preserving `+1.2 plies` of deeper tactical search, so the simpler Phase 6 `EvaluateInternational` was retained.
 
 ---
 
@@ -158,4 +163,4 @@ Every node in the Negamax search tree ([Chapter 07](07-search.md)) simply maximi
 
 ## Empirical Speed & Self-Play Match Results
 
-For full benchmark tables—including the **10,000,000-evaluation raw speed microbenchmark**, the **40-position fixed-depth search comparison**, and the **200-game (100 English + 100 International) Bot-vs-Bot self-play match results**—see [Chapter 11 – Milestone 8 (Phase 6): Static Evaluation Overhaul & 200-Game Bot-vs-Bot Verification](11-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification).
+For full benchmark tables—including the **10,000,000-evaluation raw speed microbenchmark**, the **40-position fixed-depth search comparison**, and the **Bot-vs-Bot self-play match results**—see [Chapter 11 – Milestone 8 (Phase 6): Static Evaluation Overhaul & 200-Game Bot-vs-Bot Verification](11-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification).

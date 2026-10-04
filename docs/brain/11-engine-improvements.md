@@ -447,16 +447,21 @@ Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/Evaluati
 > In our first 100-game International match using `board_eval.c`'s raw piece-count condition (`whiteCount > blackCount`) and late-only advancement (`totalPieces <= 12`), the candidate evaluator scored `44.5 / 100` (`+13 = 63 -24`, **`-38.4 ± 41.7 Elo`**). Root-cause analysis revealed why: in English Checkers, a King is worth `1.4 Men` (`140 cp`), so `2 Men (200 cp) > 1 King (140 cp)` and raw piece count aligns with material. In International Draughts, a **Flying King** is worth **`3.0 Men` (`300 cp`)**: when a player had `1 Flying King` (`300 cp`, 1 piece) against `2 Men` (`200 cp`, 2 pieces), `blackCount (2) > whiteCount (1)` awarded **`+400 cp` to the 2-Men side**, causing the engine to misjudge Flying King endgames and avoid crowning sacrifices!
 > Gating the International simplification bonus on **material advantage** ($\ge 80\text{ cp}$) and restoring continuous Man advancement produced a **`+83.8 Elo` swing** (from `-38.4 Elo` to **`+45.4 ± 37.8 Elo`**, `99.2% LOS`):
 
-| Metric | Initial Candidate (Raw Piece-Count Bonus) | **Refined `NewEval` (Material-Gated Bonus)** | `LegacyEval` (`LegacyEvaluationFunction`) |
-| :--- | :---: | :---: | :---: |
-| **Total Score (100 Games)** | 44.5 / 100 (44.5%) | **56.5 / 100** (**56.5%**) | 43.5 / 100 (43.5%) |
-| **Wins / Draws / Losses** | +13 = 63 −24 | **+22 = 69 −9** | +9 = 69 −22 |
-| **As White (50 Games)** | +10 = 29 −11 | **+10 = 37 −3** | +6 = 32 −12 |
-| **As Black (50 Games)** | +3 = 34 −13 | **+12 = 32 −6** | +3 = 37 −10 |
-| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | `2` / `4` / `27` / `15` / `2` | **`2` / `14` / `29` / `5` / `0`** | `0` / `5` / `29` / `14` / `2` |
-| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | −38.4 ± 41.7 Elo (LOS: 3.4%) | **+45.4 ± 37.8 Elo** (**LOS: 99.2%**) | −45.4 ± 37.8 Elo |
-| **Average Search Depth** | `24.51 plies` | **`24.12 plies`** *(+0.18 vs Legacy)* | `23.94 plies` |
-| **Average Search Speed (NPS)** | `10.34M nodes/s` | **`10.34M nodes/s`** | `10.97M nodes/s` |
+| Metric | Initial Candidate (Raw Piece-Count Bonus) | **Retained Phase 6 `NewEval` (Material-Gated $O(1)$ Masks)** | Phase 6b Experiment (+ Scan 3.1 Ray Mobility / Skew / Draw Scaling) | `LegacyEval` (`LegacyEvaluationFunction`) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Total Score (100 Games)** | 44.5 / 100 (44.5%) | **56.5 / 100** (**56.5%**) | 56.0 / 100 (56.0%) | 43.5 / 100 (43.5%) |
+| **Wins / Draws / Losses** | +13 = 63 −24 | **+22 = 69 −9** | +20 = 72 −8 | +9 = 69 −22 |
+| **As White (50 Games)** | +10 = 29 −11 | **+10 = 37 −3** | +13 = 34 −3 | +6 = 32 −12 |
+| **As Black (50 Games)** | +3 = 34 −13 | **+12 = 32 −6** | +7 = 38 −5 | +3 = 37 −10 |
+| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | `2` / `4` / `27` / `15` / `2` | **`2` / `14` / `29` / `5` / `0`** | `0` / `18` / `26` / `6` / `0` | `0` / `5` / `29` / `14` / `2` |
+| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | −38.4 ± 41.7 Elo (LOS: 3.4%) | **+45.4 ± 37.8 Elo** (**LOS: 99.2%**) | +41.9 ± 35.9 Elo (LOS: 99.0%) | −45.4 ± 37.8 Elo |
+| **Raw Eval Latency (`10M` Evals)** | `13.1 ns/eval` (`76.1M/s`) | **`13.1 ns/eval` (`76.1M/s`)** | `26.4–31.3 ns/eval` (`32.0–37.8M/s`) | `7.7 ns/eval` (`130.3M/s`) |
+| **Average Search Depth** | `24.51 plies` | **`24.12 plies`** *(+0.18 vs Legacy)* | `22.93 plies` *(−1.19 vs Phase 6)* | `23.94 plies` |
+| **Average Search Speed (NPS)** | `10.34M nodes/s` | **`10.34M nodes/s`** | `10.24M nodes/s` | `10.97M nodes/s` |
+
+> [!NOTE]
+> **Why Phase 6 Was Retained Over Phase 6b (Scan 3.1 Ray-Mobility Experiment):**
+> Adding Scan 3.1's per-King ray reachability (`safe` vs. `deny` mobility against enemy Man jump threats), Left/Right Wing Skew, and endgame draw scaling (`2K vs. 1K` `/ 8`) more than doubled raw leaf evaluation latency (`13.1 ns/eval` $\to$ `26.4–31.3 ns/eval`) and compressed endgame pruning margins, costing **`1.19 plies` of average search depth** (`24.12` $\to$ `22.93 plies`) and **`3.5 Elo`** (`56.5 / 100` $\to$ `56.0 / 100`). Because Phase 6's $O(1)$ bitmasks (`FlyingKingMainDiagonalMask`, `FlyingKingInnerMask`, `FlyingKingShortCornerMask`) already capture the essential $8 \times 8$ Flying-King geometry at half the CPU cost, the simpler, faster, and stronger **Phase 6 `EvaluateInternational`** was retained in [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs).
 
 ---
 
