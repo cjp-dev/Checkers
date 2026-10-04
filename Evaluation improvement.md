@@ -88,3 +88,18 @@ The evaluation in [`board_eval.c`](Checkers-Engine-main/src/engine/board_eval.c)
    - **Default Time Limit:** **`1000 ms` (`1.0 s`) per move** (`--time-ms 1000`, configurable via CLI).
    - **Parallel Workers:** Runs **`4` isolated games in parallel** (`--workers 4`, configurable via CLI) to keep CPU cores unthrottled while finishing each 100-game match ~4× faster.
    - **Reported Metrics:** Wins, Losses, Draws, White/Black breakdown, paired ballot outcomes (`2-0`, `1.5-0.5`, `1-1`, `0.5-1.5`, `0-2`), and **Elo difference ($\Delta\text{Elo}$) with 95% confidence interval**.
+
+---
+
+## 4. Evaluation Speed & Search Throughput Benchmark (`Legacy` vs. `New`)
+
+To quantify the exact performance impact of the richer evaluation functions on both raw evaluation latency and full search speed, we will include an `eval-speed` benchmark mode in `tools/Checkers.Benchmark` covering both **English** and **International (Flying Kings)** variants:
+
+1. **Part A — Raw Static Evaluation Microbenchmark (`M evals/s` & `ns/eval`):**
+   - Evaluates all 40 benchmark positions (`Openings`, `Middlegames`, `Endgames`, `Blockades`) in a tight loop (`10,000,000` evaluations per variant) to measure raw `LegacyEvaluationFunction.Evaluate(in pos, variant)` vs. `EvaluationFunction.Evaluate(in pos, variant)` throughput (`million evals/sec` and `nanoseconds/eval`).
+2. **Part B — 40-Position Fixed-Depth Search Speed & Node Comparison (`No-TT` and `1M TT`):**
+   - Runs the 40-position suite at identical fixed depths comparing `LegacyEvaluationFunction` vs. `EvaluationFunction` to measure:
+     - **Search Throughput (`M nodes/s` and `M leaf-evals/s`)**
+     - **Total Evaluated Nodes & Wall-Clock Time (`ms`)** (measuring how the richer evaluation affects alpha-beta cutoff efficiency as well as per-node speed).
+3. **Part C — 5-Position Timed Depth Comparison (`5.0s` / Position, `16M TT`):**
+   - Compares completed iterative deepening depth (`plies`), `NodesEvaluated`, `LeafEvaluations`, and `NPS` between the old and new evaluators under a fixed 5-second clock.
