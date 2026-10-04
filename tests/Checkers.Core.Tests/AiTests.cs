@@ -266,4 +266,127 @@ public class AiTests
         selectiveAi.NodesEvaluated.Should().BeLessThan(exactAi.NodesEvaluated,
             "Verified LMR, RFP, and Futility Pruning should reduce searched nodes at depth 8");
     }
+
+    [Fact]
+    public async Task MinimaxPlayer_PartialIterationAdoption_AdoptsBetterRootMoveFoundBeforeTimeout()
+    {
+        var board = BoardState.CreateInitial();
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+        legalMoves.Count.Should().BeGreaterThanOrEqualTo(3);
+
+        // Identify the first two moves in initial root ordering
+        var orderedMoves = legalMoves
+            .OrderByDescending(m => m.CapturedPositions.Count)
+            .ThenByDescending(m => m.IsPromotion ? 1 : 0)
+            .ToList();
+
+        var move0 = orderedMoves[0];
+        var move1 = orderedMoves[1];
+
+        var evaluator = new PartialIterationTestEvaluator(
+            rootMoveCount: orderedMoves.Count,
+            sleepMsOnDepth2Move1: 80);
+
+        var ai = new MinimaxPlayer(
+            SearchLimits.TimePerMove(TimeSpan.FromMilliseconds(50)),
+            evaluator: evaluator,
+            useTranspositionTable: false,
+            useQuiescence: false)
+        {
+            UseSelectivePruning = false
+        };
+
+        var chosenMove = await ai.GetMoveAsync(board, legalMoves);
+
+        ai.LastSearchAdoptedPartialIteration.Should().BeTrue(
+            "Depth 2 timed out on move index 2 after move 0 and move 1 completed cleanly");
+        chosenMove.Should().Be(move1,
+            "Move 1 beat Move 0 at depth 2 before the clock expired on Move 2, so the partial depth-2 result must be adopted");
+        ai.LastAnalysis.Should().NotBeNull();
+        ai.LastAnalysis!.Value.Should().Be("+120");
+    }
+
+    [Fact]
+    public async Task MinimaxPlayer_EarlyRootTermination_ExitsEarlyWhenOneMoveClearlyDominatesInTimedMode()
+    {
+        // Construct an English Checkers position where White has 3 legal moves with 2 Kings,
+        // and only 1 move avoids losing material / dominates all alternatives by >= 150 cp.
+        var board = BoardState.CreateEmpty(PieceColor.White);
+        board.SetPiece(new Position(6, 1), new Piece(PieceColor.White, PieceType.King));
+        board.SetPiece(new Position(7, 6), new Piece(PieceColor.White, PieceType.Man));
+        board.SetPiece(new Position(4, 3), new Piece(PieceColor.Black, PieceType.King));
+        board.SetPiece(new Position(1, 6), new Piece(PieceColor.Black, PieceType.King));
+        board.RecalculateHash();
+
+        var englishRules = new RuleEngine(CheckersVariant.English);
+        var legalMoves = englishRules.GetLegalMoves(board);
+        legalMoves.Count.Should().BeGreaterThanOrEqualTo(2);
+
+        var timedAi = new MinimaxPlayer(
+            SearchLimits.TimePerMove(TimeSpan.FromSeconds(5)),
+            ruleEngine: englishRules,
+            useTranspositionTable: true,
+            useQuiescence: true,
+            variant: CheckersVariant.English)
+        {
+            UseEarlyRootTermination = true
+        };
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var chosenMove = await timedAi.GetMoveAsync(board, legalMoves);
+        sw.Stop();
+
+        legalMoves.Should().Contain(chosenMove);
+        timedAi.LastSearchTerminatedEarly.Should().BeTrue(
+            "One root move leads all alternatives by >= 150 cp for consecutive iterations at depth >= 8");
+        sw.ElapsedMilliseconds.Should().BeLessThan(1500,
+            "Early root termination should stop well before the 3,333ms soft limit on a 5.0s budget");
+    }
+
+    private sealed class PartialIterationTestEvaluator : IEvaluationFunction
+    {
+        private readonly int _rootMoveCount;
+        private readonly int _sleepMsOnDepth2Move1;
+        private int _calls;
+
+        public PartialIterationTestEvaluator(int rootMoveCount, int sleepMsOnDepth2Move1)
+        {
+            _rootMoveCount = rootMoveCount;
+            _sleepMsOnDepth2Move1 = sleepMsOnDepth2Move1;
+        }
+
+        public int Evaluate(BoardState state)
+        {
+            int callIndex = Interlocked.Increment(ref _calls);
+
+            // Depth 1 leaf evaluations (1..7, ply 1, Black to move; NegaMax negates returned score):
+            // Make move0 score +50 (Black returns -50), move1 score +10 (Black returns -10), others 0.
+            if (callIndex == 1)
+            {
+                return -50;
+            }
+            if (callIndex == 2)
+            {
+                return -10;
+            }
+            if (callIndex <= _rootMoveCount)
+            {
+                return 0;
+            }
+
+            // Depth 2 leaf evaluations (ply 2, White to move):
+            // Next 7 depth-2 leaf calls belong to move0's replies -> return -40 so move0 drops to -40 at depth 2.
+            if (callIndex <= _rootMoveCount * 2)
+            {
+                return -40;
+            }
+
+            // Subsequent depth-2 leaf calls belong to move1's replies -> return +120 and sleep so move2 times out.
+            if (callIndex == (_rootMoveCount * 2) + 1)
+            {
+                Thread.Sleep(_sleepMsOnDepth2Move1);
+            }
+            return 120;
+        }
+    }
 }

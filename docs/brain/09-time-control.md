@@ -45,19 +45,51 @@ $$T_{\text{hard}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{rem}
 ### Iterative Deepening Time Lifecycle
 
 ```mermaid
-flowchart LR
-    Start["Start Turn<br/>Stopwatch.StartNew()"] --> D1["Complete Depth 1<br/>(Always finishes)"]
+flowchart TD
+    Start["Start Turn<br/>Stopwatch.StartNew()"] --> Forced{"Only 1 legal<br/>root move?"}
+    Forced -- "Yes" --> RetForced["Immediate Return (1 ply Forced)<br/>LastSearchTerminatedEarly = true"]
+    Forced -- "No" --> D1["Complete Depth 1<br/>(Always finishes)"]
     D1 --> CheckSoft{"Elapsed >= T_soft<br/>(2/3 of budget)?"}
-    CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>from completed depth d"]
-    CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1"]
-    NextD --> NodeCheck{"Every 4,096 nodes:<br/>Elapsed >= T_hard?"}
-    NodeCheck -- "No (Completed d+1)" --> SavePV["Update bestMoveOverall<br/>&amp; Promote PV move"]
-    SavePV --> CheckSoft
-    NodeCheck -- "Yes (Hard Abort)" --> Discard["Discard partial depth d+1"]
-    Discard --> Return
+    CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>&amp; bestScoreOverall"]
+    CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1<br/>(currentOrder[0] = previous best move)"]
+    NextD --> RootLoop["Search Root Move i = 0 .. N-1"]
+    RootLoop --> NodeCheck{"Every 4,096 nodes:<br/>Elapsed >= T_hard?"}
+    NodeCheck -- "No (Move i finished)" --> AdoptMove["If score > bestScoreThisDepth:<br/>Immediately publish to bestMoveOverall (Phase 5.1)<br/>&amp; track secondBestScoreThisDepth"]
+    AdoptMove --> MoreMoves{"More root moves<br/>at depth d+1?"}
+    MoreMoves -- "Yes" --> RootLoop
+    MoreMoves -- "No (Completed d+1)" --> DomCheck{"Phase 5.2: Mate found OR<br/>Timed mode, d+1 >= 8 &amp;<br/>margin >= 150 cp for 2 plies?"}
+    DomCheck -- "Yes (Dominant / Mate)" --> Return
+    DomCheck -- "No" --> CheckSoft
+    NodeCheck -- "Yes (Hard Timeout)" --> PartialCheck{"Did move i == 0<br/>already finish at d+1?"}
+    PartialCheck -- "Yes (Phase 5.1)" --> Salvage["Keep bestMoveOverall proven at d+1<br/>LastSearchAdoptedPartialIteration = true"]
+    PartialCheck -- "No (Aborted on i == 0)" --> Fallback["Keep bestMoveOverall from depth d"]
+    Salvage --> Return
+    Fallback --> Return
 ```
 
-Because branching factor $b$ causes depth $d + 1$ to take roughly $\sqrt{b} \approx 2.5\times\text{–}4\times$ longer than depth $d$, if $\ge \frac{2}{3}$ of the budget has already been consumed finishing depth $d$, depth $d + 1$ is unlikely to complete before $T_{\text{hard}}$. Stopping at $T_{\text{soft}}$ avoids wasting the remaining $\frac{1}{3}$ of the clock on an aborted search!
+Because branching factor $b$ causes depth $d + 1$ to take roughly $\sqrt{b} \approx 2.5\times\text{–}4\times$ longer than depth $d$, if $\ge \frac{2}{3}$ of the budget has already been consumed finishing depth $d$, depth $d + 1$ is unlikely to complete before $T_{\text{hard}}$. Stopping at $T_{\text{soft}}$ avoids wasting the remaining $\frac{1}{3}$ of the clock on an aborted search.
+
+---
+
+## Root Search & Time Management Optimizations (Phase 5)
+
+To maximize search quality when an iteration crosses $T_{\text{hard}}$ and avoid wasting clock time when a single move clearly dominates, [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements two root-level time management mechanisms (see [Chapter 11 – Engine improvements](11-engine-improvements.md#milestone-7-phase-5-root-search--time-management)):
+
+### 1. Partial-Iteration Root Move Adoption on Timeout (`LastSearchAdoptedPartialIteration`)
+At the start of every iterative deepening pass $d$, `currentOrder[0]` is always the Principal Variation move from completed depth $d - 1$.
+* As soon as root move $i = 0$ completes without aborting, its exact depth-$d$ evaluation $S_d(m_0)$ is established and `alpha` is raised to $S_d(m_0)$.
+* Every subsequent root move $i > 0$ that completes without aborting and achieves $S_d(m_i) > \text{bestScoreThisDepth}$ has been proven **at the same full depth $d$** to be strictly superior to $m_0$ (and all moves $0 \dots i - 1$).
+* Therefore, `MinimaxPlayer` immediately publishes each newly proven depth-$d$ best move and score to `bestMoveOverall` and `bestScoreOverall` inside the root loop:
+  $$\text{If } \neg\text{aborted} \land S_d(m_i) > \text{bestScoreThisDepth}: \quad \text{bestMoveOverall} \leftarrow m_i,\; \text{bestScoreOverall} \leftarrow S_d(m_i)$$
+* If a later root move $k > i$ hits $T_{\text{hard}}$, the engine retains the depth-$d$ refutation/improvement (`LastSearchAdoptedPartialIteration = true`) instead of reverting to the stale depth-$(d-1)$ choice. Conversely, if $T_{\text{hard}}$ expires while still searching $i = 0$, `bestEntryThisDepth` is `null` and the depth-$(d-1)$ result stands untouched.
+
+### 2. Early Root Termination on Single Viable Move (`UseEarlyRootTermination`)
+Because the root loop in `GetMoveAsync` searches each root move $m_i$ with $[-\beta, -\alpha] = [-200{,}000, -\alpha]$ (applying PVS null windows starting at `ply >= 1`), the principal continuation of every root move is evaluated with `isNullWindow == false` and returns a genuine fail-soft score without static forward-pruning distortion.
+
+During each root pass $d$, `GetMoveAsync` tracks both the highest score $S_d^{(1)} = \text{bestScoreThisDepth}$ and the second-highest score $S_d^{(2)} = \text{secondBestScoreThisDepth}$. In timed modes (`TimePerMove` and `TimePerGame`), iterative deepening terminates early (`LastSearchTerminatedEarly = true`) when either:
+1. **Proven Mate Score:** $\text{bestScoreOverall} \ge +28{,}000$ (forced win found) or $\text{bestScoreOverall} \le -28{,}000$ (all legal moves are proven losses).
+2. **Dominant Single Viable Move ($d \ge 8$):** At depth $d \ge 8$, the same root move $m^*$ has led every alternative root move by at least $\Delta_{\text{dom}} = 150\text{ cp}$ ($1.5\text{ men}$) for $K_{\text{streak}} = 2$ consecutive completed iterations:
+   $$d \ge 8 \;\land\; m^*_d = m^*_{d-1} \;\land\; \bigl(S_d^{(1)} - S_d^{(2)} \ge 150\bigr) \;\land\; \bigl(S_{d-1}^{(1)} - S_{d-1}^{(2)} \ge 150\bigr)$$
 
 ---
 

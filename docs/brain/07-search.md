@@ -174,12 +174,13 @@ Incorporating `ply` guarantees three critical behaviors:
 
 ---
 
-## Iterative Deepening & Asynchronous Execution
+## Iterative Deepening, Root Search & Asynchronous Execution
 
 Rather than jumping straight to target depth $D$, `MinimaxPlayer.GetMoveAsync` searches progressively through depths $d = 1, 2, 3, \dots, D$:
-1. **Anytime Move Availability:** If the move timer expires mid-search during depth $d$, the engine safely falls back to `bestMoveOverall` from completed depth $d - 1$.
-2. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
-3. **Non-Blocking UI & Cancellation:**
+1. **Partial-Iteration Root Move Adoption on Timeout (Phase 5.1):** Because `currentOrder[0]` is always the best move from depth $d - 1$, once $i = 0$ completes cleanly at depth $d$, any subsequent root move $i > 0$ that finishes without timeout and beats `bestScoreThisDepth` is proven superior at full depth $d$. `GetMoveAsync` publishes it to `bestMoveOverall` and `bestScoreOverall` immediately so that if a later root move hits `hardLimitMs`, the deeper depth-$d$ result is preserved (`LastSearchAdoptedPartialIteration = true`; see [Chapter 09 – Time control](09-time-control.md#root-search--time-management-optimizations-phase-5)).
+2. **Early Root Termination on Dominant Move (Phase 5.2):** In timed modes (`TimePerMove` and `TimePerGame`), `GetMoveAsync` tracks `bestScoreThisDepth` and `secondBestScoreThisDepth` across root moves. If a forced mate is reached or if at $d \ge 8$ the same root move leads all alternatives by $\ge 150\text{ cp}$ ($1.5\text{ men}$) for $2$ consecutive completed iterations, iterative deepening terminates early (`LastSearchTerminatedEarly = true`) to conserve clock time.
+3. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
+4. **Non-Blocking UI & Cancellation:**
    - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`.
    - **Blazor WebAssembly:** Yields cooperatively to the browser event loop via `await Task.Delay(1, cancellationToken)` after each completed depth and on $\ge 150\text{ ms}$ heartbeats ([Chapter 12](12-app-integration.md)).
    - **Amortized Cancellation Check:** Every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`), `cancellationToken.ThrowIfCancellationRequested()` and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.

@@ -4,14 +4,14 @@
 
 ## In short
 
-During the development of `Checkers.Core`, the AI engine evolved through **six rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), and two-stage Verified Late Move Reductions (LMR).
+During the development of `Checkers.Core`, the AI engine evolved through **seven rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), and root-level partial-iteration adoption & dominant-move early termination.
 
 Every milestone was validated against automated benchmark suites (`tools/Checkers.Benchmark`) to verify search correctness, measure exact node reductions, and quantify wall-clock throughput (`nodes/s`) and search depth gains:
 * **Raw Tree-Walk Throughput:** Increased from **`0.64M–0.66M nodes/s`** in the `Piece?[8, 8]` array engine to **`32.83M–37.18M nodes/s`** in the bitboard engine (**51×–65× raw speedup** with 100% node-for-node equivalence).
-* **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`246 ms` ($0.25\text{ seconds}$)** in Phase 4 (**605× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
-* **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**), enabling the engine to solve a **23-ply forced win** on Position #40 in **`2.15 seconds`**.
+* **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`236 ms` ($0.24\text{ seconds}$)** in Phase 5 (**631× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
+* **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **23-ply forced win** on Position #40 in **`2.11 seconds`**.
 
-![Checkers Engine Evolution: From 2D Array Prototype to Phase 4 Bitboard Engine](images/engine-evolution-chart.svg)
+![Checkers Engine Evolution: From 2D Array Prototype to Phase 5 Bitboard Engine](images/engine-evolution-chart.svg)
 
 ---
 
@@ -25,6 +25,7 @@ flowchart LR
     P1 --> P2["Milestone 4 (Phase 2): 4-Way TT<br/>64B Cache Buckets + Sse.Prefetch0<br/>−99.9%..100% Collisions"]
     P2 --> P3["Milestone 5 (Phase 3): Stage A<br/>Exact PVS + Killers + History<br/>−64.9% Nodes (No-TT) / −28.5% (TT)"]
     P3 --> P4["Milestone 6 (Phase 4): Stage B<br/>Verified LMR + RFP + FP<br/>−93.7% Nodes • 21–25 Plies in 5s"]
+    P4 --> P5["Milestone 7 (Phase 5): Root &amp; Time<br/>Partial Iteration Adoption<br/>+ Dominant Move Early Exit"]
 ```
 
 ### Executive Summary: 40-Position Deep Suite ($7\text{–}14$ Plies) Across All Milestones
@@ -39,14 +40,16 @@ flowchart LR
 | **Phase 2. 4-Way Bucket TT + Prefetch** | International | 1M TT | `10,956,192` | `-88.56% (Exact)` | `638 ms` | `17.18M/s` | `233.26×` |
 | **Phase 3. Stage A Exact (PVS + Killers)** | International | No-TT | `33,933,396` | `-64.58% (Exact)` | `1,367 ms` | `24.82M/s` | `108.87×` |
 | **Phase 3. Stage A Exact (PVS + Killers)** | International | 1M TT | `7,840,974` | `-91.82% (Exact)` | `548 ms` | `14.31M/s` | `271.57×` |
-| **Phase 4. Stage B Selective (LMR/RFP/FP)** | International | No-TT | **`6,727,472`** | **`-92.98% (14.2×)`** | **`458 ms`** | `14.69M/s` | **`324.94×`** |
-| **Phase 4. Stage B Selective (LMR/RFP/FP)** | International | 1M TT | **`2,349,717`** | **`-97.55% (40.8×)`** | **`246 ms`** | `9.55M/s` | **`604.97×`** |
+| **Phase 4. Stage B Selective (LMR/RFP/FP)** | International | No-TT | `6,727,472` | `-92.98% (14.2×)` | `458 ms` | `14.69M/s` | `324.94×` |
+| **Phase 4. Stage B Selective (LMR/RFP/FP)** | International | 1M TT | `2,349,717` | `-97.55% (40.8×)` | `246 ms` | `9.55M/s` | `604.97×` |
+| **Phase 5. Root & Time Management** | International | No-TT | **`6,727,472`** | **`-92.98% (14.2×)`** | **`433 ms`** | **`15.51M/s`** | **`343.70×`** |
+| **Phase 5. Root & Time Management** | International | 1M TT | **`2,349,717`** | **`-97.55% (40.8×)`** | **`236 ms`** | **`9.94M/s`** | **`630.60×`** |
 | **0A. Array Engine Prototype** | English | No-TT | `94,110,293` | — | `142,038 ms` | `0.66M/s` | `1.00×` |
 | **Phase 0. Bitboard Baseline** | English | No-TT | `94,110,293` | `0.00% (Exact)` | `2,641 ms` | `35.63M/s` | `53.78×` |
 | **Phase 2. 4-Way Bucket TT + Prefetch** | English | 1M TT | `9,944,217` | `-89.43% (Exact)` | `557 ms` | `17.85M/s` | `255.01×` |
 | **Phase 3. Stage A Exact (PVS + Killers)** | English | 1M TT | `7,324,657` | `-92.22% (Exact)` | `447 ms` | `16.39M/s` | `317.76×` |
-| **Phase 4. Stage B Selective (LMR/RFP/FP)** | English | No-TT | **`5,922,594`** | **`-93.71% (15.9×)`** | **`302 ms`** | `19.61M/s` | **`470.32×`** |
-| **Phase 4. Stage B Selective (LMR/RFP/FP)** | English | 1M TT | **`2,083,260`** | **`-97.79% (45.2×)`** | **`173 ms`** | `12.04M/s` | **`821.03×`** |
+| **Phase 4 & 5. Stage B + Root/Time** | English | No-TT | **`5,922,594`** | **`-93.71% (15.9×)`** | **`300 ms`** | **`19.70M/s`** | **`473.46×`** |
+| **Phase 4 & 5. Stage B + Root/Time** | English | 1M TT | **`2,083,260`** | **`-97.79% (45.2×)`** | **`173 ms`** | **`12.04M/s`** | **`821.03×`** |
 
 ### Executive Summary: 5-Position Timed Suite ($5.0\text{ s}$ Budget / Position, $16\text{M}$ TT, International)
 
@@ -333,12 +336,45 @@ In **Phase 4**, we added three selective pruning and depth-reduction algorithms 
 
 ---
 
+## Milestone 7 (Phase 5): Root Search & Time Management (Partial-Iteration Adoption & Dominant-Move Exit)
+
+Detailed architectural documentation: [Chapter 07 – Search (Iterative Deepening)](07-search.md#iterative-deepening-root-search--asynchronous-execution) and [Chapter 09 – Time control](09-time-control.md#root-search--time-management-optimizations-phase-5).
+
+In **Phase 5**, [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) was enhanced with two root-level search and clock management improvements:
+1. **Partial-Iteration Root Move Adoption on Timeout (`LastSearchAdoptedPartialIteration`):** Because `currentOrder[0]` is always the best move from completed depth $d - 1$, once $i = 0$ finishes cleanly at depth $d$, any subsequent root move $i > 0$ that completes without aborting and strictly beats `bestScoreThisDepth` is proven superior at full depth $d$. `GetMoveAsync` publishes it to `bestMoveOverall` and `bestScoreOverall` immediately so that if a later root move hits `hardLimitMs`, the engine preserves the deeper depth-$d$ result instead of discarding the entire partial iteration.
+2. **Early Root Termination on Single Viable Move (`UseEarlyRootTermination` / `LastSearchTerminatedEarly`):** Tracks `bestScoreThisDepth` and `secondBestScoreThisDepth` across root moves. In timed modes (`TimePerMove` and `TimePerGame`), iterative deepening terminates early when all moves are proven forced losses ($\text{bestScoreOverall} \le -28{,}000$) or when at depth $d \ge 8$ the same root move leads all alternatives by $\ge 150\text{ cp}$ ($1.5\text{ men}$) for $2$ consecutive completed iterations.
+
+### Part A: 40-Position Deep Fixed-Depth Suite (Phase 0 vs. Phase 5)
+
+Because Phase 5 preserves exact root windows in `FixedDepth` mode, all 40 fixed-depth positions evaluate the **exact same node counts** as Phase 4 while achieving peak throughput:
+
+| Variant | Mode | Phase 0 Nodes | **Phase 5 Nodes** | **Node Reduction vs. P0** | Phase 0 Time | **Phase 5 Time** | **Phase 5 NPS** | **Speedup vs. P0 (vs. Array 0A)** |
+|---|---|---:|---:|:---:|---:|---:|---:|:---:|
+| **International** | **No-TT** | `95,811,314` | **`6,727,472`** | **-92.98% (14.24× fewer)** | `2,951 ms` | **`433 ms`** | **`15.51M/s`** | **6.82× faster (343.7× vs Array)** |
+| **International** | **1M TT** | `10,962,720` | **`2,349,717`** | **-78.57% (4.67× fewer)** | `714 ms` | **`236 ms`** | **`9.94M/s`** | **3.03× faster (630.6× vs Array)** |
+| **International** | **16M TT** | `10,921,266` | **`2,349,717`** | **-78.48% (4.65× fewer)** | `850 ms` | **`251 ms`** | **`9.34M/s`** | **3.39× faster (592.9× vs Array)** |
+| **English** | **No-TT** | `94,110,293` | **`5,922,594`** | **-93.71% (15.89× fewer)** | `2,641 ms` | **`300 ms`** | **`19.70M/s`** | **8.80× faster (473.5× vs Array)** |
+| **English** | **1M TT** | `9,974,305` | **`2,083,260`** | **-79.11% (4.79× fewer)** | `638 ms` | **`174 ms`** | **`11.96M/s`** | **3.67× faster (816.3× vs Array)** |
+| **English** | **16M TT** | `9,944,268` | **`2,083,260`** | **-79.05% (4.77× fewer)** | `720 ms` | **`186 ms`** | **`11.16M/s`** | **3.87× faster (763.6× vs Array)** |
+
+### Part B: Master Cumulative Timed Benchmark Progression (Phase 0 → Phase 5, 5.0s Budget, 16M TT, International)
+
+| Position | Category | Phase 0 (Baseline) | Phase 1 (Speed) | Phase 2 (4-Way TT) | Phase 3 (Exact PVS) | Phase 4 (Selective) | **Phase 5 (Root & Time)** | Best Move | **Phase 5 Score** | **Phase 5 Nodes** | **Phase 5 Time** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|
+| **Pos #1** | Opening | `17 plies` | `17 plies` | `17 plies` | `18 plies` | `21 plies` | **`21 plies`** *(+d22 root PV adopted)* | `9-14` | **`+2`** *(d22 exact)* | `40,767,488` | `5,000 ms` |
+| **Pos #13** | Middlegame | `16 plies` | `17 plies` | `17 plies` | `17 plies` | `21 plies` | **`21 plies (+5 vs P0)`** | `28-24` | **`+7`** | `32,912,269` | **`4,103 ms`** |
+| **Pos #20** | Middlegame | `18 plies` | `18 plies` | `18 plies` | `20 plies` | `22 plies` | **`22 plies (+4 vs P0)`** | `12-16` | **`0`** | `35,436,215` | **`4,247 ms`** |
+| **Pos #32** | Endgame | `20 plies` | `20 plies` | `20 plies` | `20 plies` | `25 plies` | **`25 plies (+5 vs P0)`** | `18-14` | **`+439`** | `34,374,464` | **`4,158 ms`** |
+| **Pos #40** | Blockade/Tension | `18 plies` | `18 plies` | `18 plies` | `19 plies` | `22 plies` | **`22 plies (+4 vs P0, Solved!)`** | `29x8` | **`+Win in 23 plies`** | `20,214,797` | **`2,108 ms`** |
+
+---
+
 ## Reproducing the Benchmarks
 
 All benchmarks can be executed directly from the command line using `tools/Checkers.Benchmark`:
 
 ```powershell
-# Run the Phase 0..4 progression benchmark (40-position deep suite + 5-position 5.0s timed suite)
+# Run the Phase 0..5 progression benchmark (40-position deep suite + 5-position 5.0s timed suite)
 dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- phase-bench
 
 # Run the 40-position standard and deep suites across both International and English variants

@@ -27,6 +27,9 @@ public sealed class MinimaxPlayer : IPlayer
     private const int LmrMinPly = 2;
     private const int LmrMinMoveIndex = 3;
     private const int LmrLateMoveIndex = 8;
+    private const int DominantMoveMinDepth = 8;
+    private const int DominantMoveMargin = 150;
+    private const int DominantMoveRequiredStreak = 2;
 
     private readonly CheckersVariant _variant;
     private readonly IEvaluationFunction? _customEvaluator;
@@ -46,6 +49,9 @@ public sealed class MinimaxPlayer : IPlayer
     public bool UseTranspositionTable => TranspositionTable != null;
     public bool UseQuiescence { get; set; } = true;
     public bool UseSelectivePruning { get; set; } = true;
+    public bool UseEarlyRootTermination { get; set; } = true;
+    public bool LastSearchAdoptedPartialIteration { get; private set; }
+    public bool LastSearchTerminatedEarly { get; private set; }
 
     public MinimaxPlayer(
         SearchLimits limits,
@@ -122,6 +128,8 @@ public sealed class MinimaxPlayer : IPlayer
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        LastSearchAdoptedPartialIteration = false;
+        LastSearchTerminatedEarly = false;
 
         if (legalMoves.Count == 0)
             throw new InvalidOperationException("No legal moves available.");
@@ -129,6 +137,7 @@ public sealed class MinimaxPlayer : IPlayer
         if (legalMoves.Count == 1)
         {
             var singleMove = legalMoves[0];
+            LastSearchTerminatedEarly = true;
             LastAnalysis = new SearchAnalysis
             {
                 Move = singleMove.Notation,
@@ -158,7 +167,8 @@ public sealed class MinimaxPlayer : IPlayer
 
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
-        int maxTargetDepth = Limits.Mode == TimeControlMode.FixedDepth ? Limits.Depth : 48;
+        bool isTimedSearch = Limits.Mode != TimeControlMode.FixedDepth;
+        int maxTargetDepth = isTimedSearch ? 48 : Limits.Depth;
 
         if (Limits.Mode == TimeControlMode.TimePerMove)
         {
@@ -186,6 +196,8 @@ public sealed class MinimaxPlayer : IPlayer
         Move? bestMoveOverall = null;
         int bestScoreOverall = 0;
         int completedDepth = 1;
+        ushort lastCompletedBestPacked = 0;
+        int dominantMoveStreak = 0;
 
         for (int d = 1; d <= maxTargetDepth; d++)
         {
@@ -194,6 +206,7 @@ public sealed class MinimaxPlayer : IPlayer
 
             (Move Move, BitMove BitMove)? bestEntryThisDepth = null;
             int bestScoreThisDepth = int.MinValue;
+            int secondBestScoreThisDepth = int.MinValue;
             int alpha = -200_000;
             int beta = 200_000;
             bool depthAborted = false;
@@ -235,8 +248,20 @@ public sealed class MinimaxPlayer : IPlayer
 
                 if (score > bestScoreThisDepth)
                 {
+                    secondBestScoreThisDepth = bestScoreThisDepth;
                     bestScoreThisDepth = score;
                     bestEntryThisDepth = entry;
+
+                    // 5.1 Partial-Iteration Root Move Adoption on Timeout:
+                    // currentOrder[0] is always the previous iteration's best move. Once i == 0 finishes
+                    // cleanly at depth d (or a later root move i > 0 finishes cleanly and beats it at depth d),
+                    // publish it immediately so a timeout on a later root move preserves the deeper result.
+                    bestMoveOverall = entry.Move;
+                    bestScoreOverall = score;
+                }
+                else if (score > secondBestScoreThisDepth)
+                {
+                    secondBestScoreThisDepth = score;
                 }
 
                 if (score > alpha)
@@ -267,6 +292,21 @@ public sealed class MinimaxPlayer : IPlayer
                 bestMoveOverall = bestEntryThisDepth.Value.Move;
                 bestScoreOverall = bestScoreThisDepth;
                 completedDepth = d;
+                LastSearchAdoptedPartialIteration = false;
+
+                ushort currentBestPacked = bestEntryThisDepth.Value.BitMove.PackedMove;
+                if (secondBestScoreThisDepth > int.MinValue &&
+                    bestScoreThisDepth - secondBestScoreThisDepth >= DominantMoveMargin)
+                {
+                    dominantMoveStreak = currentBestPacked == lastCompletedBestPacked
+                        ? dominantMoveStreak + 1
+                        : 1;
+                }
+                else
+                {
+                    dominantMoveStreak = 0;
+                }
+                lastCompletedBestPacked = currentBestPacked;
 
                 currentOrder.Remove(bestEntryThisDepth.Value);
                 currentOrder.Insert(0, bestEntryThisDepth.Value);
@@ -292,9 +332,27 @@ public sealed class MinimaxPlayer : IPlayer
 
                 if (bestScoreOverall >= TranspositionTable.WinThreshold)
                     break;
+
+                // 5.2 Early Root Termination on Single Viable Move (Dominant Move Exit):
+                // In timed searches at depth >= 8, if the same root move leads all alternatives by >= 150 cp
+                // (1.5 men) for 2 consecutive completed iterations (or all moves are proven forced losses),
+                // terminate early to save clock time.
+                if (UseEarlyRootTermination && isTimedSearch && d < maxTargetDepth)
+                {
+                    if (bestScoreOverall <= -TranspositionTable.WinThreshold ||
+                        (d >= DominantMoveMinDepth && dominantMoveStreak >= DominantMoveRequiredStreak))
+                    {
+                        LastSearchTerminatedEarly = true;
+                        break;
+                    }
+                }
             }
             else
             {
+                if (bestEntryThisDepth.HasValue)
+                {
+                    LastSearchAdoptedPartialIteration = true;
+                }
                 break;
             }
         }
