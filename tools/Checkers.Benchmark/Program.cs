@@ -5,6 +5,18 @@ using Checkers.Core.AI.Benchmark;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
+if (args.Any(a => a.Equals("eval-speed", StringComparison.OrdinalIgnoreCase)))
+{
+    await RunEvalSpeedBenchmarkAsync();
+    return;
+}
+
+if (args.Any(a => a.Equals("eval-match", StringComparison.OrdinalIgnoreCase)))
+{
+    await RunEvalMatchAsync(args);
+    return;
+}
+
 if (args.Any(a => a.Contains("phase", StringComparison.OrdinalIgnoreCase)))
 {
     await RunPhaseBenchmarkAsync();
@@ -223,3 +235,132 @@ static async Task RunPhaseBenchmarkAsync()
             $"Nodes = {timedPlayer.NodesEvaluated,11:N0} | Time = {sw.ElapsedMilliseconds,4} ms | NPS = {nps,6:F2}M/s");
     }
 }
+
+static async Task RunEvalSpeedBenchmarkAsync()
+{
+    string outputDir = GetDocsBrainDirectory();
+    string baselineJsonPath = Path.Combine(outputDir, "bitboard_deep_benchmark_results.json");
+
+    var report = await EvaluationMatchRunner.RunSpeedBenchmarkAsync(
+        baselineJsonPath: baselineJsonPath,
+        timedSecondsPerPosition: 5.0,
+        log: Console.WriteLine);
+
+    if (Directory.Exists(outputDir))
+    {
+        string jsonPath = Path.Combine(outputDir, "eval_speed_benchmark_results.json");
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(report, options));
+        Console.WriteLine($"\nEvaluation speed benchmark JSON saved to: {jsonPath}");
+    }
+}
+
+static async Task RunEvalMatchAsync(string[] cliArgs)
+{
+    int timeMs = GetIntArg(cliArgs, "--time-ms", 1000);
+    int workers = GetIntArg(cliArgs, "--workers", 4);
+    int ballots = GetIntArg(cliArgs, "--ballots", 50);
+    string variantArg = GetStringArg(cliArgs, "--variant", "All");
+
+    var variants = new List<CheckersVariant>();
+    if (variantArg.Equals("English", StringComparison.OrdinalIgnoreCase))
+    {
+        variants.Add(CheckersVariant.English);
+    }
+    else if (variantArg.Equals("International", StringComparison.OrdinalIgnoreCase))
+    {
+        variants.Add(CheckersVariant.International);
+    }
+    else
+    {
+        variants.Add(CheckersVariant.English);
+        variants.Add(CheckersVariant.International);
+    }
+
+    var summaries = new List<VariantMatchSummary>();
+    object consoleLock = new();
+
+    foreach (var variant in variants)
+    {
+        Console.WriteLine("\n====================================================================================");
+        Console.WriteLine($"  Bot-vs-Bot Evaluation Match: {variant} Checkers");
+        Console.WriteLine($"  Ballots: {ballots} ({ballots * 2} games) | Time/Move: {timeMs} ms | Parallel Workers: {workers}");
+        Console.WriteLine("====================================================================================");
+
+        var summary = await EvaluationMatchRunner.RunMatchAsync(
+            variant: variant,
+            ballotCount: ballots,
+            timePerMoveMs: timeMs,
+            workers: workers,
+            progressCallback: (done, total, game) =>
+            {
+                if (done % 5 == 0 || done == total)
+                {
+                    lock (consoleLock)
+                    {
+                        string side = game.NewEvalIsWhite ? "New=W" : "New=B";
+                        string outcome = game.NewEvalPointsHalf switch
+                        {
+                            2 => "WIN ",
+                            1 => "DRAW",
+                            _ => "LOSS"
+                        };
+                        Console.WriteLine(
+                            $"  [{variant,-13} {done,3}/{total,3}] Game #{game.GameId,3} (Ballot #{game.BallotId,2}, {side}): " +
+                            $"{outcome} ({game.TerminationReason,-19}, {game.TotalPlies,3} plies, " +
+                            $"New {game.AvgNewDepth,4:F1}d/{game.AvgNewNpsMillions,4:F1}M vs Leg {game.AvgLegacyDepth,4:F1}d/{game.AvgLegacyNpsMillions,4:F1}M)");
+                    }
+                }
+            });
+
+        summaries.Add(summary);
+        Console.WriteLine();
+        Console.WriteLine(EvaluationMatchRunner.FormatMatchSummaryMarkdown(summary));
+    }
+
+    string outputDir = GetDocsBrainDirectory();
+    if (Directory.Exists(outputDir))
+    {
+        string suffix = variants.Count == 1 ? $"_{variants[0].ToString().ToLowerInvariant()}" : "";
+        string jsonPath = Path.Combine(outputDir, $"eval_match_results{suffix}.json");
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(summaries, options));
+        Console.WriteLine($"Match results JSON saved to: {jsonPath}");
+    }
+}
+
+static string GetDocsBrainDirectory()
+{
+    string outputDir = Path.Combine(Directory.GetCurrentDirectory(), "docs", "brain");
+    if (!Directory.Exists(outputDir))
+    {
+        outputDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "docs", "brain"));
+    }
+    return outputDir;
+}
+
+static int GetIntArg(string[] cliArgs, string flag, int defaultValue)
+{
+    for (int i = 0; i < cliArgs.Length - 1; i++)
+    {
+        if (cliArgs[i].Equals(flag, StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(cliArgs[i + 1], out int parsed))
+        {
+            return parsed;
+        }
+    }
+    return defaultValue;
+}
+
+static string GetStringArg(string[] cliArgs, string flag, string defaultValue)
+{
+    for (int i = 0; i < cliArgs.Length - 1; i++)
+    {
+        if (cliArgs[i].Equals(flag, StringComparison.OrdinalIgnoreCase))
+        {
+            return cliArgs[i + 1];
+        }
+    }
+    return defaultValue;
+}
+

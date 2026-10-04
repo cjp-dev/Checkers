@@ -556,6 +556,36 @@ public class AiTests
         intlEval.Evaluate(shortCornerBoard).Should().Be(-36);
     }
 
+    [Theory]
+    [InlineData(CheckersVariant.English)]
+    [InlineData(CheckersVariant.International)]
+    public async Task EvaluationMatchRunner_GeneratesBalancedBallotsAndRunsIsolatedMatch(CheckersVariant variant)
+    {
+        var ballots = Checkers.Core.AI.Benchmark.EvaluationMatchRunner.GenerateBalancedBallots(variant, count: 5);
+        ballots.Should().HaveCount(5);
+        ballots.Select(b => b.State.ZobristHash).Distinct().Should().HaveCount(5);
+
+        foreach (var ballot in ballots)
+        {
+            ballot.PliesFromStart.Should().BeInRange(6, 10);
+            ballot.State.WhitePiecesCount.Should().Be(ballot.State.BlackPiecesCount);
+            ballot.State.WhiteKingsCount.Should().Be(0);
+            ballot.State.BlackKingsCount.Should().Be(0);
+            Math.Abs(ballot.LegacyEvalCp).Should().BeLessThanOrEqualTo(30);
+            Math.Abs(ballot.NewEvalCp).Should().BeLessThanOrEqualTo(30);
+        }
+
+        // Smoke-test a 1-ballot (2-game color-swapped) isolated match at 10ms/move
+        var summary = await Checkers.Core.AI.Benchmark.EvaluationMatchRunner.RunMatchAsync(
+            variant: variant,
+            ballotCount: 1,
+            timePerMoveMs: 10,
+            workers: 2);
+
+        summary.TotalGames.Should().Be(2);
+        (summary.NewEvalWins + summary.Draws + summary.LegacyEvalWins).Should().Be(2);
+    }
+
     private static ulong Flip180(ulong mask)
     {
         ulong result = 0UL;
