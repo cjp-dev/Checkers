@@ -208,7 +208,7 @@ public class EnglishCheckersTests
         // International king: 300 (material) + 12 (center control) = 312
         legacyIntlEval.Evaluate(state).Should().Be(300 + 12);
 
-        // New evaluator (2x scaled board_eval.c):
+        // New evaluator (board_eval.c 2x scaled):
         // English king at (4, 3): 140 (material) + 8 (EnglishKingPst4Mask) + 400 (CalculatePieceBonus(1)) = 548
         englishEval.Evaluate(state).Should().Be(140 + 8 + 400);
         // International Flying King at (4, 3): 300 (material) + 12 (CenterMask) + 12 (FlyingKingMainDiagonalMask) + 400 (trade bonus vs 0 enemy pieces) = 724

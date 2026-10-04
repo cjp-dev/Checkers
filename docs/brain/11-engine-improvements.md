@@ -392,18 +392,21 @@ Evaluating all 40 benchmark positions in a tight 10-million-call loop (`250,000`
 | Variant | Evaluator | Total Evaluations | Elapsed Time | Throughput (`M evals/s`) | Latency (`ns/eval`) | Delta vs. `Legacy` |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | **English Checkers** | `LegacyEvaluationFunction` | `10,000,000` | `82 ms` | **`121.9M evals/s`** | `8.2 ns/eval` | Baseline |
-| **English Checkers** | **`EvaluationFunction` (`New`)** | `10,000,000` | **`88 ms`** | **`113.0M evals/s`** | **`8.8 ns/eval`** | **`+0.6 ns` (`+7.3%`)** |
+| **English Checkers** | **Retained `EvaluationFunction` (`board_eval.c`)** | `10,000,000` | **`88 ms`** | **`113.0M evals/s`** | **`8.8 ns/eval`** | **`+0.6 ns` (`+7.3%`)** |
+| **English Checkers** | Phase 6c Experiment (`Cake 1.89g` 1:1 Port — Removed) | `10,000,000` | `621 ms` | `16.1M evals/s` | `62.1 ns/eval` | `+53.9 ns` (`7.1×` slower vs. `board_eval.c`) |
 | **International Draughts** | `LegacyEvaluationFunction` | `10,000,000` | `76 ms` | **`130.3M evals/s`** | `7.7 ns/eval` | Baseline |
-| **International Draughts** | **`EvaluationFunction` (`New`)** | `10,000,000` | **`131 ms`** | **`76.1M evals/s`** | **`13.1 ns/eval`** | **`+5.4 ns`** |
+| **International Draughts** | **Retained `EvaluationFunction` (`New`)** | `10,000,000` | **`131 ms`** | **`76.1M evals/s`** | **`13.1 ns/eval`** | **`+5.4 ns`** |
 
 ### Part B: 40-Position Fixed-Depth Search Speed Comparison (`Legacy` vs. `New`)
 
-When embedded inside `MinimaxPlayer` with the `1M` Transposition Table enabled, the richer positional ordering and sharper pruning bounds of `EvaluationFunction` **reduce total searched nodes (`-0.8%` in English, `-15.2%` in International)**, resulting in **equal or faster wall-clock completion times** despite the richer leaf evaluation:
+When embedded inside `MinimaxPlayer` with the `1M` Transposition Table enabled, the richer positional ordering and sharper pruning bounds of the retained `EvaluationFunction` **reduce total searched nodes (`-0.8%` in English, `-15.2%` in International)**, resulting in **equal or faster wall-clock completion times** despite the richer leaf evaluation:
 
 | Variant | Mode | `Legacy` Nodes | **`New` Nodes** | **Node Delta** | `Legacy` Time | **`New` Time** | **Time Delta** | `Legacy` NPS | **`New` NPS** |
 | :--- | :--- | ---: | ---: | :---: | ---: | ---: | :---: | ---: | ---: |
-| **English** | **No-TT** | `5,868,002` | `6,860,691` | `+16.9%` | `401 ms` | `471 ms` | `+70 ms` | `14.63M/s` | `14.54M/s` |
-| **English** | **1M TT** | `2,086,849` | **`2,069,177`** | **`-0.85%`** | `222 ms` | **`224 ms`** | `~0 ms` | `9.40M/s` | `9.20M/s` |
+| **English (`board_eval.c`)** | **No-TT** | `5,868,002` | `6,860,691` | `+16.9%` | `401 ms` | `471 ms` | `+70 ms` | `14.63M/s` | `14.54M/s` |
+| **English (`board_eval.c`)** | **1M TT** | `2,086,849` | **`2,069,177`** | **`-0.85%`** | `222 ms` | **`224 ms`** | `~0 ms` | `9.40M/s` | `9.20M/s` |
+| **English (`Cake 1.89g` — Removed)** | **No-TT** | `5,868,002` | `8,833,088` | `+50.5%` | `356 ms` | `932 ms` | `+576 ms` | `16.45M/s` | `9.47M/s` |
+| **English (`Cake 1.89g` — Removed)** | **1M TT** | `2,086,849` | `2,820,120` | `+35.1%` | `202 ms` | `371 ms` | `+169 ms` | `10.30M/s` | `7.60M/s` |
 | **International** | **No-TT** | `6,333,182` | **`6,000,494`** | **`-5.25%`** | `362 ms` | `391 ms` | `+29 ms` | `17.46M/s` | `15.33M/s` |
 | **International** | **1M TT** | `2,295,742` | **`1,947,323`** | **`-15.18%`** | `207 ms` | **`193 ms`** | **`-6.76%` (Faster!)** | `11.06M/s` | `10.05M/s` |
 
@@ -428,17 +431,26 @@ Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/Evaluati
 
 #### 1. English Checkers — 100-Game Match (`NewEval` vs. `LegacyEval`, `1000 ms/move`)
 
-| Metric | `NewEval` (`EvaluationFunction`) | `LegacyEval` (`LegacyEvaluationFunction`) |
-| :--- | :---: | :---: |
-| **Total Score (100 Games)** | **69.5 / 100** (**69.5%**) | 30.5 / 100 (30.5%) |
-| **Wins / Draws / Losses** | **+41 = 57 −2** | +2 = 57 −41 |
-| **As White (50 Games)** | **+21 = 27 −2** | +0 = 30 −20 |
-| **As Black (50 Games)** | **+20 = 30 −0** *(0 losses!)* | +2 = 27 −21 |
-| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | **`7` / `27` / `14` / `2` / `0`** | `0` / `2` / `14` / `27` / `7` |
-| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | **+143.1 ± 42.9 Elo** (**LOS: 100.0%**) | −143.1 ± 42.9 Elo |
-| **Average Search Depth** | `22.86 plies` | `23.00 plies` |
-| **Average Search Speed (NPS)** | `10.98M nodes/s` | `11.71M nodes/s` |
-| **Average Game Length** | `120.3 plies` | — |
+| Metric | **Retained Phase 6 `NewEval` (`board_eval.c` Port)** | Phase 6c Experiment (`Cake 1.89g` 1:1 Port — Removed) | `LegacyEval` (`LegacyEvaluationFunction`) |
+| :--- | :---: | :---: | :---: |
+| **Total Score (100 Games)** | **69.5 / 100** (**69.5%**) | 66.0 / 100 (66.0%) | 30.5 / 100 (30.5%) |
+| **Wins / Draws / Losses** | **+41 = 57 −2** | +36 = 60 −4 | +2 = 57 −41 |
+| **As White (50 Games)** | **+21 = 27 −2** | +20 = 29 −1 | +0 = 30 −20 |
+| **As Black (50 Games)** | **+20 = 30 −0** *(0 losses!)* | +16 = 31 −3 | +2 = 27 −21 |
+| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | **`7` / `27` / `14` / `2` / `0`** | `4` / `26` / `18` / `2` / `0` | `0` / `2` / `14` / `27` / `7` |
+| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | **+143.1 ± 42.9 Elo** (**LOS: 100.0%**) | +115.2 ± 41.9 Elo (LOS: 100.0%) | −143.1 ± 42.9 Elo |
+| **Raw Eval Latency (`10M` Evals)** | **`8.8 ns/eval` (`113.0M/s`)** | `62.1 ns/eval` (`16.1M/s`) | `8.2 ns/eval` (`121.9M/s`) |
+| **Average Search Depth** | **`22.86 plies`** *(−0.14 vs. Legacy)* | `23.07 plies` *(**−1.19 vs. Legacy**)* | `23.00–24.26 plies` |
+| **Average Search Speed (NPS)** | **`10.98M nodes/s`** | `7.51M nodes/s` *(**−31.6% vs. Phase 6**)* | `11.71–11.78M nodes/s` |
+| **Average Game Length** | **`120.3 plies`** | `130.9 plies` | — |
+
+> [!NOTE]
+> **Why Phase 6 (`board_eval.c`) Was Retained and the Phase 6c (`Cake 1.89g`) Code Was Removed:**
+> In **Phase 6c**, we implemented a complete 1-to-1 C# port of Martin Fierz's **Cake 1.89g** static evaluation function (`cake_eval_parametrized.c`), including BMI2 `PEXT` + nibble-reversal 32-bit bitboard conversion (`ToCakeBitboard`), `materialeval[13*13*13*13]`, `backrank[65536]` (`BR4`), and all 8 sections of `fineevaluation()`. While the Cake 1.89g port beat `LegacyEvaluationFunction` decisively (**`66.0 / 100`**, `+36 =60 −4`, **`+115.2 ± 41.9 Elo`**), it trailed our `POPCNT`-vectorized `board_eval.c` port (**`69.5 / 100`**, `+41 =57 −2`, **`+143.1 ± 42.9 Elo`**) by **`27.9 Elo`** (`3.5` points):
+> 1. **$7\times$ Higher Leaf Latency (`62.1 ns` vs. `8.8 ns`):** Running all 8 sequential sections of `fineevaluation()` (including 3-step King flood-fill mobility and 2-ply Man pursuit) at every leaf node reduced search throughput by **`31.6%`** (`10.98M/s` $\to$ `7.51M/s`) and cost **`1.19 plies` of search depth** (`23.07` vs. `24.26 plies`).
+> 2. **Coarse-Graining & Node Inflation (`+36%`):** Cake's `COARSEGRAINING` (`eval = (eval / 4) * 2`) increased fixed-depth `1M TT` node counts from `2.07M` to `2.82M` (`+36.3%`).
+> 3. **Absence of Windowed Lazy Eval & Endgame Tablebases:** Cake's C engine skips `fineevaluation()` on most nodes via windowed lazy exits (`alpha ± FINEEVALWINDOW`) and resolves $\le 8$-piece endgames via an endgame tablebase (`db_lookup`), whereas without an EGDB, Cake's `likelydraw` halving (`eval /= 2`) made endgame conversion slightly more passive (`60` draws vs. `57`).
+> Consequently, the temporary Cake evaluation files (`CakeEnglishEvaluator.cs` and `CakeBackRankTable.cs`) were completely removed and the faster, stronger **Phase 6 `board_eval.c` implementation** was retained in [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs).
 
 #### 2. International (Flying Kings) Checkers — 100-Game Match & Domain Discovery (`1000 ms/move`)
 

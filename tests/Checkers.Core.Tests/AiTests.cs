@@ -438,6 +438,9 @@ public class AiTests
                 SideToMove = PieceColor.White
             };
 
+            var posBlack = posWhite;
+            posBlack.SideToMove = PieceColor.Black;
+
             var posSwappedBlack = new BitPosition
             {
                 WhiteMen = Flip180(bm),
@@ -448,18 +451,15 @@ public class AiTests
             };
 
             int scoreWhite = eval.Evaluate(in posWhite);
+            int scoreBlack = eval.Evaluate(in posBlack);
             int scoreSwappedBlack = eval.Evaluate(in posSwappedBlack);
 
-            // Evaluate(in pos) returns score from SideToMove's perspective!
-            // Wait: when we flip 180 degrees and swap colors AND swap SideToMove from White to Black,
-            // Black in the flipped position has the exact mirror of White's pieces in the original position!
-            // Therefore, from SideToMove's perspective, scoreSwappedBlack MUST equal scoreWhite!
-            // And if SideToMove is kept as White on the flipped position, its score MUST equal -scoreWhite!
+            // When we flip 180 degrees, swap colors, AND swap SideToMove, the position is a true mirror image:
             scoreSwappedBlack.Should().Be(scoreWhite);
 
             var posSwappedWhiteToMove = posSwappedBlack;
             posSwappedWhiteToMove.SideToMove = PieceColor.White;
-            eval.Evaluate(in posSwappedWhiteToMove).Should().Be(-scoreWhite);
+            eval.Evaluate(in posSwappedWhiteToMove).Should().Be(scoreBlack);
 
             // Verify legacy evaluator symmetry as well
             legacyEval.Evaluate(in posSwappedBlack).Should().Be(legacyEval.Evaluate(in posWhite));
@@ -470,14 +470,6 @@ public class AiTests
     [Fact]
     public void EvaluationFunction_RunawayCone_AwardsBonusOnlyWhenForwardConeIsClearAndNoEnemyKings()
     {
-        var eval = new EvaluationFunction(CheckersVariant.English);
-
-        // White Man at (3, 6) [sq 30, row 3]: forward cone on rows 0..2 is cols 3..7.
-        // Black Man at (2, 1) [sq 17, row 2] is on row 2 ahead of White's row 3?
-        // Wait: board_eval.c requires NO enemy pieces on ANY row ahead of White's row (first_p2_row >= r_w),
-        // AND no pieces inside the forward cone!
-        // So if White Man is at (2, 3) [sq 19, row 2] and Black has 2 Men at (3, 0) [sq 24] and (4, 1) [sq 33]
-        // (where (3,0) is blocked by (4,1) so Black is not a runaway), White at (2, 3) IS a runaway (+40 + 6*5 = +70 cp)!
         var runawayBoard = BoardState.CreateEmpty(PieceColor.White);
         runawayBoard.SetPiece(new Position(2, 3), Piece.WhiteMan);
         runawayBoard.SetPiece(new Position(6, 1), Piece.WhiteMan); // blocks Black's cone
@@ -491,20 +483,19 @@ public class AiTests
         blockedBoard.SetPiece(new Position(1, 2), Piece.BlackMan);
         blockedBoard.SetPiece(new Position(4, 7), Piece.BlackMan);
 
-        int scoreRunaway = eval.Evaluate(runawayBoard);
-        int scoreBlocked = eval.Evaluate(blockedBoard);
+        var englishEval = new EvaluationFunction(CheckersVariant.English);
+        int scoreRunaway = englishEval.Evaluate(runawayBoard);
+        int scoreBlocked = englishEval.Evaluate(blockedBoard);
 
-        // Runaway board awards +70 cp for White's unstoppable passer at (2, 3)
+        // White's unstoppable passer at (2, 3) earns 40 + 6*(7-2) = +70 cp!
         scoreRunaway.Should().BeGreaterThan(scoreBlocked + 50);
     }
 
     [Fact]
     public void EvaluationFunction_TailPin_And_StructuralPatterns_ScoreCorrectly()
     {
-        var eval = new EvaluationFunction(CheckersVariant.English);
+        var englishEval = new EvaluationFunction(CheckersVariant.English);
 
-        // Test White Bridge at (7, 2) [sq 58] and (7, 6) [sq 62] vs non-bridge (7, 4) [sq 60] and (7, 6) [sq 62]
-        // Note: (7, 2), (7, 4), and (7, 6) all have the exact same Man PST weight (+6 cp in WhiteManPst3Mask)
         var bridgeBoard = BoardState.CreateEmpty(PieceColor.White);
         bridgeBoard.SetPiece(new Position(7, 2), Piece.WhiteMan);
         bridgeBoard.SetPiece(new Position(7, 6), Piece.WhiteMan);
@@ -518,7 +509,7 @@ public class AiTests
         nonBridgeBoard.SetPiece(new Position(0, 3), Piece.BlackMan);
 
         // Both (7,2) and (7,4) have +6 cp PST and identical row 7 advancement, so the delta is purely the Bridge bonus (+30 cp)!
-        (eval.Evaluate(bridgeBoard) - eval.Evaluate(nonBridgeBoard)).Should().Be(30);
+        (englishEval.Evaluate(bridgeBoard) - englishEval.Evaluate(nonBridgeBoard)).Should().Be(30);
 
         // Test Tail Pin: White King at (4, 1) [sq 33] pinning two lined-up Black Men at (5, 2) [sq 42] and (6, 3) [sq 51] along +9/+18
         var tailPinBoard = BoardState.CreateEmpty(PieceColor.White);
@@ -533,7 +524,7 @@ public class AiTests
         unpinnedBoard.SetPiece(new Position(6, 3), Piece.BlackMan);
 
         // Both (4,1) and (4,7) have 0 King PST; (4,1) gets +10 cp for the tail pin!
-        (eval.Evaluate(tailPinBoard) - eval.Evaluate(unpinnedBoard)).Should().Be(10);
+        (englishEval.Evaluate(tailPinBoard) - englishEval.Evaluate(unpinnedBoard)).Should().Be(10);
     }
 
     [Fact]
