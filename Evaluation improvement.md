@@ -103,3 +103,18 @@ To quantify the exact performance impact of the richer evaluation functions on b
      - **Total Evaluated Nodes & Wall-Clock Time (`ms`)** (measuring how the richer evaluation affects alpha-beta cutoff efficiency as well as per-node speed).
 3. **Part C — 5-Position Timed Depth Comparison (`5.0s` / Position, `16M TT`):**
    - Compares completed iterative deepening depth (`plies`), `NodesEvaluated`, `LeafEvaluations`, and `NPS` between the old and new evaluators under a fixed 5-second clock.
+
+---
+
+## 5. Empirical Results Summary (Completed)
+
+1. **Raw Static Evaluation Speed (`10,000,000` Evaluations / Variant):**
+   - **English Checkers:** `113.0M evals/s` (`8.8 ns/eval`) vs. `121.9M evals/s` (`8.2 ns/eval`) for `Legacy` (`+0.6 ns` overhead).
+   - **International (Flying Kings):** `76.1M evals/s` (`13.1 ns/eval`) vs. `130.3M evals/s` (`7.7 ns/eval`) for `Legacy`.
+2. **40-Position Fixed-Depth Search Speed (`1M TT`):**
+   - **English:** `2,069,177` nodes (`-0.85%` fewer nodes) in `224 ms` (`9.20M nodes/s`) vs. `2,086,849` nodes in `222 ms` (`Legacy`).
+   - **International:** `1,947,323` nodes (**`-15.18%` fewer nodes**) in **`193 ms`** (**`-6.76%` faster wall-clock time**) vs. `2,295,742` nodes in `207 ms` (`Legacy`).
+3. **200-Game Bot-vs-Bot Self-Play Verification (`1000 ms/move`, 50 Balanced Ballots × 2 Sides per Variant):**
+   - **English Checkers (100 Games):** **`69.5 / 100` (`69.5%`, `+41 = 57 −2`, `+143.1 ± 42.9 Elo`, `100.0% LOS`)** — `0` losses as Black (`+20 = 30 −0`) and `7` `2-0` ballot sweeps vs. `0` for `Legacy`.
+   - **International Checkers (100 Games):** **`56.5 / 100` (`56.5%`, `+22 = 69 −9`, `+45.4 ± 37.8 Elo`, `99.2% LOS`)** after gating the Flying Kings simplification bonus on material advantage ($\ge 80\text{ cp}$, which produced a **`+83.8 Elo` swing** over raw piece-count comparison `-38.4 Elo`).
+   - See [docs/brain/05-evaluation.md](docs/brain/05-evaluation.md) and [docs/brain/11-engine-improvements.md](docs/brain/11-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification) for full documentation.

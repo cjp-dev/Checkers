@@ -551,9 +551,16 @@ public class AiTests
         shortCornerBoard.SetPiece(new Position(4, 3), Piece.BlackKing);
 
         // Main diagonal king at (3, 4) matches Black's main diagonal king at (4, 3) -> net 0
-        // Short corner king at (0, 1) has -20 (FlyingKingShortCornerMask) + 4 (2 open rays * 2) = -16 positional vs Black's +20 -> net -36
+        // Short corner king at (0, 1) has -20 (FlyingKingShortCornerMask) vs Black's +12 (CenterMask) + 12 (FlyingKingMainDiagonalMask) = +24 -> net -44
         intlEval.Evaluate(mainDiagBoard).Should().Be(0);
-        intlEval.Evaluate(shortCornerBoard).Should().Be(-36);
+        intlEval.Evaluate(shortCornerBoard).Should().Be(-44);
+
+        // Verify 1 Flying King (300 cp) vs 2 Men (200 cp) evaluates strongly in favor of the Flying King
+        var kingVsTwoMen = BoardState.CreateEmpty(PieceColor.White);
+        kingVsTwoMen.SetPiece(new Position(3, 4), Piece.WhiteKing);
+        kingVsTwoMen.SetPiece(new Position(0, 1), Piece.BlackMan);
+        kingVsTwoMen.SetPiece(new Position(0, 3), Piece.BlackMan);
+        intlEval.Evaluate(kingVsTwoMen).Should().BeGreaterThan(150);
     }
 
     [Theory]

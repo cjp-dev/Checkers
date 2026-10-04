@@ -4,12 +4,13 @@
 
 ## In short
 
-During the development of `Checkers.Core`, the AI engine evolved through **seven rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), and root-level partial-iteration adoption & dominant-move early termination.
+During the development of `Checkers.Core`, the AI engine evolved through **eight rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), root-level partial-iteration adoption & dominant-move early termination, and a hardware `POPCNT`-vectorized static evaluation overhaul (`board_eval.c` 1:1 port for English Checkers + Flying Kings adaptation for International Draughts).
 
-Every milestone was validated against automated benchmark suites (`tools/Checkers.Benchmark`) to verify search correctness, measure exact node reductions, and quantify wall-clock throughput (`nodes/s`) and search depth gains:
+Every milestone was validated against automated benchmark suites (`tools/Checkers.Benchmark`) to verify search correctness, measure exact node reductions, and quantify wall-clock throughput (`nodes/s`), search depth gains, and head-to-head self-play Elo strength:
 * **Raw Tree-Walk Throughput:** Increased from **`0.64M–0.66M nodes/s`** in the `Piece?[8, 8]` array engine to **`32.83M–37.18M nodes/s`** in the bitboard engine (**51×–65× raw speedup** with 100% node-for-node equivalence).
-* **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`236 ms` ($0.24\text{ seconds}$)** in Phase 5 (**631× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
-* **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **23-ply forced win** on Position #40 in **`2.11 seconds`**.
+* **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`193 ms` ($0.19\text{ seconds}$)** in Phase 6 (**771× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
+* **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **21-ply forced win** on Position #40 in **`< 2.2 seconds`**.
+* **200-Game Bot-vs-Bot Self-Play Verification (`1000 ms/move`, 50 Balanced Opening Ballots × 2 Sides per Variant):** The Phase 6 static evaluation overhaul defeated the baseline evaluation by **`69.5 – 30.5` (`+41 =57 -2`, `+143.1 ± 42.9 Elo`, `100.0% LOS`)** in **English Checkers** and **`56.5 – 43.5` (`+22 =69 -9`, `+45.4 ± 37.8 Elo`, `99.2% LOS`)** in **International (Flying Kings) Checkers** (`126.0 / 200` combined, `+63 =126 -11`).
 
 ![Checkers Engine Evolution: From 2D Array Prototype to Phase 5 Bitboard Engine](images/engine-evolution-chart.svg)
 
@@ -26,6 +27,7 @@ flowchart LR
     P2 --> P3["Milestone 5 (Phase 3): Stage A<br/>Exact PVS + Killers + History<br/>−64.9% Nodes (No-TT) / −28.5% (TT)"]
     P3 --> P4["Milestone 6 (Phase 4): Stage B<br/>Verified LMR + RFP + FP<br/>−93.7% Nodes • 21–25 Plies in 5s"]
     P4 --> P5["Milestone 7 (Phase 5): Root &amp; Time<br/>Partial Iteration Adoption<br/>+ Dominant Move Early Exit"]
+    P5 --> P6["Milestone 8 (Phase 6): Static Eval<br/>board_eval.c + Flying Kings Adaptation<br/>+143.1 Elo (Eng) • +45.4 Elo (Intl)"]
 ```
 
 ### Executive Summary: 40-Position Deep Suite ($7\text{–}14$ Plies) Across All Milestones
@@ -369,6 +371,95 @@ Because Phase 5 preserves exact root windows in `FixedDepth` mode, all 40 fixed-
 
 ---
 
+## Milestone 8 (Phase 6): Static Evaluation Overhaul & 200-Game Bot-vs-Bot Verification
+
+Detailed architectural documentation: [Chapter 05 – Evaluation](05-evaluation.md).
+
+In **Phase 6**, we preserved the original static evaluator as [`LegacyEvaluationFunction.cs`](../../src/Checkers.Core/AI/LegacyEvaluationFunction.cs), added zero-allocation `int Evaluate(in BitPosition pos)` dispatch to [`IEvaluationFunction.cs`](../../src/Checkers.Core/AI/IEvaluationFunction.cs), and upgraded [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs) with:
+1. **English Checkers (`EvaluateEnglish`, 1:1 `board_eval.c` Port at $2\times$ Centipawn Scale):**
+   - `Man = 100 cp`, `English King = 140 cp` (`1.40×` Man).
+   - Hardware `POPCNT`-vectorized Man and King Piece-Square Tables (`WhiteManPst1/2/3Mask`, `BlackManPst1/2/3Mask`, `EnglishKingPst4/5Mask`).
+   - Late-game Man advancement (`totalPieces <= 12`: `+2 cp × rank`).
+   - Precomputed 64-entry forward promotion cones (`ConeWhite[64]`, `ConeBlack[64]`) awarding `+(40 + 6 × advance) cp` for unstoppable Runaway Checkers when `enemyKings == 0`.
+   - Parallel bitshift King Tail Pins (`+10 cp`), single-corner trapped King penalty (`-40 cp` on `(0,7)`/`(7,0)`), non-linear simplification bonus (`CalculatePieceBonus`: `+20` to `+400 cp`), and five classical Checkers structural patterns (`Right Lock +40`, `Bridge +30`, `Triangle +20`, `Oreo +20`, `Dog +10`).
+2. **International Draughts (`EvaluateInternational`, Flying Kings & Backward-Capture Adaptation):**
+   - `Man = 100 cp`, `Flying King = 300 cp` (`3.00×` Man), continuous Man advancement (`+5 cp/rank` $\to$ `+6 cp/rank` when `totalPieces <= 12`), full 4-square back-rank defense (`+15 cp`), center control (`+12 cp`), `WhiteManPst`/`BlackManPst`, `ConeWhite`/`ConeBlack` Runaway Checkers, `tail_pins` (`+10 cp`), Flying King Main Long Diagonal PST (`+12 cp`), Short-Corner penalty (`-20 cp`), back-rank formations (`Bridge +18`, `Triangle +12`, `Oreo +12`), and a **material-gated simplification bonus** (`CalculateInternationalTradeBonus`, active only when ahead by $\ge 80\text{ cp}$ in material).
+
+### Part A: Raw Static Evaluation Microbenchmark (`10,000,000` Evaluations / Variant)
+
+Evaluating all 40 benchmark positions in a tight 10-million-call loop (`250,000` passes × `40` positions) demonstrates that `BitOperations.PopCount` bitmask vectorization keeps raw evaluation latency under **9–13 nanoseconds per call**:
+
+| Variant | Evaluator | Total Evaluations | Elapsed Time | Throughput (`M evals/s`) | Latency (`ns/eval`) | Delta vs. `Legacy` |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **English Checkers** | `LegacyEvaluationFunction` | `10,000,000` | `82 ms` | **`121.9M evals/s`** | `8.2 ns/eval` | Baseline |
+| **English Checkers** | **`EvaluationFunction` (`New`)** | `10,000,000` | **`88 ms`** | **`113.0M evals/s`** | **`8.8 ns/eval`** | **`+0.6 ns` (`+7.3%`)** |
+| **International Draughts** | `LegacyEvaluationFunction` | `10,000,000` | `76 ms` | **`130.3M evals/s`** | `7.7 ns/eval` | Baseline |
+| **International Draughts** | **`EvaluationFunction` (`New`)** | `10,000,000` | **`131 ms`** | **`76.1M evals/s`** | **`13.1 ns/eval`** | **`+5.4 ns`** |
+
+### Part B: 40-Position Fixed-Depth Search Speed Comparison (`Legacy` vs. `New`)
+
+When embedded inside `MinimaxPlayer` with the `1M` Transposition Table enabled, the richer positional ordering and sharper pruning bounds of `EvaluationFunction` **reduce total searched nodes (`-0.8%` in English, `-15.2%` in International)**, resulting in **equal or faster wall-clock completion times** despite the richer leaf evaluation:
+
+| Variant | Mode | `Legacy` Nodes | **`New` Nodes** | **Node Delta** | `Legacy` Time | **`New` Time** | **Time Delta** | `Legacy` NPS | **`New` NPS** |
+| :--- | :--- | ---: | ---: | :---: | ---: | ---: | :---: | ---: | ---: |
+| **English** | **No-TT** | `5,868,002` | `6,860,691` | `+16.9%` | `401 ms` | `471 ms` | `+70 ms` | `14.63M/s` | `14.54M/s` |
+| **English** | **1M TT** | `2,086,849` | **`2,069,177`** | **`-0.85%`** | `222 ms` | **`224 ms`** | `~0 ms` | `9.40M/s` | `9.20M/s` |
+| **International** | **No-TT** | `6,333,182` | **`6,000,494`** | **`-5.25%`** | `362 ms` | `391 ms` | `+29 ms` | `17.46M/s` | `15.33M/s` |
+| **International** | **1M TT** | `2,295,742` | **`1,947,323`** | **`-15.18%`** | `207 ms` | **`193 ms`** | **`-6.76%` (Faster!)** | `11.06M/s` | `10.05M/s` |
+
+### Part C: 5-Position Timed Search Comparison (`5.0s` Budget / Position, `16M TT`)
+
+| Variant | Position | Category | `Legacy` Depth | `Legacy` Move & Score | `Legacy` NPS | **`New` Depth** | **`New` Move & Score** | **`New` NPS** |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **English** | **Pos #1** | Opening | `21 plies` | `9-14` (`+3`) | `8.07M/s` | **`21 plies`** | `11-15` (`+10`) | `7.91M/s` |
+| **English** | **Pos #13** | Middlegame | `21 plies` | `28-24` (`0`) | `8.23M/s` | **`21 plies`** | `28-24` (`0`) | `7.26M/s` |
+| **English** | **Pos #20** | Middlegame | `22 plies` | `5-9` (`+12`) | `7.77M/s` | **`22 plies`** | `12-16` (`-2`) | `7.96M/s` |
+| **English** | **Pos #32** | Endgame | `26 plies` | `32-27` (`+Win in 21`) | `9.79M/s` | **`22 plies`** | `18-14` (`+Win in 21`) | **`10.86M/s`** |
+| **English** | **Pos #40** | Blockade | `24 plies` | `3-8` (`+275`) | `7.63M/s` | **`25 plies (+1)`** | `7-10` (`+422`) | `6.79M/s` |
+| **International** | **Pos #1** | Opening | `21 plies` | `9-14` (`+2`) | `7.95M/s` | **`21 plies`** | `12-16` (`+12`) | `7.57M/s` |
+| **International** | **Pos #13** | Middlegame | `21 plies` | `28-24` (`+7`) | `7.86M/s` | **`20 plies`** | `28-24` (`+4`) | `7.59M/s` |
+| **International** | **Pos #20** | Middlegame | `22 plies` | `12-16` (`0`) | `8.17M/s` | **`23 plies (+1)`** | `12-16` (`+22`) | `7.23M/s` |
+| **International** | **Pos #32** | Endgame | `25 plies` | `18-14` (`+439`) | `8.04M/s` | **`24 plies`** | `18-14` (`+550`) | `7.51M/s` |
+| **International** | **Pos #40** | Blockade | `22 plies` | `29x8` (`+Win in 23`) | `8.89M/s` | **`23 plies (+1)`** | `29x8` (**`+Win in 21`**) | `8.31M/s` |
+
+### Part D: 200-Game Bot-vs-Bot Self-Play Match Results (`50` Balanced Ballots × `2` Sides / Variant, `1000 ms/move`)
+
+Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/EvaluationMatchRunner.cs), we generated **50 deterministic, unique, balanced opening ballots** per variant (`10` each at `6, 7, 8, 9, and 10 plies` from the initial board, verified at depth 6 to have equal piece counts, `0` Kings, no pending captures, and $|\text{eval}| \le 30\text{ cp}$ under both evaluators). Each ballot was played twice with colors swapped (`100` games per variant at `1000 ms/move`), with complete per-engine isolation (dedicated `MinimaxPlayer` and `32 MiB` `TranspositionTable` per side).
+
+#### 1. English Checkers — 100-Game Match (`NewEval` vs. `LegacyEval`, `1000 ms/move`)
+
+| Metric | `NewEval` (`EvaluationFunction`) | `LegacyEval` (`LegacyEvaluationFunction`) |
+| :--- | :---: | :---: |
+| **Total Score (100 Games)** | **69.5 / 100** (**69.5%**) | 30.5 / 100 (30.5%) |
+| **Wins / Draws / Losses** | **+41 = 57 −2** | +2 = 57 −41 |
+| **As White (50 Games)** | **+21 = 27 −2** | +0 = 30 −20 |
+| **As Black (50 Games)** | **+20 = 30 −0** *(0 losses!)* | +2 = 27 −21 |
+| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | **`7` / `27` / `14` / `2` / `0`** | `0` / `2` / `14` / `27` / `7` |
+| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | **+143.1 ± 42.9 Elo** (**LOS: 100.0%**) | −143.1 ± 42.9 Elo |
+| **Average Search Depth** | `22.86 plies` | `23.00 plies` |
+| **Average Search Speed (NPS)** | `10.98M nodes/s` | `11.71M nodes/s` |
+| **Average Game Length** | `120.3 plies` | — |
+
+#### 2. International (Flying Kings) Checkers — 100-Game Match & Domain Discovery (`1000 ms/move`)
+
+> [!IMPORTANT]
+> **Empirical Domain Discovery (Piece-Count vs. Material-Gated Simplification in Flying Kings):**
+> In our first 100-game International match using `board_eval.c`'s raw piece-count condition (`whiteCount > blackCount`) and late-only advancement (`totalPieces <= 12`), the candidate evaluator scored `44.5 / 100` (`+13 = 63 -24`, **`-38.4 ± 41.7 Elo`**). Root-cause analysis revealed why: in English Checkers, a King is worth `1.4 Men` (`140 cp`), so `2 Men (200 cp) > 1 King (140 cp)` and raw piece count aligns with material. In International Draughts, a **Flying King** is worth **`3.0 Men` (`300 cp`)**: when a player had `1 Flying King` (`300 cp`, 1 piece) against `2 Men` (`200 cp`, 2 pieces), `blackCount (2) > whiteCount (1)` awarded **`+400 cp` to the 2-Men side**, causing the engine to misjudge Flying King endgames and avoid crowning sacrifices!
+> Gating the International simplification bonus on **material advantage** ($\ge 80\text{ cp}$) and restoring continuous Man advancement produced a **`+83.8 Elo` swing** (from `-38.4 Elo` to **`+45.4 ± 37.8 Elo`**, `99.2% LOS`):
+
+| Metric | Initial Candidate (Raw Piece-Count Bonus) | **Refined `NewEval` (Material-Gated Bonus)** | `LegacyEval` (`LegacyEvaluationFunction`) |
+| :--- | :---: | :---: | :---: |
+| **Total Score (100 Games)** | 44.5 / 100 (44.5%) | **56.5 / 100** (**56.5%**) | 43.5 / 100 (43.5%) |
+| **Wins / Draws / Losses** | +13 = 63 −24 | **+22 = 69 −9** | +9 = 69 −22 |
+| **As White (50 Games)** | +10 = 29 −11 | **+10 = 37 −3** | +6 = 32 −12 |
+| **As Black (50 Games)** | +3 = 34 −13 | **+12 = 32 −6** | +3 = 37 −10 |
+| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | `2` / `4` / `27` / `15` / `2` | **`2` / `14` / `29` / `5` / `0`** | `0` / `5` / `29` / `14` / `2` |
+| **Elo Difference ($\Delta\text{Elo} \pm 95\%\text{ CI}$)** | −38.4 ± 41.7 Elo (LOS: 3.4%) | **+45.4 ± 37.8 Elo** (**LOS: 99.2%**) | −45.4 ± 37.8 Elo |
+| **Average Search Depth** | `24.51 plies` | **`24.12 plies`** *(+0.18 vs Legacy)* | `23.94 plies` |
+| **Average Search Speed (NPS)** | `10.34M nodes/s` | **`10.34M nodes/s`** | `10.97M nodes/s` |
+
+---
+
 ## Reproducing the Benchmarks
 
 All benchmarks can be executed directly from the command line using `tools/Checkers.Benchmark`:
@@ -377,6 +468,13 @@ All benchmarks can be executed directly from the command line using `tools/Check
 # Run the Phase 0..5 progression benchmark (40-position deep suite + 5-position 5.0s timed suite)
 dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- phase-bench
 
-# Run the 40-position standard and deep suites across both International and English variants
-dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --engines --deep
+# Run the Phase 6 Evaluation Speed Benchmark (10M raw evals + 40-pos fixed depth + 5-pos timed)
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- eval-speed
+
+# Run the Phase 6 200-Game Bot-vs-Bot Self-Play Match (50 ballots × 2 sides per variant, 1000 ms/move, 4 workers)
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- eval-match --variant All --time-ms 1000 --workers 4 --ballots 50
+
+# Run the 40-position standard and deep TT suites
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --deep
 ```
+
