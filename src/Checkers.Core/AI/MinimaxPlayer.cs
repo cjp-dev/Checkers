@@ -104,7 +104,7 @@ public sealed class MinimaxPlayer : IPlayer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int EvaluatePosition(in BitPosition pos) =>
         _customEvaluator != null
-            ? _customEvaluator.Evaluate(pos.ToBoardState(1))
+            ? _customEvaluator.Evaluate(in pos)
             : EvaluationFunction.Evaluate(in pos, _variant);
 
     public ValueTask<Move> GetMoveAsync(

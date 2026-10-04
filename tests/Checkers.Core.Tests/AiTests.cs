@@ -1,4 +1,5 @@
 using Checkers.Core.AI;
+using Checkers.Core.Bitboards;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 using FluentAssertions;
@@ -388,5 +389,182 @@ public class AiTests
             }
             return 120;
         }
+    }
+
+    [Theory]
+    [InlineData(CheckersVariant.English)]
+    [InlineData(CheckersVariant.International)]
+    public void EvaluationFunction_ColorFlipSymmetry_HoldsAcrossDiversePositions(CheckersVariant variant)
+    {
+        var eval = new EvaluationFunction(variant);
+        var legacyEval = new LegacyEvaluationFunction(variant);
+
+        // Test positions covering openings, middlegames, structural patterns, runaway cones, and king endgames
+        (ulong wm, ulong bm, ulong wk, ulong bk)[] testMasks =
+        [
+            // Initial position
+            (0xAA55AA0000000000UL, 0x000000000055AA55UL, 0UL, 0UL),
+            // Asymmetric middlegame with structural patterns (Bridge, Triangle, Oreo, Dog, Right Lock)
+            (
+                (1UL << 58) | (1UL << 62) | (1UL << 51) | (1UL << 56) | (1UL << 49) | (1UL << 42) | (1UL << 35),
+                (1UL << 1) | (1UL << 5) | (1UL << 12) | (1UL << 14) | (1UL << 21) | (1UL << 28),
+                0UL,
+                0UL
+            ),
+            // Runaway checker + tail pin endgame
+            (
+                (1UL << 19) | (1UL << 51),
+                (1UL << 49) | (1UL << 10),
+                (1UL << 42),
+                0UL
+            ),
+            // Multi-king endgame with single-corner and short-corner kings
+            (
+                (1UL << 44),
+                (1UL << 21),
+                (1UL << 7) | (1UL << 35) | (1UL << 62),
+                (1UL << 56) | (1UL << 28) | (1UL << 6)
+            )
+        ];
+
+        foreach (var (wm, bm, wk, bk) in testMasks)
+        {
+            var posWhite = new BitPosition
+            {
+                WhiteMen = wm,
+                BlackMen = bm,
+                WhiteKings = wk,
+                BlackKings = bk,
+                SideToMove = PieceColor.White
+            };
+
+            var posSwappedBlack = new BitPosition
+            {
+                WhiteMen = Flip180(bm),
+                BlackMen = Flip180(wm),
+                WhiteKings = Flip180(bk),
+                BlackKings = Flip180(wk),
+                SideToMove = PieceColor.Black
+            };
+
+            int scoreWhite = eval.Evaluate(in posWhite);
+            int scoreSwappedBlack = eval.Evaluate(in posSwappedBlack);
+
+            // Evaluate(in pos) returns score from SideToMove's perspective!
+            // Wait: when we flip 180 degrees and swap colors AND swap SideToMove from White to Black,
+            // Black in the flipped position has the exact mirror of White's pieces in the original position!
+            // Therefore, from SideToMove's perspective, scoreSwappedBlack MUST equal scoreWhite!
+            // And if SideToMove is kept as White on the flipped position, its score MUST equal -scoreWhite!
+            scoreSwappedBlack.Should().Be(scoreWhite);
+
+            var posSwappedWhiteToMove = posSwappedBlack;
+            posSwappedWhiteToMove.SideToMove = PieceColor.White;
+            eval.Evaluate(in posSwappedWhiteToMove).Should().Be(-scoreWhite);
+
+            // Verify legacy evaluator symmetry as well
+            legacyEval.Evaluate(in posSwappedBlack).Should().Be(legacyEval.Evaluate(in posWhite));
+            legacyEval.Evaluate(in posSwappedWhiteToMove).Should().Be(-legacyEval.Evaluate(in posWhite));
+        }
+    }
+
+    [Fact]
+    public void EvaluationFunction_RunawayCone_AwardsBonusOnlyWhenForwardConeIsClearAndNoEnemyKings()
+    {
+        var eval = new EvaluationFunction(CheckersVariant.English);
+
+        // White Man at (3, 6) [sq 30, row 3]: forward cone on rows 0..2 is cols 3..7.
+        // Black Man at (2, 1) [sq 17, row 2] is on row 2 ahead of White's row 3?
+        // Wait: board_eval.c requires NO enemy pieces on ANY row ahead of White's row (first_p2_row >= r_w),
+        // AND no pieces inside the forward cone!
+        // So if White Man is at (2, 3) [sq 19, row 2] and Black has 2 Men at (3, 0) [sq 24] and (4, 1) [sq 33]
+        // (where (3,0) is blocked by (4,1) so Black is not a runaway), White at (2, 3) IS a runaway (+40 + 6*5 = +70 cp)!
+        var runawayBoard = BoardState.CreateEmpty(PieceColor.White);
+        runawayBoard.SetPiece(new Position(2, 3), Piece.WhiteMan);
+        runawayBoard.SetPiece(new Position(6, 1), Piece.WhiteMan); // blocks Black's cone
+        runawayBoard.SetPiece(new Position(3, 0), Piece.BlackMan);
+        runawayBoard.SetPiece(new Position(4, 7), Piece.BlackMan);
+
+        // Now move Black's Man from (3, 0) to (1, 2) [inside White's forward cone ahead of row 2]:
+        var blockedBoard = BoardState.CreateEmpty(PieceColor.White);
+        blockedBoard.SetPiece(new Position(2, 3), Piece.WhiteMan);
+        blockedBoard.SetPiece(new Position(6, 1), Piece.WhiteMan);
+        blockedBoard.SetPiece(new Position(1, 2), Piece.BlackMan);
+        blockedBoard.SetPiece(new Position(4, 7), Piece.BlackMan);
+
+        int scoreRunaway = eval.Evaluate(runawayBoard);
+        int scoreBlocked = eval.Evaluate(blockedBoard);
+
+        // Runaway board awards +70 cp for White's unstoppable passer at (2, 3)
+        scoreRunaway.Should().BeGreaterThan(scoreBlocked + 50);
+    }
+
+    [Fact]
+    public void EvaluationFunction_TailPin_And_StructuralPatterns_ScoreCorrectly()
+    {
+        var eval = new EvaluationFunction(CheckersVariant.English);
+
+        // Test White Bridge at (7, 2) [sq 58] and (7, 6) [sq 62] vs non-bridge (7, 4) [sq 60] and (7, 6) [sq 62]
+        // Note: (7, 2), (7, 4), and (7, 6) all have the exact same Man PST weight (+6 cp in WhiteManPst3Mask)
+        var bridgeBoard = BoardState.CreateEmpty(PieceColor.White);
+        bridgeBoard.SetPiece(new Position(7, 2), Piece.WhiteMan);
+        bridgeBoard.SetPiece(new Position(7, 6), Piece.WhiteMan);
+        bridgeBoard.SetPiece(new Position(0, 1), Piece.BlackMan);
+        bridgeBoard.SetPiece(new Position(0, 3), Piece.BlackMan);
+
+        var nonBridgeBoard = BoardState.CreateEmpty(PieceColor.White);
+        nonBridgeBoard.SetPiece(new Position(7, 4), Piece.WhiteMan);
+        nonBridgeBoard.SetPiece(new Position(7, 6), Piece.WhiteMan);
+        nonBridgeBoard.SetPiece(new Position(0, 1), Piece.BlackMan);
+        nonBridgeBoard.SetPiece(new Position(0, 3), Piece.BlackMan);
+
+        // Both (7,2) and (7,4) have +6 cp PST and identical row 7 advancement, so the delta is purely the Bridge bonus (+30 cp)!
+        (eval.Evaluate(bridgeBoard) - eval.Evaluate(nonBridgeBoard)).Should().Be(30);
+
+        // Test Tail Pin: White King at (4, 1) [sq 33] pinning two lined-up Black Men at (5, 2) [sq 42] and (6, 3) [sq 51] along +9/+18
+        var tailPinBoard = BoardState.CreateEmpty(PieceColor.White);
+        tailPinBoard.SetPiece(new Position(4, 1), Piece.WhiteKing);
+        tailPinBoard.SetPiece(new Position(5, 2), Piece.BlackMan);
+        tailPinBoard.SetPiece(new Position(6, 3), Piece.BlackMan);
+
+        // Compare against moving White King from (4, 1) [sq 33, 0 PST] to (4, 7) [sq 39, 0 PST] where it does not tail-pin the two Black men
+        var unpinnedBoard = BoardState.CreateEmpty(PieceColor.White);
+        unpinnedBoard.SetPiece(new Position(4, 7), Piece.WhiteKing);
+        unpinnedBoard.SetPiece(new Position(5, 2), Piece.BlackMan);
+        unpinnedBoard.SetPiece(new Position(6, 3), Piece.BlackMan);
+
+        // Both (4,1) and (4,7) have 0 King PST; (4,1) gets +10 cp for the tail pin!
+        (eval.Evaluate(tailPinBoard) - eval.Evaluate(unpinnedBoard)).Should().Be(10);
+    }
+
+    [Fact]
+    public void EvaluationFunction_FlyingKing_RewardsMainDiagonalAndPenalizesShortCorners()
+    {
+        var intlEval = new EvaluationFunction(CheckersVariant.International);
+
+        // White Flying King on main diagonal (3, 4) [sq 28] vs cramped 2-square short corner (0, 1) [sq 1]
+        var mainDiagBoard = BoardState.CreateEmpty(PieceColor.White);
+        mainDiagBoard.SetPiece(new Position(3, 4), Piece.WhiteKing);
+        mainDiagBoard.SetPiece(new Position(4, 3), Piece.BlackKing);
+
+        var shortCornerBoard = BoardState.CreateEmpty(PieceColor.White);
+        shortCornerBoard.SetPiece(new Position(0, 1), Piece.WhiteKing);
+        shortCornerBoard.SetPiece(new Position(4, 3), Piece.BlackKing);
+
+        // Main diagonal king at (3, 4) matches Black's main diagonal king at (4, 3) -> net 0
+        // Short corner king at (0, 1) has -20 (FlyingKingShortCornerMask) + 4 (2 open rays * 2) = -16 positional vs Black's +20 -> net -36
+        intlEval.Evaluate(mainDiagBoard).Should().Be(0);
+        intlEval.Evaluate(shortCornerBoard).Should().Be(-36);
+    }
+
+    private static ulong Flip180(ulong mask)
+    {
+        ulong result = 0UL;
+        while (mask != 0)
+        {
+            int sq = System.Numerics.BitOperations.TrailingZeroCount(mask);
+            mask &= mask - 1;
+            result |= 1UL << (63 - sq);
+        }
+        return result;
     }
 }

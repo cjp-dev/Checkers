@@ -190,8 +190,10 @@ public class EnglishCheckersTests
     }
 
     [Fact]
-    public void EnglishCheckers_Evaluation_ValuesKingAt170AndScoresCentralization()
+    public void EnglishCheckers_Evaluation_ValuesKingAndScoresCentralization()
     {
+        var legacyEnglishEval = new LegacyEvaluationFunction(CheckersVariant.English);
+        var legacyIntlEval = new LegacyEvaluationFunction(CheckersVariant.International);
         var englishEval = new EvaluationFunction(CheckersVariant.English);
         var intlEval = new EvaluationFunction(CheckersVariant.International);
 
@@ -200,14 +202,17 @@ public class EnglishCheckersTests
         state.SetPiece(new Position(4, 3), Piece.WhiteKing);
         state.ActivePlayer = PieceColor.White;
 
-        int scoreEnglish = englishEval.Evaluate(state);
-        int scoreIntl = intlEval.Evaluate(state);
-
+        // Legacy evaluator:
         // English king: 170 (material) + 12 (center control) + 10 (king centralization) = 192
-        scoreEnglish.Should().Be(170 + 12 + 10);
-
+        legacyEnglishEval.Evaluate(state).Should().Be(170 + 12 + 10);
         // International king: 300 (material) + 12 (center control) = 312
-        scoreIntl.Should().Be(300 + 12);
+        legacyIntlEval.Evaluate(state).Should().Be(300 + 12);
+
+        // New evaluator (2x scaled board_eval.c):
+        // English king at (4, 3): 140 (material) + 8 (EnglishKingPst4Mask) + 400 (CalculatePieceBonus(1, 0)) = 548
+        englishEval.Evaluate(state).Should().Be(140 + 8 + 400);
+        // International Flying King at (4, 3): 280 (material) + 12 (FlyingKingMainDiagonalMask) + 8 (4 open rays * 2) + 400 (CalculatePieceBonus(1, 0)) = 700
+        intlEval.Evaluate(state).Should().Be(280 + 12 + 8 + 400);
     }
 
     [Fact]
