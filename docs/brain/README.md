@@ -59,11 +59,12 @@ The documentation is organized in a logical progression from architectural overv
 | 07 | [Search](07-search.md) | **AI & Search** | Negamax Alpha-Beta, Stage A Exact (PVS, `DrawTable`) & Stage B Selective (Verified LMR, RFP, FP), Quiescence, Iterative Deepening |
 | 08 | [Transposition table](08-transposition-table.md) | **AI & Search** | 4-way set-associative 64-byte cache-line buckets, 16-byte entry with `StaticEval`, Pinned Object Heap + `Sse.Prefetch0` |
 | 09 | [Time control](09-time-control.md) | **AI & Search** | Fixed Depth, Time per Move, Time per Game, soft/hard time budgets, dynamic piece-count allocation, Undo clock refunds |
-| 10 | [Bitboards](10-bitboards.md) | **Optimization** | 64-bit bitboard representation (`4 × ulong`), $O(1)$ `HasAnyCapture`, ray fast-rejection guards, `POPCNT` evaluation, copy-make search |
-| 11 | [Engine improvements during development](11-engine-improvements.md) | **Optimization** | Complete chronological milestones (Bitboard refactor & Phases 1–4) with 40-position deep and 5-position timed benchmark suites |
-| 12 | [App integration](12-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly AOT macrotask yielding, live analysis pipeline |
-| 13 | [Glossary](13-glossary.md) | **Reference** | Definitions and cross-references for all Checkers, Draughts, Bitboard, and AI search terms |
-| 14 | [References](14-references.md) | **Reference** | Official WCDF/FMJD rulesets, foundational AI search literature, and .NET 10 technical references |
+| 10 | [Opening book](10-opening-book.md) | **AI & Search** | Top-down Multi-PV DAG book generation (`lv 0..7`), Negamax back-up, and embedded 8-ply English & International books |
+| 11 | [Bitboards](11-bitboards.md) | **Optimization** | 64-bit bitboard representation (`4 × ulong`), $O(1)$ `HasAnyCapture`, ray fast-rejection guards, `POPCNT` evaluation, copy-make search |
+| 12 | [Engine improvements during development](12-engine-improvements.md) | **Optimization** | Complete chronological milestones (Bitboard refactor & Phases 1–7) with 40-position deep, timed, and self-play benchmark suites |
+| 13 | [App integration](13-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly AOT macrotask yielding, live analysis pipeline |
+| 14 | [Glossary](14-glossary.md) | **Reference** | Definitions and cross-references for all Checkers, Draughts, Bitboard, and AI search terms |
+| 15 | [References](15-references.md) | **Reference** | Official WCDF/FMJD rulesets, foundational AI search literature, and .NET 10 technical references |
 
 ---
 
@@ -79,16 +80,17 @@ flowchart LR
     C06 --> C07["07 Search"]
     C07 --> C08["08 Transposition Table"]
     C08 --> C09["09 Time Control"]
-    C08 --> C10["10 Bitboards"]
-    C10 --> C11["11 Engine Improvements"]
-    C04 --> C12["12 App Integration"]
-    C09 --> C12
-    C11 --> C13["13 Glossary"]
-    C12 --> C13
-    C13 --> C14["14 References"]
+    C09 --> C10["10 Opening Book"]
+    C08 --> C11["11 Bitboards"]
+    C11 --> C12["12 Engine Improvements"]
+    C04 --> C13["13 App Integration"]
+    C10 --> C13
+    C12 --> C14["14 Glossary"]
+    C13 --> C14
+    C14 --> C15["15 References"]
 ```
 
 - **Engine Fundamentals & Rules:** Read chapters [01](01-overview.md), [02](02-board-and-coordinates.md), [03](03-rules-and-move-generation.md), and [04](04-game-record.md).
-- **AI Search, Bitboards & Development Benchmarks:** Read chapters [05](05-evaluation.md), [06](06-move-ordering.md), [07](07-search.md), [08](08-transposition-table.md), [09](09-time-control.md), [10](10-bitboards.md), and [11](11-engine-improvements.md).
-- **Game Application & UI Integration:** Read chapters [01](01-overview.md), [04](04-game-record.md), and [12](12-app-integration.md).
-- **Terminology & Academic Literature:** Check chapters [13](13-glossary.md) and [14](14-references.md).
+- **AI Search, Opening Book, Bitboards & Development Benchmarks:** Read chapters [05](05-evaluation.md), [06](06-move-ordering.md), [07](07-search.md), [08](08-transposition-table.md), [09](09-time-control.md), [10](10-opening-book.md), [11](11-bitboards.md), and [12](12-engine-improvements.md).
+- **Game Application & UI Integration:** Read chapters [01](01-overview.md), [04](04-game-record.md), and [13](13-app-integration.md).
+- **Terminology & Academic Literature:** Check chapters [14](14-glossary.md) and [15](15-references.md).

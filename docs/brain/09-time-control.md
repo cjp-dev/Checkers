@@ -73,7 +73,7 @@ Because branching factor $b$ causes depth $d + 1$ to take roughly $\sqrt{b} \app
 
 ## Root Search & Time Management Optimizations (Phase 5)
 
-To maximize search quality when an iteration crosses $T_{\text{hard}}$ and avoid wasting clock time when a single move clearly dominates, [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements two root-level time management mechanisms (see [Chapter 11 – Engine improvements](11-engine-improvements.md#milestone-7-phase-5-root-search--time-management)):
+To maximize search quality when an iteration crosses $T_{\text{hard}}$ and avoid wasting clock time when a single move clearly dominates, [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements two root-level time management mechanisms (see [Chapter 12 – Engine improvements](12-engine-improvements.md#milestone-7-phase-5-root-search--time-management)):
 
 ### 1. Partial-Iteration Root Move Adoption on Timeout (`LastSearchAdoptedPartialIteration`)
 At the start of every iterative deepening pass $d$, `currentOrder[0]` is always the Principal Variation move from completed depth $d - 1$.

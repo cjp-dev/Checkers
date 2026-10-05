@@ -168,4 +168,4 @@ Across our 40-position deep benchmark suite ($7\text{–}14$ plies, ~95.8M basel
 | **English — 1M TT (16 MiB)** | `121,868` | **`78`** | **-99.94%** | `638 ms` | **`557 ms`** | **17.85M nodes/s (+14.2%)** |
 | **English — 16M TT (256 MiB)** | `7,915` | **`0`** | **-100.00%** | `720 ms` | **`656 ms`** | **15.14M nodes/s (+9.6%)** |
 
-For the complete 40-position per-position benchmark tables ($1\text{M}$ vs. $16\text{M}$ TT, Standard and Deep suites) and the Phase 0–4 progression, see [Chapter 11 – Engine improvements during development](11-engine-improvements.md).
+For the complete 40-position per-position benchmark tables ($1\text{M}$ vs. $16\text{M}$ TT, Standard and Deep suites) and the Phase 0–4 progression, see [Chapter 12 – Engine improvements during development](12-engine-improvements.md).

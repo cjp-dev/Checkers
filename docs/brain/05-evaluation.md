@@ -6,12 +6,12 @@
 
 When the search tree reaches its depth horizon (`depth == 0` and no further tactical captures exist in quiescence search), the engine estimates the strategic value of the quiet board position using [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs) (with the earlier baseline heuristic preserved in [`LegacyEvaluationFunction.cs`](../../src/Checkers.Core/AI/LegacyEvaluationFunction.cs) for A/B benchmarking and self-play matches).
 
-The evaluation operates directly on 64-bit [`BitPosition`](10-bitboards.md) structs (`int Evaluate(in BitPosition pos, CheckersVariant variant)`) with **zero heap allocations**, returning a score in **centipawns** (where $100\text{ cp} = 1\text{ regular man}$) from the perspective of `SideToMove`:
+The evaluation operates directly on 64-bit [`BitPosition`](11-bitboards.md) structs (`int Evaluate(in BitPosition pos, CheckersVariant variant)`) with **zero heap allocations**, returning a score in **centipawns** (where $100\text{ cp} = 1\text{ regular man}$) from the perspective of `SideToMove`:
 * **Positive ($> 0$):** The active player has a material or positional advantage.
 * **Zero ($0$):** Dynamic balance.
 * **Negative ($< 0$):** The opponent has the advantage.
 
-In **Phase 6** ([Chapter 11 – Milestone 8](11-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification)), the static evaluator was upgraded with a hardware `POPCNT`-vectorized, $2\times$-scaled centipawn port of [`board_eval.c`](../../Checkers-Engine-main/src/engine/board_eval.c) for **English Checkers** (`+143.1 ± 42.9 Elo`, `69.5 / 100` in 100-game self-play) and a domain-adapted **Flying Kings** evaluation for **International Draughts** (`+45.4 ± 37.8 Elo`, `56.5 / 100` in 100-game self-play).
+In **Phase 6** ([Chapter 12 – Milestone 8](12-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification)), the static evaluator was upgraded with a hardware `POPCNT`-vectorized, $2\times$-scaled centipawn port of [`board_eval.c`](../../Checkers-Engine-main/src/engine/board_eval.c) for **English Checkers** (`+143.1 ± 42.9 Elo`, `69.5 / 100` in 100-game self-play) and a domain-adapted **Flying Kings** evaluation for **International Draughts** (`+45.4 ± 37.8 Elo`, `56.5 / 100` in 100-game self-play).
 
 ![Static Evaluation Positional Zones and Bitboard Masks](images/evaluation-zones.svg)
 
@@ -163,4 +163,4 @@ Every node in the Negamax search tree ([Chapter 07](07-search.md)) simply maximi
 
 ## Empirical Speed & Self-Play Match Results
 
-For full benchmark tables—including the **10,000,000-evaluation raw speed microbenchmark**, the **40-position fixed-depth search comparison**, and the **Bot-vs-Bot self-play match results**—see [Chapter 11 – Milestone 8 (Phase 6): Static Evaluation Overhaul & 200-Game Bot-vs-Bot Verification](11-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification).
+For full benchmark tables—including the **10,000,000-evaluation raw speed microbenchmark**, the **40-position fixed-depth search comparison**, and the **Bot-vs-Bot self-play match results**—see [Chapter 12 – Milestone 8 (Phase 6): Static Evaluation Overhaul & 200-Game Bot-vs-Bot Verification](12-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification).

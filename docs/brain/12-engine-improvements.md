@@ -1,4 +1,4 @@
-# 11 – Engine improvements during development
+# 12 – Engine improvements during development
 
 [Back to the index](README.md)
 
@@ -67,7 +67,7 @@ flowchart LR
 
 ## Milestone 1: 64-Bit Bitboard Refactor (Array vs. Bitboard Engine)
 
-Detailed architectural documentation: [Chapter 10 – Bitboards](10-bitboards.md).
+Detailed architectural documentation: [Chapter 11 – Bitboards](11-bitboards.md).
 
 In Milestone 1, the heap-allocated `Piece?[8, 8]` board representation and `List<Move>` generator were replaced by a value-type 64-bit bitboard engine (`BitPosition`, `BitMove`, `BitboardMoveGenerator`, and `POPCNT`-based `EvaluationFunction`). Across all 40 benchmark positions at both standard ($7\text{–}9$ plies) and deep ($7\text{–}14$ plies) search depths, the bitboard engine visited the **exact same number of nodes** while running **50.4× to 65.1× faster** without TT and **23.6× to 25.6× faster** with the 1M TT.
 
@@ -208,7 +208,7 @@ Before upgrading to 4-way buckets in Phase 2, we benchmarked the impact of Zobri
 
 ## Milestone 3 (Phase 1): Engine Speed Improvements (Move Generation & Data Structures)
 
-Detailed architectural documentation: [Chapter 10 – Bitboards](10-bitboards.md#bitboard-move-generation--phase-1-speed-optimizations-bitboardmovegeneratorcs).
+Detailed architectural documentation: [Chapter 11 – Bitboards](11-bitboards.md#bitboard-move-generation--phase-1-speed-optimizations-bitboardmovegeneratorcs).
 
 In **Phase 1**, we implemented five targeted micro-optimizations that preserve 100% node-for-node equivalence while accelerating hot-path move generation and quiescence search:
 1. **Set-Wise $O(1)$ `BitboardMoveGenerator.HasAnyCapture` Fast-Path:** Uses 4 bitwise shift-and-mask expressions across all pieces simultaneously so `MinimaxPlayer.Quiescence` immediately returns `standPat` on quiet leaf nodes without slicing move buffers or invoking `GenerateCaptures`.

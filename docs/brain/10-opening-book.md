@@ -1,4 +1,8 @@
-# Chapter 15 — Opening Book
+# 10 – Opening book
+
+[Back to the index](README.md)
+
+## In short
 
 During the first 8 plies (`4` full turns for both White and Black), the Checkers game tree branches across thousands of symmetries and move-order transpositions. Searching the initial board from scratch on every move wastes clock time and tends to play the exact same deterministic opening line in every game.
 

@@ -4,7 +4,7 @@
 
 ## In short
 
-The search engine decides which move the computer will play. [`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 10 – Bitboards](10-bitboards.md)).
+The search engine decides which move the computer will play. [`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 11 – Bitboards](11-bitboards.md)).
 
 Search limits are configured in the **Game -> Settings...** dialog ([Chapter 09](09-time-control.md)):
 * **Fixed depth:** $1$ to $20$ plies (default: $8$ plies)
@@ -156,7 +156,7 @@ $$Q(s, \alpha, \beta) = \max\Biggl(\text{Evaluate}(s),\; \max_{m \in \text{Captu
 1. **Cached Stand-Pat Evaluation:** First, reuse `cachedStaticEval` from the 4-Way Bucket TT probe if available (`hasCachedEval`), or compute `int standPat = EvaluatePosition(in pos);` and store it in the TT.
 2. **Stand-Pat Beta Cutoff:** If $\text{standPat} \ge \beta$, return $\beta$ immediately.
 3. **Alpha Raise:** If $\text{standPat} > \alpha$, set $\alpha = \text{standPat}$.
-4. **$O(1)$ Bitwise Capture Fast-Path:** Check `BitboardMoveGenerator.HasAnyCapture(in pos, _variant)` in $O(1)$ bitwise time ([Chapter 10](10-bitboards.md#2-set-wise-o1-capture-detection-hasanycapture)). Because the vast majority of leaf nodes are quiet, returning $\alpha$ immediately when `HasAnyCapture` is `false` avoids slicing `_moveBuffers` or invoking `GenerateCaptures`.
+4. **$O(1)$ Bitwise Capture Fast-Path:** Check `BitboardMoveGenerator.HasAnyCapture(in pos, _variant)` in $O(1)$ bitwise time ([Chapter 11](11-bitboards.md#2-set-wise-o1-capture-detection-hasanycapture)). Because the vast majority of leaf nodes are quiet, returning $\alpha$ immediately when `HasAnyCapture` is `false` avoids slicing `_moveBuffers` or invoking `GenerateCaptures`.
 5. **Capture-Only Expansion:** When captures exist, call `BitboardMoveGenerator.GenerateCaptures(in pos, _variant, moveBuffer)`, order the captures by `CaptureCount`, and recursively search each capture until a quiet position is reached (capped at safety ply `24`).
 
 ---
@@ -182,7 +182,7 @@ Rather than jumping straight to target depth $D$, `MinimaxPlayer.GetMoveAsync` s
 3. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
 4. **Non-Blocking UI & Cancellation:**
    - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`.
-   - **Blazor WebAssembly:** Yields cooperatively to the browser event loop via `await Task.Delay(1, cancellationToken)` after each completed depth and on $\ge 150\text{ ms}$ heartbeats ([Chapter 12](12-app-integration.md)).
+   - **Blazor WebAssembly:** Yields cooperatively to the browser event loop via `await Task.Delay(1, cancellationToken)` after each completed depth and on $\ge 150\text{ ms}$ heartbeats ([Chapter 13](13-app-integration.md)).
    - **Amortized Cancellation Check:** Every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`), `cancellationToken.ThrowIfCancellationRequested()` and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.
 
 ---
@@ -215,4 +215,4 @@ Across the 40-position deep benchmark suite ($7\text{–}14$ plies) and the 5-po
 | **English 40-Pos Nodes (16M TT)** | `9,944,268` | `7,324,654` (`-26.3%`) | **`2,083,260`** | **-79.05% (4.77× fewer nodes)** |
 | **5.0s Timed Depth Reached (5 Pos)** | `16–20 plies` | `17–20 plies` (`+1..2`) | **`21–25 plies`** | **+4 to +5 plies deeper** *(Solves 23-ply forced win in 2.15s)* |
 
-For the complete per-phase benchmark data and analysis, see [Chapter 11 – Engine improvements during development](11-engine-improvements.md).
+For the complete per-phase benchmark data and analysis, see [Chapter 12 – Engine improvements during development](12-engine-improvements.md).

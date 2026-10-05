@@ -173,4 +173,4 @@ In our 40-position deep benchmark suite ($7\text{–}14$ plies), combining **Kil
 * **No-TT Tree Reduction:** Cut total evaluated nodes across 40 deep positions by **64.58%** in International (`95,811,314` $\rightarrow$ `33,933,396` nodes, **2.82× fewer**) and **64.86%** in English (`94,110,293` $\rightarrow$ `33,065,884` nodes, **2.85× fewer**).
 * **With 4-Way Bucket TT ($1\text{M}$ & $16\text{M}$):** Cut evaluated nodes by an additional **26.56%–28.48%** on top of transposition table pruning (`10,962,720` $\rightarrow$ `7,840,967` nodes in International; `9,974,305` $\rightarrow$ `7,324,654` nodes in English) with **zero loss of exactness**.
 
-For the full per-phase benchmark tables and 5-second timed depth progression, see [Chapter 11 – Engine improvements during development](11-engine-improvements.md#milestone-5-phase-3--search-stage-a-exact-node-reduction).
+For the full per-phase benchmark tables and 5-second timed depth progression, see [Chapter 12 – Engine improvements during development](12-engine-improvements.md#milestone-5-phase-3--search-stage-a-exact-node-reduction).

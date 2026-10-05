@@ -1,4 +1,4 @@
-# 10 – Bitboards
+# 11 – Bitboards
 
 [Back to the index](README.md)
 
@@ -179,4 +179,4 @@ Across our 40-position benchmark suite, refactoring from `Piece?[8, 8]` heap arr
 | **Deep 40 Pos (7–14 plies, English)** | **No-TT** | `142,038 ms` | `2,641 ms` / **`2,567 ms`** | **`36.66M nodes/s`** | **55.33×** |
 | **Deep 40 Pos (7–14 plies, English)** | **1M TT** | `16,342 ms` | `638 ms` / **`575 ms`** | **`17.34M nodes/s`** | **28.42×** *(247× vs. No-TT)* |
 
-For the complete 40-position per-position tables (Standard and Deep suites across both variants) and the full Phase 0–4 benchmark progression, see [Chapter 11 – Engine improvements during development](11-engine-improvements.md).
+For the complete 40-position per-position tables (Standard and Deep suites across both variants) and the full Phase 0–4 benchmark progression, see [Chapter 12 – Engine improvements during development](12-engine-improvements.md).

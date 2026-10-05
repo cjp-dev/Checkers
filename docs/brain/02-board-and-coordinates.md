@@ -128,7 +128,7 @@ Both `Position` and `Piece` are immutable value types (`readonly record struct`)
 * `int WhitePiecesCount`, `BlackPiecesCount`, `WhiteKingsCount`, `BlackKingsCount`: Computed in a single CPU instruction via `BitOperations.PopCount`.
 * `ulong ZobristHash`: Incrementally maintained 64-bit Zobrist key.
 
-See [Chapter 10 – Bitboards](10-bitboards.md) for a deep dive into the bitboard operations and benchmarks.
+See [Chapter 11 – Bitboards](11-bitboards.md) for a deep dive into the bitboard operations and benchmarks.
 
 ---
 

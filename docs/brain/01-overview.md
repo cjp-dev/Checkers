@@ -66,7 +66,7 @@ flowchart TD
 | `BoardState` | `Checkers.Core.Models` | Snapshot of the $8 \times 8$ board backed directly by a 64-bit `BitPosition` (`4 × ulong`), active turn, move clocks, hardware `PopCount` piece totals, and Zobrist hash. |
 | `CheckersVariant` | `Checkers.Core.Models` | Rule variant enum: `International` (Flying Kings) or `English` (1-Step Kings). |
 | `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`InProgress`, `WhiteWon`, `BlackWon`, `Draw`) and exact win/draw causes. |
-| `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardMasks` | `Checkers.Core.Bitboards` | 48-byte value-type bitboard state (`4 × ulong`), 16-byte value-type move (`PackedMove`), parallel shift/mask & ray-scan move generator with $O(1)$ `HasAnyCapture`, and precomputed diagonal masks ([Chapter 10](10-bitboards.md)). |
+| `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardMasks` | `Checkers.Core.Bitboards` | 48-byte value-type bitboard state (`4 × ulong`), 16-byte value-type move (`PackedMove`), parallel shift/mask & ray-scan move generator with $O(1)$ `HasAnyCapture`, and precomputed diagonal masks ([Chapter 11](11-bitboards.md)). |
 | `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine backed by 64-bit bitboards: legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
 | `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist XOR hashing for rapid state identification, threefold repetition detection, and transposition table indexing. |
 | `GameRecordFormat` | `Checkers.Core.Engine` | PDN (Portable Draughts Notation) serializer and parser with metadata tags (`[Variant ...]`, `[TimeControlMode ...]`). |
@@ -137,5 +137,5 @@ sequenceDiagram
 
 1. **Zero UI Coupling:** `Checkers.Core` has no dependencies on WPF, Blazor, HTML, or GUI libraries. It runs identically on desktop, web browser (WASM AOT), test runners, and CLI benchmarks.
 2. **Deterministic & Testable:** Rules, Zobrist hashes, and fixed-depth search trees are 100% deterministic with no hidden side effects.
-3. **Zero-Allocation Hot Path:** By representing board states as 48-byte `BitPosition` structs and moves as 16-byte `BitMove` structs in preallocated per-ply buffers, the search engine evaluates **32–37 million nodes per second** with zero garbage collection pressure ([Chapter 10 – Bitboards](10-bitboards.md), [Chapter 11 – Engine improvements during development](11-engine-improvements.md)).
+3. **Zero-Allocation Hot Path:** By representing board states as 48-byte `BitPosition` structs and moves as 16-byte `BitMove` structs in preallocated per-ply buffers, the search engine evaluates **32–37 million nodes per second** with zero garbage collection pressure ([Chapter 11 – Bitboards](11-bitboards.md), [Chapter 12 – Engine improvements during development](12-engine-improvements.md)).
 4. **Standard Notation Compatibility:** Bidirectional $O(1)$ conversion between `(Row, Col)`, bit indices `0..63`, and official Draughts $1\text{–}32$ square numbers enables full Portable Draughts Notation (PDN) interoperability.
