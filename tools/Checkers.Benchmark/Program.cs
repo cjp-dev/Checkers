@@ -1,9 +1,16 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Checkers.Benchmark;
 using Checkers.Core.AI;
 using Checkers.Core.AI.Benchmark;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
+
+if (args.Length > 0 && args[0].Equals("book", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = BookCommands.Run(args);
+    return;
+}
 
 if (args.Any(a => a.Equals("eval-speed", StringComparison.OrdinalIgnoreCase)))
 {

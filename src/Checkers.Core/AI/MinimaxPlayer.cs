@@ -1,11 +1,18 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using Checkers.Core.AI.Book;
 using Checkers.Core.Bitboards;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
 namespace Checkers.Core.AI;
+
+/// <summary>
+/// Represents one of the top-<c>k</c> moves found by <see cref="MinimaxPlayer.SearchMultiPv"/>,
+/// along with its exact centipawn score and the completed search depth in plies.
+/// </summary>
+public readonly record struct MultiPvMoveResult(Move Move, int Score, int CompletedDepth);
 
 /// <summary>
 /// High-performance 64-bit Bitboard Minimax AI with Alpha-Beta pruning, iterative deepening, PV and TT move ordering,
@@ -47,6 +54,9 @@ public sealed class MinimaxPlayer : IPlayer
 
     public TranspositionTable? TranspositionTable { get; }
     public bool UseTranspositionTable => TranspositionTable != null;
+    public OpeningBook? OpeningBook { get; set; }
+    public bool UseOpeningBook { get; set; }
+    public Random BookRandom { get; set; } = Random.Shared;
     public bool UseQuiescence { get; set; } = true;
     public bool UseSelectivePruning { get; set; } = true;
     public bool UseEarlyRootTermination { get; set; } = true;
@@ -61,7 +71,8 @@ public sealed class MinimaxPlayer : IPlayer
         TranspositionTable? transpositionTable = null,
         bool useTranspositionTable = true,
         bool useQuiescence = true,
-        CheckersVariant? variant = null)
+        CheckersVariant? variant = null,
+        OpeningBook? openingBook = null)
     {
         Limits = limits;
         _variant = variant
@@ -80,6 +91,8 @@ public sealed class MinimaxPlayer : IPlayer
             ? (transpositionTable ?? new TranspositionTable(megabytes: 32))
             : null;
         UseQuiescence = useQuiescence;
+        OpeningBook = openingBook;
+        UseOpeningBook = openingBook != null || limits.UseOpeningBook;
 
         _moveBuffers = new BitMove[MaxPly][];
         for (int i = 0; i < MaxPly; i++)
@@ -96,8 +109,9 @@ public sealed class MinimaxPlayer : IPlayer
         TranspositionTable? transpositionTable = null,
         bool useTranspositionTable = true,
         bool useQuiescence = true,
-        CheckersVariant? variant = null)
-        : this(SearchLimits.FixedDepth(depth), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence, variant)
+        CheckersVariant? variant = null,
+        OpeningBook? openingBook = null)
+        : this(SearchLimits.FixedDepth(depth, useOpeningBook: openingBook != null), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence, variant, openingBook)
     {
     }
 
@@ -154,6 +168,35 @@ public sealed class MinimaxPlayer : IPlayer
                 await Task.Delay(1, cancellationToken);
             }
             return singleMove;
+        }
+
+        if (UseOpeningBook)
+        {
+            var activeBook = OpeningBook ?? OpeningBook.GetDefault(_variant);
+            if (activeBook.Count > 0 &&
+                activeBook.TryGetMove(state, legalMoves, BookRandom, Limits.BookRandomMarginCp, out var bookMove, out int bookScore))
+            {
+                NodesEvaluated = 0;
+                LeafEvaluations = 0;
+                LastSearchTerminatedEarly = true;
+                LastAnalysis = new SearchAnalysis
+                {
+                    Move = bookMove.Notation,
+                    Depth = $"Book ({activeBook.Depth} plies)",
+                    Value = FormatValue(bookScore),
+                    BestMove = bookMove.Notation,
+                    Nodes = "0 (Book)",
+                    Evaluations = "0",
+                    Time = "0:00.0",
+                    FromBook = true
+                };
+                progress?.Report(LastAnalysis);
+                if (progress != null)
+                {
+                    await Task.Delay(1, cancellationToken);
+                }
+                return bookMove;
+            }
         }
 
         var sw = Stopwatch.StartNew();
@@ -375,6 +418,201 @@ public sealed class MinimaxPlayer : IPlayer
         progress?.Report(LastAnalysis);
 
         return bestMoveOverall;
+    }
+
+    /// <summary>
+    /// Runs an iterative-deepening Single-Search Multi-PV root search to find the top <paramref name="multiPvCount"/>
+    /// moves and their exact centipawn scores from <paramref name="state"/>'s <c>SideToMove</c> perspective.
+    /// Holds root <c>alpha</c> at the <c>k</c>-th best score found so far at each depth so that all top <c>k</c>
+    /// moves receive exact minimax scores in a single search pass sharing the same <see cref="TranspositionTable"/>.
+    /// </summary>
+    public IReadOnlyList<MultiPvMoveResult> SearchMultiPv(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        int multiPvCount,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSearchAdoptedPartialIteration = false;
+        LastSearchTerminatedEarly = false;
+
+        if (legalMoves.Count == 0)
+        {
+            return [];
+        }
+
+        int targetK = Math.Clamp(multiPvCount, 1, legalMoves.Count);
+
+        var sw = Stopwatch.StartNew();
+        NodesEvaluated = 0;
+        LeafEvaluations = 0;
+        long lastReportMs = 0;
+
+        TranspositionTable?.NewSearch();
+        Array.Clear(_killers);
+        Array.Clear(_history);
+
+        bool isTimedSearch = Limits.Mode != TimeControlMode.FixedDepth;
+        long hardLimitMs = isTimedSearch
+            ? Math.Max(1, (long)Limits.Time.TotalMilliseconds)
+            : long.MaxValue;
+        int maxTargetDepth = isTimedSearch ? 48 : Math.Max(1, Limits.Depth);
+
+        BitPosition rootPos = state.BitPosition;
+        _drawTable.Reset(in rootPos, stateHashHistory: null);
+
+        var currentOrder = legalMoves
+            .OrderByDescending(m => m.CapturedPositions.Count)
+            .ThenByDescending(m => m.IsPromotion ? 1 : 0)
+            .ThenBy(m => m.Notation, StringComparer.Ordinal)
+            .Select(m => (Move: m, BitMove: BitMove.FromMove(m), Score: 0))
+            .ToList();
+
+        List<MultiPvMoveResult>? lastCompletedTopK = null;
+        int completedDepth = 0;
+
+        for (int d = 1; d <= maxTargetDepth; d++)
+        {
+            if (d > 1 && sw.ElapsedMilliseconds >= hardLimitMs)
+            {
+                break;
+            }
+
+            var scoredThisDepth = new List<(Move Move, BitMove BitMove, int Score)>(currentOrder.Count);
+            var topKScores = new List<int>(targetK);
+            bool depthAborted = false;
+
+            for (int i = 0; i < currentOrder.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (sw.ElapsedMilliseconds >= hardLimitMs)
+                {
+                    depthAborted = true;
+                    break;
+                }
+
+                int alpha = topKScores.Count < targetK ? -200_000 : topKScores[targetK - 1];
+                int beta = 200_000;
+                var entry = currentOrder[i];
+
+                BitPosition nextPos = rootPos.Apply(in entry.BitMove);
+                TranspositionTable?.Prefetch(nextPos.Hash);
+                int score = -NegaMax(
+                    in nextPos,
+                    d - 1,
+                    -beta,
+                    -alpha,
+                    ply: 1,
+                    sw,
+                    hardLimitMs,
+                    cancellationToken,
+                    progress: null,
+                    ref lastReportMs,
+                    d,
+                    entry.Move,
+                    currentOrder[0].Move,
+                    currentOrder[0].Score,
+                    out bool aborted);
+
+                if (aborted)
+                {
+                    depthAborted = true;
+                    break;
+                }
+
+                scoredThisDepth.Add((entry.Move, entry.BitMove, score));
+
+                int insertIdx = 0;
+                while (insertIdx < topKScores.Count && topKScores[insertIdx] >= score)
+                {
+                    insertIdx++;
+                }
+
+                if (insertIdx < targetK)
+                {
+                    topKScores.Insert(insertIdx, score);
+                    if (topKScores.Count > targetK)
+                    {
+                        topKScores.RemoveAt(targetK);
+                    }
+                }
+            }
+
+            if (!depthAborted && scoredThisDepth.Count > 0)
+            {
+                currentOrder = scoredThisDepth
+                    .OrderByDescending(x => x.Score)
+                    .ThenBy(x => x.Move.Notation, StringComparer.Ordinal)
+                    .ToList();
+
+                completedDepth = d;
+                lastCompletedTopK = currentOrder
+                    .Take(targetK)
+                    .Select(x => new MultiPvMoveResult(
+                        x.Move,
+                        Math.Clamp(x.Score, BookFile.MinScore, BookFile.MaxScore),
+                        d))
+                    .ToList();
+
+                if (topKScores.Count == targetK &&
+                    (topKScores[targetK - 1] >= TranspositionTable.WinThreshold ||
+                     topKScores[0] <= -TranspositionTable.WinThreshold))
+                {
+                    break;
+                }
+            }
+            else
+            {
+                if (scoredThisDepth.Count >= targetK)
+                {
+                    LastSearchAdoptedPartialIteration = true;
+                    completedDepth = d;
+                    lastCompletedTopK = scoredThisDepth
+                        .OrderByDescending(x => x.Score)
+                        .ThenBy(x => x.Move.Notation, StringComparer.Ordinal)
+                        .Take(targetK)
+                        .Select(x => new MultiPvMoveResult(
+                            x.Move,
+                            Math.Clamp(x.Score, BookFile.MinScore, BookFile.MaxScore),
+                            d))
+                        .ToList();
+                }
+
+                break;
+            }
+        }
+
+        sw.Stop();
+
+        if (lastCompletedTopK == null || lastCompletedTopK.Count == 0)
+        {
+            lastCompletedTopK = currentOrder
+                .Select(x =>
+                {
+                    BitPosition nextPos = rootPos.Apply(in x.BitMove);
+                    int staticScore = Math.Clamp(-EvaluatePosition(in nextPos), BookFile.MinScore, BookFile.MaxScore);
+                    return new MultiPvMoveResult(x.Move, staticScore, 1);
+                })
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Move.Notation, StringComparer.Ordinal)
+                .Take(targetK)
+                .ToList();
+            completedDepth = 1;
+        }
+
+        var best = lastCompletedTopK[0];
+        LastAnalysis = new SearchAnalysis
+        {
+            Move = best.Move.Notation,
+            Depth = $"{completedDepth} plies",
+            Value = FormatValue(best.Score),
+            BestMove = best.Move.Notation,
+            Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+            Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+            Time = sw.Elapsed.ToString(@"m\:ss\.f")
+        };
+
+        return lastCompletedTopK;
     }
 
     private int NegaMax(

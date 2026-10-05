@@ -85,5 +85,9 @@ public class SettingsViewModelTests
         var tpgLimits = timePerGame.ToLimits(TimeSpan.FromMinutes(12));
         tpgLimits.Mode.Should().Be(TimeControlMode.TimePerGame);
         tpgLimits.Time.Should().Be(TimeSpan.FromMinutes(12));
+        tpgLimits.UseOpeningBook.Should().BeTrue();
+
+        var bookDisabled = new GameSettings(TimeControlMode.TimePerMove, 8, 5, 5, UseOpeningBook: false);
+        bookDisabled.ToLimits(TimeSpan.FromMinutes(5)).UseOpeningBook.Should().BeFalse();
     }
 }

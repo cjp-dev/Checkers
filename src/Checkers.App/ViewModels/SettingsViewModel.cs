@@ -33,6 +33,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(TranspositionTableEntries), nameof(TranspositionTableEntriesText))]
     private int _transpositionTablePower;
 
+    [ObservableProperty]
+    private bool _useOpeningBook;
+
     public SettingsViewModel(GameSettings settings)
     {
         var normalized = settings.Normalize();
@@ -42,6 +45,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         SecondsPerMove = normalized.SecondsPerMove;
         MinutesPerGame = normalized.MinutesPerGame;
         TranspositionTableEntries = normalized.TranspositionTableEntries;
+        UseOpeningBook = normalized.UseOpeningBook;
     }
 
     public int MaxDepth => GameSettings.MaxDepth;
@@ -96,7 +100,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     public GameSettings ToSettings() =>
-        new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame, Variant, TranspositionTableEntries).Normalize();
+        new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame, Variant, TranspositionTableEntries, UseOpeningBook).Normalize();
 
     private void SelectMode(bool selected, TimeControlMode mode)
     {

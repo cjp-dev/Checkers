@@ -482,5 +482,4 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 Checkers-Engine-main
-scan_31
-cake-master
+Connect-4

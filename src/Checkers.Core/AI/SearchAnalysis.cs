@@ -12,4 +12,5 @@ public sealed record SearchAnalysis
     public string Nodes { get; init; } = "-";
     public string Evaluations { get; init; } = "-";
     public string Time { get; init; } = "-";
+    public bool FromBook { get; init; }
 }

@@ -28,26 +28,36 @@ public sealed record SearchLimits
     /// <summary>Time budget for the move, or remaining clock for the whole game.</summary>
     public TimeSpan Time { get; }
 
-    private SearchLimits(TimeControlMode mode, int depth, TimeSpan time)
+    /// <summary>Whether to query the opening book before running the tree search.</summary>
+    public bool UseOpeningBook { get; init; }
+
+    /// <summary>
+    /// Maximum centipawn difference from the highest-scored book move within which alternative
+    /// stored book moves may be chosen at random (default 10 cp).
+    /// </summary>
+    public int BookRandomMarginCp { get; init; } = Book.OpeningBook.DefaultRandomMarginCp;
+
+    private SearchLimits(TimeControlMode mode, int depth, TimeSpan time, bool useOpeningBook = false)
     {
         Mode = mode;
         Depth = depth;
         Time = time;
+        UseOpeningBook = useOpeningBook;
     }
 
-    public static SearchLimits FixedDepth(int plies)
+    public static SearchLimits FixedDepth(int plies, bool useOpeningBook = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(plies, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(plies, 60);
-        return new SearchLimits(TimeControlMode.FixedDepth, plies, TimeSpan.Zero);
+        return new SearchLimits(TimeControlMode.FixedDepth, plies, TimeSpan.Zero, useOpeningBook);
     }
 
-    public static SearchLimits TimePerMove(TimeSpan time)
+    public static SearchLimits TimePerMove(TimeSpan time, bool useOpeningBook = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(time, TimeSpan.Zero);
-        return new SearchLimits(TimeControlMode.TimePerMove, 0, time);
+        return new SearchLimits(TimeControlMode.TimePerMove, 0, time, useOpeningBook);
     }
 
-    public static SearchLimits TimePerGame(TimeSpan remaining) =>
-        new(TimeControlMode.TimePerGame, 0, remaining);
+    public static SearchLimits TimePerGame(TimeSpan remaining, bool useOpeningBook = false) =>
+        new(TimeControlMode.TimePerGame, 0, remaining, useOpeningBook);
 }

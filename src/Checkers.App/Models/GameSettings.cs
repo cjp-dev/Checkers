@@ -14,7 +14,8 @@ public sealed record GameSettings(
     int SecondsPerMove,
     int MinutesPerGame,
     CheckersVariant Variant = CheckersVariant.International,
-    int TranspositionTableEntries = GameSettings.DefaultTranspositionTableEntries)
+    int TranspositionTableEntries = GameSettings.DefaultTranspositionTableEntries,
+    bool UseOpeningBook = true)
 {
     public const int MaxDepth = 20;
     public const int MaxSecondsPerMove = 60;
@@ -30,7 +31,8 @@ public sealed record GameSettings(
         5,
         5,
         CheckersVariant.International,
-        DefaultTranspositionTableEntries);
+        DefaultTranspositionTableEntries,
+        UseOpeningBook: true);
 
     public TimeSpan GameTime => TimeSpan.FromMinutes(MinutesPerGame);
 
@@ -47,14 +49,15 @@ public sealed record GameSettings(
             Math.Clamp(SecondsPerMove, 1, MaxSecondsPerMove),
             Math.Clamp(MinutesPerGame, 1, MaxMinutesPerGame),
             Variant is CheckersVariant.English ? CheckersVariant.English : CheckersVariant.International,
-            normalizedTt);
+            normalizedTt,
+            UseOpeningBook);
     }
 
     public SearchLimits ToLimits(TimeSpan computerTimeLeft) => Mode switch
     {
-        TimeControlMode.FixedDepth => SearchLimits.FixedDepth(Depth),
-        TimeControlMode.TimePerMove => SearchLimits.TimePerMove(TimeSpan.FromSeconds(SecondsPerMove)),
-        _ => SearchLimits.TimePerGame(computerTimeLeft > TimeSpan.Zero ? computerTimeLeft : TimeSpan.FromMilliseconds(10)),
+        TimeControlMode.FixedDepth => SearchLimits.FixedDepth(Depth, UseOpeningBook),
+        TimeControlMode.TimePerMove => SearchLimits.TimePerMove(TimeSpan.FromSeconds(SecondsPerMove), UseOpeningBook),
+        _ => SearchLimits.TimePerGame(computerTimeLeft > TimeSpan.Zero ? computerTimeLeft : TimeSpan.FromMilliseconds(10), UseOpeningBook),
     };
 
     public string Summary => Mode switch

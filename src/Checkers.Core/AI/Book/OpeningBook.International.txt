@@ -1,0 +1,2 @@
+# Checkers Opening Book (International)
+# Format: <ZobristHex> <Ply> <Score> [Move1:Score1 Move2:Score2 Move3:Score3]
