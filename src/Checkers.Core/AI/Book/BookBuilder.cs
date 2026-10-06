@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Checkers.Core.Engine;
 using Checkers.Core.Models;
 
@@ -74,19 +75,46 @@ public readonly record struct TopDownNodeProgress(
     bool FromCheckpoint);
 
 /// <summary>
-/// Builds and verifies transposition-aware Checkers opening books using either Top-Down Level-by-Level
-/// Multi-PV search (<see cref="GenerateTopDown"/>) or breadth-first DAG enumeration followed by bottom-up
-/// Negamax score back-up (<see cref="BackUp"/>).
+/// Reports progress for a single evaluated or widened position during
+/// <see cref="BookBuilder.ExpandDropOut"/>.
+/// </summary>
+public readonly record struct DoeExpansionProgress(
+    BookNode EvaluatedNode,
+    string Phase,
+    int CompletedInPhase,
+    int? TotalInPhase,
+    int TotalInternalNodes,
+    int TotalBookNodes,
+    int ActiveFrontierLeaves,
+    int CompletedDepth,
+    long NodesEvaluated,
+    bool FromCheckpoint);
+
+/// <summary>
+/// Builds and verifies transposition-aware Checkers opening books using Top-Down Level-by-Level
+/// Multi-PV search (<see cref="GenerateTopDown"/>), Drop-Out Expansion (<see cref="ExpandDropOut"/>),
+/// or breadth-first DAG enumeration followed by bottom-up Negamax score back-up (<see cref="BackUp"/>).
 /// </summary>
 public static class BookBuilder
 {
-    public const int MaxDepth = 12;
-    public const int MaxWidth = 7;
+    public const int MaxDepth = 32;
+    public const int MaxWidth = 32;
     public const int DefaultMaxEvaluatedLevel = 7;
     public const int DefaultDepth = 7;
     public const int DefaultWidth = 3;
+    public const int DefaultFullWidthPlies = 4;
+    public const int DefaultMaxPly = 12;
     public const int DefaultSelectDepth = 12;
     public const int DefaultWorkers = 8;
+
+    /// <summary>
+    /// Returns the drop-out threshold <c>delta</c> (in centipawns) for a position at <paramref name="ply"/>.
+    /// Moves whose backed-up score trails the node's best move by more than <c>delta</c> drop out of DOE expansion.
+    /// Defaults to a depth-tapered schedule (<c>15 cp</c> for <c>lv 0..5</c>, <c>10 cp</c> for <c>lv 6..9</c>,
+    /// and <c>6 cp</c> for <c>lv 10+</c>) unless overridden by <paramref name="fixedDeltaCp"/>.
+    /// </summary>
+    public static int GetDefaultDropOutDelta(int ply, int? fixedDeltaCp = null) =>
+        fixedDeltaCp ?? (ply <= 5 ? 15 : ply <= 9 ? 10 : 6);
 
     /// <summary>
     /// Enumerates the opening DAG up to <paramref name="depth"/> plies, expanding at most <paramref name="width"/>
@@ -734,6 +762,935 @@ public static class BookBuilder
                 useQuiescence: true,
                 variant: variant);
         }
+    }
+
+    /// <summary>
+    /// Expands an opening book using a two-phase algorithm:
+    /// <list type="number">
+    ///   <item>
+    ///     <description>
+    ///       <b>Phase A — Full-Width Early Plies (<c>lv 0 .. fullWidthPlies - 1</c>):</b>
+    ///       Ensures every reachable position in the first <paramref name="fullWidthPlies"/> levels stores all legal moves,
+    ///       preserving any existing deeper subtrees from <paramref name="existingNodes"/>.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <description>
+    ///       <b>Phase B — Drop-Out Expansion (DOE):</b>
+    ///       Repeatedly descends from the root, filtering out candidate moves that trail a node's best move by more than
+    ///       <see cref="GetDefaultDropOutDelta"/> (<paramref name="fixedDeltaCp"/>), selecting the least-visited active branch
+    ///       (using virtual visits across parallel workers), expanding the chosen leaf with a Single-Search Multi-PV
+    ///       (<paramref name="width"/>) search, and backing up Negamax scores bottom-up to the root.
+    ///     </description>
+    ///   </item>
+    /// </list>
+    /// </summary>
+    public static List<BookNode> ExpandDropOut(
+        CheckersVariant variant,
+        IReadOnlyList<BookNode>? existingNodes = null,
+        int fullWidthPlies = DefaultFullWidthPlies,
+        int maxPly = DefaultMaxPly,
+        int width = DefaultWidth,
+        int? fixedDeltaCp = null,
+        int? maxIterations = null,
+        double? maxTimeMinutes = null,
+        SearchLimits? nodeSearchLimits = null,
+        int workers = DefaultWorkers,
+        IDictionary<ulong, BookNode>? checkpointNodes = null,
+        Action<DoeExpansionProgress>? onNodeExpanded = null,
+        Action<string, IReadOnlyList<BookNode>>? onFlushSnapshot = null,
+        int snapshotFlushInterval = 25,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fullWidthPlies);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(fullWidthPlies, MaxDepth);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxPly, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxPly, MaxDepth);
+        ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(width, MaxWidth);
+
+        var limits = nodeSearchLimits ?? SearchLimits.TimePerMove(TimeSpan.FromSeconds(60), useOpeningBook: false);
+        var ruleEngine = new RuleEngine(variant);
+        int maxDegree = Math.Max(1, workers);
+        object syncLock = new();
+        var overallClock = Stopwatch.StartNew();
+
+        var (root, nodesByHash) = BuildMutableDag(variant, ruleEngine, existingNodes, checkpointNodes, fullWidthPlies);
+        BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+
+        int totalSearchesReserved = 0;
+
+        bool IsBudgetExhausted() =>
+            (maxIterations.HasValue && totalSearchesReserved >= maxIterations.Value)
+            || (maxTimeMinutes.HasValue && overallClock.Elapsed.TotalMinutes >= maxTimeMinutes.Value);
+
+        // =========================================================================
+        // Phase A: Full-Width Early Levels (lv 0 .. fullWidthPlies - 1)
+        // =========================================================================
+        int effectiveFullWidthPlies = Math.Min(fullWidthPlies, maxPly);
+        for (int level = 0; level < effectiveFullWidthPlies; level++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsBudgetExhausted())
+            {
+                break;
+            }
+
+            BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+
+            var levelNodes = nodesByHash.Values
+                .Where(n => n.IsReachable && n.Ply == level)
+                .OrderBy(n => n.ZobristHash)
+                .ToList();
+
+            var nodesToSearch = new List<MutableBookNode>();
+            int totalInLevel = levelNodes.Count;
+            int completedInLevel = 0;
+
+            foreach (var node in levelNodes)
+            {
+                var legalMoves = ruleEngine.GetLegalMoves(node.State);
+                if (legalMoves.Count == 0)
+                {
+                    node.IsTerminal = true;
+                    node.IsExpanded = true;
+                    node.Score = -BookFile.MaxScore;
+                    completedInLevel++;
+                    continue;
+                }
+
+                int expectedDistinctChildren = CountDistinctChildHashes(node.State, legalMoves, ruleEngine);
+                if (node.IsExpanded && node.Edges.Count >= expectedDistinctChildren)
+                {
+                    completedInLevel++;
+                    onNodeExpanded?.Invoke(new DoeExpansionProgress(
+                        ToBookNode(node),
+                        Phase: $"FullWidth lv {level}",
+                        CompletedInPhase: completedInLevel,
+                        TotalInPhase: totalInLevel,
+                        TotalInternalNodes: CountReachableInternalNodes(nodesByHash),
+                        TotalBookNodes: CountReachableNodes(nodesByHash),
+                        ActiveFrontierLeaves: CountActiveFrontierLeaves(root, nodesByHash, maxPly, fixedDeltaCp),
+                        CompletedDepth: 0,
+                        NodesEvaluated: 0,
+                        FromCheckpoint: true));
+                }
+                else
+                {
+                    nodesToSearch.Add(node);
+                }
+            }
+
+            if (nodesToSearch.Count == 0)
+            {
+                continue;
+            }
+
+            Parallel.ForEach(
+                nodesToSearch,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Math.Min(maxDegree, nodesToSearch.Count),
+                    CancellationToken = cancellationToken
+                },
+                () => new TopDownWorkerContext(variant, limits),
+                (node, loopState, ctx) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lock (syncLock)
+                    {
+                        if (IsBudgetExhausted())
+                        {
+                            loopState.Stop();
+                            return ctx;
+                        }
+                        totalSearchesReserved++;
+                    }
+
+                    var legalMoves = ctx.RuleEngine.GetLegalMoves(node.State);
+                    IReadOnlyList<MultiPvMoveResult> multiPv;
+                    int completedDepth;
+                    long nodesEvaluated;
+
+                    if (legalMoves.Count == 1 && level < maxPly - 1 && limits.Mode != TimeControlMode.FixedDepth)
+                    {
+                        multiPv = ctx.QuickForcedPlayer.SearchMultiPv(node.State, legalMoves, 1, cancellationToken);
+                        completedDepth = multiPv[0].CompletedDepth;
+                        nodesEvaluated = ctx.QuickForcedPlayer.NodesEvaluated;
+                    }
+                    else
+                    {
+                        multiPv = ctx.Player.SearchMultiPv(node.State, legalMoves, legalMoves.Count, cancellationToken);
+                        completedDepth = multiPv.Count > 0 ? multiPv[0].CompletedDepth : 0;
+                        nodesEvaluated = ctx.Player.NodesEvaluated;
+                    }
+
+                    lock (syncLock)
+                    {
+                        var rawMovesForCheckpoint = ApplyEvaluatedMovesToNode(node, multiPv, ctx.RuleEngine, nodesByHash);
+                        BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+
+                        var checkpointBookNode = new BookNode(
+                            node.ZobristHash,
+                            node.Ply,
+                            rawMovesForCheckpoint.Count > 0 ? rawMovesForCheckpoint[0].Score : node.Score,
+                            rawMovesForCheckpoint);
+
+                        if (checkpointNodes != null)
+                        {
+                            checkpointNodes[node.ZobristHash] = checkpointBookNode;
+                        }
+
+                        completedInLevel++;
+
+                        onNodeExpanded?.Invoke(new DoeExpansionProgress(
+                            ToBookNode(node),
+                            Phase: $"FullWidth lv {level}",
+                            CompletedInPhase: completedInLevel,
+                            TotalInPhase: totalInLevel,
+                            TotalInternalNodes: CountReachableInternalNodes(nodesByHash),
+                            TotalBookNodes: CountReachableNodes(nodesByHash),
+                            ActiveFrontierLeaves: CountActiveFrontierLeaves(root, nodesByHash, maxPly, fixedDeltaCp),
+                            CompletedDepth: completedDepth,
+                            NodesEvaluated: nodesEvaluated,
+                            FromCheckpoint: false));
+                    }
+
+                    return ctx;
+                },
+                _ => { });
+
+            BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+            onFlushSnapshot?.Invoke($"FullWidth lv {level}", ExportBookNodes(root, nodesByHash));
+        }
+
+        // =========================================================================
+        // Phase B: Drop-Out Expansion (DOE) from fullWidthPlies up to maxPly
+        // =========================================================================
+        BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+
+        int doeExpansionsCompleted = 0;
+        int inFlightWorkers = 0;
+
+        if (!IsBudgetExhausted() && root.HasAvailableDoeLeaf)
+        {
+            int workerCount = Math.Max(1, maxDegree);
+            var workerTasks = new Task[workerCount];
+
+            for (int w = 0; w < workerCount; w++)
+            {
+                workerTasks[w] = Task.Run(() =>
+                {
+                    var ctx = new TopDownWorkerContext(variant, limits);
+
+                    while (true)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        MutableBookNode? selectedLeaf = null;
+                        List<MutableBookNode>? reservedPath = null;
+
+                        lock (syncLock)
+                        {
+                            while (true)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+
+                                if (IsBudgetExhausted())
+                                {
+                                    Monitor.PulseAll(syncLock);
+                                    return;
+                                }
+
+                                if (TryReserveNextDoeLeaf(root, nodesByHash, maxPly, fixedDeltaCp, out selectedLeaf, out reservedPath))
+                                {
+                                    totalSearchesReserved++;
+                                    inFlightWorkers++;
+                                    break;
+                                }
+
+                                if (inFlightWorkers == 0)
+                                {
+                                    // No available active leaves and no workers in flight -> DOE complete!
+                                    Monitor.PulseAll(syncLock);
+                                    return;
+                                }
+
+                                Monitor.Wait(syncLock, millisecondsTimeout: 100);
+                            }
+                        }
+
+                        bool committed = false;
+                        try
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            var legalMoves = ctx.RuleEngine.GetLegalMoves(selectedLeaf!.State);
+                            IReadOnlyList<MultiPvMoveResult> multiPv;
+                            int completedDepth = 0;
+                            long nodesEvaluated = 0;
+
+                            int nodeTargetWidth = selectedLeaf.Ply < fullWidthPlies ? legalMoves.Count : width;
+
+                            if (legalMoves.Count == 0)
+                            {
+                                multiPv = [];
+                            }
+                            else if (legalMoves.Count == 1 && selectedLeaf.Ply < maxPly - 1 && limits.Mode != TimeControlMode.FixedDepth)
+                            {
+                                multiPv = ctx.QuickForcedPlayer.SearchMultiPv(selectedLeaf.State, legalMoves, 1, cancellationToken);
+                                completedDepth = multiPv[0].CompletedDepth;
+                                nodesEvaluated = ctx.QuickForcedPlayer.NodesEvaluated;
+                            }
+                            else
+                            {
+                                multiPv = ctx.Player.SearchMultiPv(selectedLeaf.State, legalMoves, nodeTargetWidth, cancellationToken);
+                                completedDepth = multiPv.Count > 0 ? multiPv[0].CompletedDepth : 0;
+                                nodesEvaluated = ctx.Player.NodesEvaluated;
+                            }
+
+                            List<BookNode>? snapshotToFlush = null;
+                            string? snapshotLabel = null;
+
+                            lock (syncLock)
+                            {
+                                foreach (var pathNode in reservedPath!)
+                                {
+                                    pathNode.PendingVisits = Math.Max(0, pathNode.PendingVisits - 1);
+                                }
+                                selectedLeaf.InFlight = false;
+                                inFlightWorkers--;
+                                committed = true;
+
+                                if (legalMoves.Count == 0)
+                                {
+                                    selectedLeaf.IsTerminal = true;
+                                    selectedLeaf.IsExpanded = true;
+                                    selectedLeaf.Score = -BookFile.MaxScore;
+                                    BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+                                }
+                                else
+                                {
+                                    var rawMovesForCheckpoint = ApplyEvaluatedMovesToNode(selectedLeaf, multiPv, ctx.RuleEngine, nodesByHash);
+                                    BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+
+                                    var checkpointBookNode = new BookNode(
+                                        selectedLeaf.ZobristHash,
+                                        selectedLeaf.Ply,
+                                        rawMovesForCheckpoint.Count > 0 ? rawMovesForCheckpoint[0].Score : selectedLeaf.Score,
+                                        rawMovesForCheckpoint);
+
+                                    if (checkpointNodes != null)
+                                    {
+                                        checkpointNodes[selectedLeaf.ZobristHash] = checkpointBookNode;
+                                    }
+                                }
+
+                                doeExpansionsCompleted++;
+
+                                int activeFrontier = CountActiveFrontierLeaves(root, nodesByHash, maxPly, fixedDeltaCp);
+                                onNodeExpanded?.Invoke(new DoeExpansionProgress(
+                                    ToBookNode(selectedLeaf),
+                                    Phase: "DOE",
+                                    CompletedInPhase: doeExpansionsCompleted,
+                                    TotalInPhase: maxIterations,
+                                    TotalInternalNodes: CountReachableInternalNodes(nodesByHash),
+                                    TotalBookNodes: CountReachableNodes(nodesByHash),
+                                    ActiveFrontierLeaves: activeFrontier,
+                                    CompletedDepth: completedDepth,
+                                    NodesEvaluated: nodesEvaluated,
+                                    FromCheckpoint: false));
+
+                                if (snapshotFlushInterval > 0 && doeExpansionsCompleted % snapshotFlushInterval == 0)
+                                {
+                                    snapshotToFlush = ExportBookNodes(root, nodesByHash);
+                                    snapshotLabel = $"DOE #{doeExpansionsCompleted}";
+                                }
+
+                                Monitor.PulseAll(syncLock);
+                            }
+
+                            if (snapshotToFlush != null && snapshotLabel != null)
+                            {
+                                onFlushSnapshot?.Invoke(snapshotLabel, snapshotToFlush);
+                            }
+                        }
+                        finally
+                        {
+                            if (!committed && selectedLeaf != null && reservedPath != null)
+                            {
+                                lock (syncLock)
+                                {
+                                    foreach (var pathNode in reservedPath)
+                                    {
+                                        pathNode.PendingVisits = Math.Max(0, pathNode.PendingVisits - 1);
+                                    }
+                                    selectedLeaf.InFlight = false;
+                                    inFlightWorkers--;
+                                    BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+                                    Monitor.PulseAll(syncLock);
+                                }
+                            }
+                        }
+                    }
+                }, cancellationToken);
+            }
+
+            Task.WaitAll(workerTasks, cancellationToken);
+        }
+
+        BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+        var finalExported = ExportBookNodes(root, nodesByHash);
+        if (doeExpansionsCompleted > 0)
+        {
+            onFlushSnapshot?.Invoke("DOE Complete", finalExported);
+        }
+
+        return finalExported;
+    }
+
+    private sealed class MutableBookEdge
+    {
+        public Move Move { get; }
+        public ulong ChildHash { get; }
+        public int Score { get; set; }
+
+        public MutableBookEdge(Move move, ulong childHash, int score)
+        {
+            Move = move;
+            ChildHash = childHash;
+            Score = score;
+        }
+    }
+
+    private sealed class MutableBookNode
+    {
+        public ulong ZobristHash { get; }
+        public BoardState State { get; }
+        public int Ply { get; set; }
+        public int Score { get; set; }
+        public bool IsTerminal { get; set; }
+        public bool IsExpanded { get; set; }
+        public bool IsReachable { get; set; }
+        public bool InFlight { get; set; }
+        public bool HasAvailableDoeLeaf { get; set; }
+        public int Visits { get; set; }
+        public int PendingVisits { get; set; }
+        public List<MutableBookEdge> Edges { get; } = [];
+
+        public MutableBookNode(ulong zobristHash, BoardState state, int ply, int score = 0)
+        {
+            ZobristHash = zobristHash;
+            State = state;
+            Ply = ply;
+            Score = score;
+        }
+    }
+
+    private static (MutableBookNode Root, Dictionary<ulong, MutableBookNode> NodesByHash) BuildMutableDag(
+        CheckersVariant variant,
+        RuleEngine ruleEngine,
+        IReadOnlyList<BookNode>? existingNodes,
+        IDictionary<ulong, BookNode>? checkpointNodes,
+        int fullWidthPlies)
+    {
+        var seedByHash = new Dictionary<ulong, BookNode>();
+        if (existingNodes != null)
+        {
+            foreach (var node in existingNodes)
+            {
+                seedByHash[node.ZobristHash] = node;
+            }
+        }
+
+        if (checkpointNodes != null)
+        {
+            foreach (var kvp in checkpointNodes)
+            {
+                if (!seedByHash.TryGetValue(kvp.Key, out var existing)
+                    || kvp.Value.Moves.Count >= existing.Moves.Count)
+                {
+                    seedByHash[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        var initial = BoardState.CreateInitial();
+        int initialScore = seedByHash.TryGetValue(initial.ZobristHash, out var seedRoot) ? seedRoot.Score : 0;
+        var root = new MutableBookNode(initial.ZobristHash, initial, ply: 0, score: initialScore)
+        {
+            IsReachable = true
+        };
+
+        var nodesByHash = new Dictionary<ulong, MutableBookNode>
+        {
+            [root.ZobristHash] = root
+        };
+
+        var queue = new Queue<MutableBookNode>();
+        queue.Enqueue(root);
+        var expandedInBfs = new HashSet<ulong>();
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!expandedInBfs.Add(current.ZobristHash))
+            {
+                continue;
+            }
+
+            var legalMoves = ruleEngine.GetLegalMoves(current.State);
+            if (legalMoves.Count == 0)
+            {
+                current.IsTerminal = true;
+                current.IsExpanded = true;
+                current.Score = -BookFile.MaxScore;
+                continue;
+            }
+
+            if (!seedByHash.TryGetValue(current.ZobristHash, out var seedNode) || seedNode.Moves.Count == 0)
+            {
+                continue;
+            }
+
+            // Merge moves from both checkpoint and existing book if one had more moves (e.g. widened node)
+            var combinedMoveEntries = new List<BookMoveEntry>(seedNode.Moves);
+            if (existingNodes != null)
+            {
+                var orig = existingNodes.FirstOrDefault(n => n.ZobristHash == current.ZobristHash);
+                if (orig != null)
+                {
+                    foreach (var origMove in orig.Moves)
+                    {
+                        if (!combinedMoveEntries.Any(m => string.Equals(m.Notation, origMove.Notation, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            combinedMoveEntries.Add(origMove);
+                        }
+                    }
+                }
+            }
+
+            var seenChildren = new HashSet<ulong>();
+            foreach (var moveEntry in combinedMoveEntries)
+            {
+                var matchingLegal = legalMoves.FirstOrDefault(
+                    m => string.Equals(m.Notation, moveEntry.Notation, StringComparison.OrdinalIgnoreCase));
+                if (matchingLegal == null)
+                {
+                    continue;
+                }
+
+                var childState = ruleEngine.ApplyMove(current.State, matchingLegal);
+                ulong childHash = childState.ZobristHash;
+
+                if (childHash == current.ZobristHash || !seenChildren.Add(childHash))
+                {
+                    continue;
+                }
+
+                if (nodesByHash.ContainsKey(childHash) && CanReach(childHash, current.ZobristHash, nodesByHash))
+                {
+                    continue;
+                }
+
+                if (!nodesByHash.TryGetValue(childHash, out var childNode))
+                {
+                    int impliedScore = seedByHash.TryGetValue(childHash, out var childSeed) && childSeed.Moves.Count == 0
+                        ? childSeed.Score
+                        : Math.Clamp(-moveEntry.Score, BookFile.MinScore, BookFile.MaxScore);
+
+                    childNode = new MutableBookNode(childHash, childState, current.Ply + 1, impliedScore)
+                    {
+                        IsReachable = true
+                    };
+                    nodesByHash[childHash] = childNode;
+                }
+
+                current.Edges.Add(new MutableBookEdge(matchingLegal, childHash, moveEntry.Score));
+                queue.Enqueue(childNode);
+            }
+
+            current.IsExpanded = current.Edges.Count > 0;
+        }
+
+        return (root, nodesByHash);
+    }
+
+    private static List<BookMoveEntry> ApplyEvaluatedMovesToNode(
+        MutableBookNode node,
+        IReadOnlyList<MultiPvMoveResult> multiPv,
+        RuleEngine ruleEngine,
+        Dictionary<ulong, MutableBookNode> nodesByHash)
+    {
+        var existingEdgesByChild = node.Edges.ToDictionary(e => e.ChildHash);
+        var seenChildren = new HashSet<ulong>();
+        var updatedEdges = new List<MutableBookEdge>(multiPv.Count);
+        var rawCheckpointMoves = new List<BookMoveEntry>(multiPv.Count);
+
+        foreach (var item in multiPv)
+        {
+            var childState = ruleEngine.ApplyMove(node.State, item.Move);
+            ulong childHash = childState.ZobristHash;
+
+            if (childHash == node.ZobristHash || !seenChildren.Add(childHash))
+            {
+                continue;
+            }
+
+            if (nodesByHash.ContainsKey(childHash) && CanReach(childHash, node.ZobristHash, nodesByHash))
+            {
+                continue;
+            }
+
+            int impliedChildScore = Math.Clamp(-item.Score, BookFile.MinScore, BookFile.MaxScore);
+
+            if (!nodesByHash.TryGetValue(childHash, out var childNode))
+            {
+                childNode = new MutableBookNode(childHash, childState, node.Ply + 1, impliedChildScore)
+                {
+                    IsReachable = true
+                };
+                nodesByHash[childHash] = childNode;
+            }
+            else if (!childNode.IsExpanded)
+            {
+                childNode.Score = impliedChildScore;
+            }
+
+            int edgeScore = childNode.IsExpanded
+                ? Math.Clamp(-childNode.Score, BookFile.MinScore, BookFile.MaxScore)
+                : item.Score;
+
+            updatedEdges.Add(new MutableBookEdge(item.Move, childHash, edgeScore));
+            rawCheckpointMoves.Add(new BookMoveEntry(item.Move.Notation, item.Score));
+        }
+
+        // Preserve any previously existing edges whose child was already expanded in the seed book
+        foreach (var prevEdge in existingEdgesByChild.Values)
+        {
+            if (seenChildren.Add(prevEdge.ChildHash))
+            {
+                updatedEdges.Add(prevEdge);
+                rawCheckpointMoves.Add(new BookMoveEntry(prevEdge.Move.Notation, prevEdge.Score));
+            }
+        }
+
+        node.Edges.Clear();
+        node.Edges.AddRange(updatedEdges);
+        node.IsExpanded = node.Edges.Count > 0;
+        return rawCheckpointMoves;
+    }
+
+    private static void BackUpMutableDag(
+        MutableBookNode root,
+        Dictionary<ulong, MutableBookNode> nodesByHash,
+        int maxPly,
+        int? fixedDeltaCp)
+    {
+        foreach (var node in nodesByHash.Values)
+        {
+            node.IsReachable = false;
+        }
+
+        // 1. Assign shortest-path Ply from root via BFS
+        root.IsReachable = true;
+        root.Ply = 0;
+        var bfsQueue = new Queue<MutableBookNode>();
+        bfsQueue.Enqueue(root);
+
+        while (bfsQueue.Count > 0)
+        {
+            var u = bfsQueue.Dequeue();
+            foreach (var edge in u.Edges)
+            {
+                if (!nodesByHash.TryGetValue(edge.ChildHash, out var v))
+                {
+                    continue;
+                }
+
+                if (!v.IsReachable)
+                {
+                    v.IsReachable = true;
+                    v.Ply = u.Ply + 1;
+                    bfsQueue.Enqueue(v);
+                }
+                else if (u.Ply + 1 < v.Ply)
+                {
+                    v.Ply = u.Ply + 1;
+                }
+            }
+        }
+
+        // 2. Topological post-order traversal from root (children always before parents)
+        var postOrder = new List<MutableBookNode>(nodesByHash.Count);
+        var visited = new HashSet<ulong>();
+
+        void DfsPostOrder(MutableBookNode u)
+        {
+            if (!visited.Add(u.ZobristHash))
+            {
+                return;
+            }
+
+            foreach (var edge in u.Edges)
+            {
+                if (nodesByHash.TryGetValue(edge.ChildHash, out var child))
+                {
+                    DfsPostOrder(child);
+                }
+            }
+
+            postOrder.Add(u);
+        }
+
+        DfsPostOrder(root);
+
+        // 3. Bottom-up Negamax score back-up, Visits count, and active DOE leaf availability
+        foreach (var u in postOrder)
+        {
+            if (!u.IsExpanded || u.Edges.Count == 0)
+            {
+                if (u.IsTerminal)
+                {
+                    u.Score = -BookFile.MaxScore;
+                    u.Visits = 1;
+                    u.HasAvailableDoeLeaf = false;
+                }
+                else
+                {
+                    u.Visits = 0;
+                    u.HasAvailableDoeLeaf = !u.InFlight && u.Ply < maxPly;
+                }
+                continue;
+            }
+
+            foreach (var edge in u.Edges)
+            {
+                var child = nodesByHash[edge.ChildHash];
+                edge.Score = Math.Clamp(-child.Score, BookFile.MinScore, BookFile.MaxScore);
+            }
+
+            u.Edges.Sort((a, b) =>
+            {
+                int cmp = b.Score.CompareTo(a.Score);
+                return cmp != 0 ? cmp : string.CompareOrdinal(a.Move.Notation, b.Move.Notation);
+            });
+
+            u.Score = u.Edges[0].Score;
+            int bestScore = u.Score;
+            int delta = GetDefaultDropOutDelta(u.Ply, fixedDeltaCp);
+
+            int visitsSum = 1;
+            bool anyActiveLeaf = false;
+
+            foreach (var edge in u.Edges)
+            {
+                var child = nodesByHash[edge.ChildHash];
+                visitsSum += child.Visits;
+
+                bool isActiveMove = (bestScore - edge.Score) <= delta;
+                if (isActiveMove && child.HasAvailableDoeLeaf)
+                {
+                    anyActiveLeaf = true;
+                }
+            }
+
+            u.Visits = visitsSum;
+            u.HasAvailableDoeLeaf = anyActiveLeaf;
+        }
+    }
+
+    private static bool TryReserveNextDoeLeaf(
+        MutableBookNode root,
+        Dictionary<ulong, MutableBookNode> nodesByHash,
+        int maxPly,
+        int? fixedDeltaCp,
+        out MutableBookNode? selectedLeaf,
+        out List<MutableBookNode>? reservedPath)
+    {
+        selectedLeaf = null;
+        reservedPath = null;
+
+        if (!root.HasAvailableDoeLeaf)
+        {
+            return false;
+        }
+
+        var path = new List<MutableBookNode> { root };
+        var current = root;
+        var visitedInDescent = new HashSet<ulong> { root.ZobristHash };
+
+        while (current.IsExpanded && current.Edges.Count > 0)
+        {
+            int bestScore = current.Score;
+            int delta = GetDefaultDropOutDelta(current.Ply, fixedDeltaCp);
+
+            MutableBookNode? bestChild = null;
+            MutableBookEdge? bestEdge = null;
+            int minEffectiveVisits = int.MaxValue;
+
+            foreach (var edge in current.Edges)
+            {
+                if ((bestScore - edge.Score) > delta)
+                {
+                    continue;
+                }
+
+                if (!nodesByHash.TryGetValue(edge.ChildHash, out var child)
+                    || !child.HasAvailableDoeLeaf
+                    || visitedInDescent.Contains(child.ZobristHash))
+                {
+                    continue;
+                }
+
+                int effectiveVisits = child.Visits + child.PendingVisits;
+                if (bestChild == null
+                    || effectiveVisits < minEffectiveVisits
+                    || (effectiveVisits == minEffectiveVisits && edge.Score > bestEdge!.Score)
+                    || (effectiveVisits == minEffectiveVisits && edge.Score == bestEdge!.Score && child.Ply < bestChild.Ply))
+                {
+                    bestChild = child;
+                    bestEdge = edge;
+                    minEffectiveVisits = effectiveVisits;
+                }
+            }
+
+            if (bestChild == null)
+            {
+                return false;
+            }
+
+            visitedInDescent.Add(bestChild.ZobristHash);
+            path.Add(bestChild);
+            current = bestChild;
+        }
+
+        if (current.IsExpanded || current.IsTerminal || current.InFlight || current.Ply >= maxPly)
+        {
+            return false;
+        }
+
+        current.InFlight = true;
+        foreach (var node in path)
+        {
+            node.PendingVisits++;
+        }
+
+        BackUpMutableDag(root, nodesByHash, maxPly, fixedDeltaCp);
+        selectedLeaf = current;
+        reservedPath = path;
+        return true;
+    }
+
+    private static int CountDistinctChildHashes(BoardState state, IReadOnlyList<Move> legalMoves, RuleEngine ruleEngine)
+    {
+        var hashes = new HashSet<ulong>();
+        foreach (var move in legalMoves)
+        {
+            hashes.Add(ruleEngine.ApplyMove(state, move).ZobristHash);
+        }
+        return hashes.Count;
+    }
+
+    private static int CountReachableNodes(Dictionary<ulong, MutableBookNode> nodesByHash) =>
+        nodesByHash.Values.Count(n => n.IsReachable);
+
+    private static int CountReachableInternalNodes(Dictionary<ulong, MutableBookNode> nodesByHash) =>
+        nodesByHash.Values.Count(n => n.IsReachable && n.IsExpanded && n.Edges.Count > 0);
+
+    private static int CountActiveFrontierLeaves(
+        MutableBookNode root,
+        Dictionary<ulong, MutableBookNode> nodesByHash,
+        int maxPly,
+        int? fixedDeltaCp)
+    {
+        var activeVisited = new HashSet<ulong>();
+        var activeLeaves = new HashSet<ulong>();
+        var queue = new Queue<MutableBookNode>();
+
+        queue.Enqueue(root);
+        activeVisited.Add(root.ZobristHash);
+
+        while (queue.Count > 0)
+        {
+            var u = queue.Dequeue();
+            if (!u.IsExpanded || u.Edges.Count == 0)
+            {
+                if (!u.IsTerminal && u.Ply < maxPly)
+                {
+                    activeLeaves.Add(u.ZobristHash);
+                }
+                continue;
+            }
+
+            int bestScore = u.Score;
+            int delta = GetDefaultDropOutDelta(u.Ply, fixedDeltaCp);
+
+            foreach (var edge in u.Edges)
+            {
+                if ((bestScore - edge.Score) <= delta
+                    && nodesByHash.TryGetValue(edge.ChildHash, out var child)
+                    && activeVisited.Add(child.ZobristHash))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+
+        return activeLeaves.Count;
+    }
+
+    private static bool CanReach(ulong startHash, ulong targetHash, Dictionary<ulong, MutableBookNode> nodesByHash)
+    {
+        if (startHash == targetHash)
+        {
+            return true;
+        }
+
+        if (!nodesByHash.TryGetValue(startHash, out var startNode))
+        {
+            return false;
+        }
+
+        var visited = new HashSet<ulong> { startHash };
+        var queue = new Queue<MutableBookNode>();
+        queue.Enqueue(startNode);
+
+        while (queue.Count > 0)
+        {
+            var curr = queue.Dequeue();
+            foreach (var edge in curr.Edges)
+            {
+                if (edge.ChildHash == targetHash)
+                {
+                    return true;
+                }
+
+                if (nodesByHash.TryGetValue(edge.ChildHash, out var next) && visited.Add(next.ZobristHash))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static BookNode ToBookNode(MutableBookNode node)
+    {
+        var moves = node.Edges
+            .Select(e => new BookMoveEntry(e.Move.Notation, e.Score))
+            .ToList();
+        return new BookNode(node.ZobristHash, node.Ply, node.Score, moves);
+    }
+
+    private static List<BookNode> ExportBookNodes(MutableBookNode root, Dictionary<ulong, MutableBookNode> nodesByHash)
+    {
+        return nodesByHash.Values
+            .Where(n => n.IsReachable)
+            .OrderBy(n => n.Ply)
+            .ThenBy(n => n.ZobristHash)
+            .Select(ToBookNode)
+            .ToList();
     }
 
     /// <summary>

@@ -298,5 +298,105 @@ public class OpeningBookTests
         map.ContainsKey(0x9A4F82C10B3E7712UL).Should().BeTrue();
         map.ContainsKey(0x3C81E042A915B604UL).Should().BeTrue();
     }
+
+    [Fact]
+    public void ExpandDropOut_WidensEarlyLevelsToAllLegalMoves_PreservesSubtrees_AndPassesCheckBackUp()
+    {
+        // 1. Generate a width-3 seed book up to lv 2 (reaching lv 3 leaves)
+        var seedBook = BookBuilder.GenerateTopDown(
+            variant: CheckersVariant.English,
+            maxEvaluatedLevel: 2,
+            width: 3,
+            nodeSearchLimits: SearchLimits.FixedDepth(4, useOpeningBook: false),
+            workers: 2);
+
+        var seedLv2InternalNodes = seedBook
+            .Where(n => n.Ply == 2 && n.Moves.Count > 0)
+            .ToDictionary(n => n.ZobristHash);
+        seedLv2InternalNodes.Should().HaveCount(9);
+
+        var checkpoint = new Dictionary<ulong, BookNode>();
+
+        // 2. Run ExpandDropOut with fullWidthPlies = 2 (lv 0..1 store all 7 legal moves) and DOE up to maxPly = 4
+        var expandedBook = BookBuilder.ExpandDropOut(
+            variant: CheckersVariant.English,
+            existingNodes: seedBook,
+            fullWidthPlies: 2,
+            maxPly: 4,
+            width: 3,
+            maxIterations: 16,
+            nodeSearchLimits: SearchLimits.FixedDepth(4, useOpeningBook: false),
+            workers: 2,
+            checkpointNodes: checkpoint);
+
+        BookBuilder.CheckBackUp(expandedBook, CheckersVariant.English).Should().BeEmpty();
+
+        // Root (lv 0) and all 7 lv 1 positions must now store all 7 legal moves
+        var root = expandedBook.Single(n => n.Ply == 0);
+        root.Moves.Should().HaveCount(7);
+
+        var lv1Nodes = expandedBook.Where(n => n.Ply == 1).ToList();
+        lv1Nodes.Should().HaveCount(7);
+        lv1Nodes.Should().OnlyContain(n => n.Moves.Count == 7);
+
+        // All 9 original lv 2 internal nodes from the seed book must still be present and preserve their moves
+        var expandedByHash = expandedBook.ToDictionary(n => n.ZobristHash);
+        foreach (var (origLv2Hash, origSeedNode) in seedLv2InternalNodes)
+        {
+            expandedByHash.Should().ContainKey(origLv2Hash);
+            expandedByHash[origLv2Hash].Moves.Count.Should().BeGreaterThanOrEqualTo(origSeedNode.Moves.Count);
+        }
+
+        // 8 Phase A widenings (1 at lv 0 + 7 at lv 1) + 8 Phase B DOE expansions of newly added competitive lv 2 leaves = 17 expanded lv 2 nodes
+        expandedBook.Count(n => n.Ply == 2 && n.Moves.Count > 0).Should().Be(9 + 8);
+    }
+
+    [Fact]
+    public void ExpandDropOut_SkipsDroppedOutBranches_AndExpandsCompetitiveLines()
+    {
+        var engine = new RuleEngine(CheckersVariant.English);
+        var initial = BoardState.CreateInitial();
+        var legal = engine.GetLegalMoves(initial);
+
+        var moveBest = legal.First(m => m.Notation == "22-18");
+        var moveClose = legal.First(m => m.Notation == "22-17");
+        var moveBad = legal.First(m => m.Notation == "21-17");
+
+        var childBest = engine.ApplyMove(initial, moveBest);
+        var childClose = engine.ApplyMove(initial, moveClose);
+        var childBad = engine.ApplyMove(initial, moveBad);
+
+        // Construct a 1-ply seed book where 22-18 (+10) and 22-17 (+6) are within delta = 5 cp,
+        // while 21-17 (-40) trails by 50 cp and must drop out of DOE expansion.
+        var seedNodes = new List<BookNode>
+        {
+            new(initial.ZobristHash, 0, 10, [
+                new BookMoveEntry("22-18", 10),
+                new BookMoveEntry("22-17", 6),
+                new BookMoveEntry("21-17", -40)
+            ]),
+            new(childBest.ZobristHash, 1, -10, []),
+            new(childClose.ZobristHash, 1, -6, []),
+            new(childBad.ZobristHash, 1, 40, [])
+        };
+
+        var expanded = BookBuilder.ExpandDropOut(
+            variant: CheckersVariant.English,
+            existingNodes: seedNodes,
+            fullWidthPlies: 0,
+            maxPly: 3,
+            width: 2,
+            fixedDeltaCp: 5,
+            nodeSearchLimits: SearchLimits.FixedDepth(4, useOpeningBook: false),
+            workers: 2);
+
+        BookBuilder.CheckBackUp(expanded, CheckersVariant.English).Should().BeEmpty();
+        expanded.Max(n => n.Ply).Should().Be(3);
+
+        var byHash = expanded.ToDictionary(n => n.ZobristHash);
+        byHash[childBest.ZobristHash].Moves.Should().NotBeEmpty("best move child is active (0 cp behind)");
+        byHash[childBad.ZobristHash].Moves.Should().BeEmpty("dropped-out move child (50 cp behind > delta 5 cp) must never be expanded");
+    }
 }
+
 

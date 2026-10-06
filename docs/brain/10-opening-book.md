@@ -132,3 +132,22 @@ At the beginning of [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/Mi
    - For example, at `lv 0` in English Checkers (`22-18:+2`, `22-17:-2`, `21-17:-6`), all three moves are within `8 cp` ($\le 10\text{ cp}$) of `+2`, so the AI plays all three classic openings with equal probability while automatically excluding any move that drops more than `10 cp` (such as `10-14:-24` on `lv 1`).
 3. If a position has no explicit move list (or the opponent played an off-book move that transposes back into a known book position on the next ply), `TryGetMove` also checks if any legal move leads to a child `ZobristHash` present in the book (`impliedScore = -childNode.Score`).
 4. When a book move is returned, `MinimaxPlayer` returns immediately (`0.0s`, `NodesEvaluated = 0`) and reports `Depth = "Book (8 plies)"` and `FromBook = true` in [`SearchAnalysis`](../../src/Checkers.Core/AI/SearchAnalysis.cs).
+
+---
+
+## 5. Full-Width Early Plies + Drop-Out Expansion (`ExpandDropOut`)
+
+To expand existing opening books beyond 8 plies while ensuring 100% coverage of early human moves, [`BookBuilder.ExpandDropOut`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) and the `book expand-doe` CLI command implement a two-phase algorithm:
+
+1. **Phase A — Full-Width Early Plies (`--full-width-plies 4`, i.e., `lv 0..3`):**
+   - Evaluates and stores **all legal moves** in the first 4 plies (`257` internal positions producing `732` `lv 4` positions) while preserving 100% of any existing `lv 4..8` subtrees already in the book.
+   - Guarantees the AI remains in book against any legal human move in the first 2 full turns (`Black -> White -> Black -> White`).
+2. **Phase B — Drop-Out Expansion (DOE) from `lv 4` up to `--max-ply 12`:**
+   - Repeatedly descends from the root, filtering out candidate moves whose backed-up score trails a node's best move by more than the depth-tapered drop-out threshold $\delta(\text{ply})$ (`15 cp` at `lv 0..5`, `10 cp` at `lv 6..9`, `6 cp` at `lv 10+`).
+   - Automatically ignores weak/blunder moves among the `732` `lv 4` positions while prioritizing newly widened competitive openings (such as `23-19` *Old Faithful*, `23-18` *Cross*, and `24-19` *Double Corner*) using least-visited selection with virtual visits (`Visits + PendingVisits`) across all `8` parallel workers.
+   - Expands each chosen leaf with a `60s` Multi-PV (`width = 3`) search and propagates updated Negamax scores bottom-up to the root via topological post-order `BackUp`.
+
+```powershell
+# Widen lv 0..3 to store all legal moves and expand competitive lines up to 12 plies via DOE
+dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 12 --width 3 --node-time-s 60 --workers 8
+```
