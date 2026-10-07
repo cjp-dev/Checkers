@@ -79,35 +79,34 @@ When `lv 7` completes its 60-second Multi-PV searches (reaching search depths of
 
 Both opening books were generated on an **AMD Ryzen 7 7800X3D** (`8 physical cores / 16 threads, 96 MB 3D V-Cache, 32 GB RAM`) using `8` parallel workers (`1` worker per physical Zen 4 core, `32 MiB` TT per worker, `~480M–690M` nodes evaluated per 60-second position at depths `24–30 plies`):
 
-### 3.1 Summary Comparison
+### 3.1 Summary Comparison (Full-Width `lv 0..3` + Drop-Out Expansion to `lv 8`)
 
 | Metric | **English Checkers (`OpeningBook.English.txt`)** | **International Checkers (`OpeningBook.International.txt`)** |
 | :--- | :---: | :---: |
 | **Evaluated Internal Levels** | `lv 0 .. lv 7` (`8` plies of moves) | `lv 0 .. lv 7` (`8` plies of moves) |
-| **Moves Stored per Position ($k$)** | Up to `3` | Up to `3` |
-| **Search Budget per Position** | `60s` Multi-PV ($k=3$), `24–30 plies` (`~500M` nodes) | `60s` Multi-PV ($k=3$), `24–30 plies` (`~500M` nodes) |
-| **Unique Internal Positions (`lv 0..7`)** | **`975`** | **`1,028`** |
-| **Unique Frontier Leaves (`lv 8`)** | **`1,125`** | **`1,200`** |
-| **Total Unique Book Positions (`lv 0..8`)** | **`2,100`** | **`2,228`** |
-| **Embedded File Size** | **`68,181 bytes` (`66.6 KB`)** | **`73,042 bytes` (`71.3 KB`)** |
-| **Wall-Clock Generation Time (`8 Workers`)** | **`1h 57m 00s`** | **`2h 04m 00s`** |
-| **Root (`lv 0`) Backed-Up Score & Top 3 Moves** | **`+2` — `22-18 (+2)`, `22-17 (-2)`, `21-17 (-6)`** | **`+4` — `22-17 (+4)`, `22-18 (+2)`, `21-17 (-3)`** |
+| **Moves Stored per Position** | **All legal moves (`lv 0..3`)** + **Top `3` via DOE (`lv 4..7`)** | **All legal moves (`lv 0..3`)** + **Top `3` via DOE (`lv 4..7`)** |
+| **Search Budget per Position** | `60s` Multi-PV, `24–31 plies` (`~500M` nodes) | `60s` Multi-PV, `24–31 plies` (`~500M` nodes) |
+| **Unique Internal Positions (`lv 0..7`)** | **`3,573`** (up from `975` baseline) | **`2,992`** (up from `1,028` baseline) |
+| **Unique Frontier Leaves (`lv 4..8`)** | **`4,475`** (`3,032` at `lv 8` + dropped-out `lv 4..7` leaves) | **`3,885`** (`2,530` at `lv 8` + dropped-out `lv 4..7` leaves) |
+| **Total Unique Book Positions (`lv 0..8`)** | **`8,048`** (up from `2,100` baseline) | **`6,877`** (up from `2,228` baseline) |
+| **Embedded File Size** | **`262,860 bytes` (`256.7 KB`)** | **`227,165 bytes` (`221.8 KB`)** |
+| **Root (`lv 0`) Backed-Up Score & All 7 Moves** | **`+2` — `22-18 (+2)`, `22-17 (0)`, `21-17 (-6)`, `24-19 (-6)`, `23-18 (-8)`, `23-19 (-8)`, `24-20 (-16)`** | **`+2` — `22-18 (+2)`, `22-17 (0)`, `24-19 (0)`, `21-17 (-3)`, `23-19 (-10)`, `23-18 (-17)`, `24-20 (-18)`** |
 | **`BookBuilder.CheckBackUp` Verification** | **`OK (0 errors)`** | **`OK (0 errors)`** |
 
 ### 3.2 Unique Positions per Level (`lv 0` through `lv 8`)
 
-| Book Level (`Ply`) | Side to Move | Raw Full-Tree Branches ($3^{\text{lv}}$) | **English Unique Positions** | **International Unique Positions** |
+| Book Level (`Ply`) | Side to Move | Strategy at Level | **English Unique Positions** | **International Unique Positions** |
 | :---: | :---: | :---: | :---: | :---: |
-| **`lv 0` (`Ply 0`)** | White (Move 1) | `1` | `1` | `1` |
-| **`lv 1` (`Ply 1`)** | Black (Move 1) | `3` | `3` | `3` |
-| **`lv 2` (`Ply 2`)** | White (Move 2) | `9` | `9` | `9` |
-| **`lv 3` (`Ply 3`)** | Black (Move 2) | `27` | `23` | `23` |
-| **`lv 4` (`Ply 4`)** | White (Move 3) | `81` | `51` | `52` |
-| **`lv 5` (`Ply 5`)** | Black (Move 3) | `243` | `110` | `117` |
-| **`lv 6` (`Ply 6`)** | White (Move 4) | `729` | `247` | `264` |
-| **`lv 7` (`Ply 7`)** | Black (Move 4) | `2,187` | `531` | `559` |
-| **`lv 8` (`Ply 8` Leaves)** | White (Move 5) | `6,561` | `1,125` | `1,200` |
-| **Total (`lv 0 .. 8`)** | — | `9,841` | **`2,100`** | **`2,228`** |
+| **`lv 0` (`Ply 0`)** | White (Move 1) | Full-Width (`All 7 Moves`) | `1` | `1` |
+| **`lv 1` (`Ply 1`)** | Black (Move 1) | Full-Width (`All 7 Moves`) | `7` | `7` |
+| **`lv 2` (`Ply 2`)** | White (Move 2) | Full-Width (`All Legal Moves`) | `49` | `49` |
+| **`lv 3` (`Ply 3`)** | Black (Move 2) | Full-Width (`All Legal Moves`) | `216` | `216` |
+| **`lv 4` (`Ply 4`)** | White (Move 3) | DOE ($\delta = 15\text{ cp}, k = 3$) | `805` | `805` |
+| **`lv 5` (`Ply 5`)** | Black (Move 3) | DOE ($\delta = 15\text{ cp}, k = 3$) | `759` | `588` |
+| **`lv 6` (`Ply 6`)** | White (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `1,230` | `1,016` |
+| **`lv 7` (`Ply 7`)** | Black (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `1,949` | `1,665` |
+| **`lv 8` (`Ply 8` Leaves)** | White (Move 5) | Frontier Leaves | `3,032` | `2,530` |
+| **Total (`lv 0 .. 8`)** | — | — | **`8,048`** | **`6,877`** |
 
 ---
 
@@ -137,17 +136,86 @@ At the beginning of [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/Mi
 
 ## 5. Full-Width Early Plies + Drop-Out Expansion (`ExpandDropOut`)
 
-To expand existing opening books beyond 8 plies while ensuring 100% coverage of early human moves, [`BookBuilder.ExpandDropOut`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) and the `book expand-doe` CLI command implement a two-phase algorithm:
+To expand existing opening books beyond 8 plies while ensuring 100% coverage of early human moves, [`BookBuilder.ExpandDropOut`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) and the `book expand-doe` CLI command in [`BookCommands.cs`](../../tools/Checkers.Benchmark/BookCommands.cs) implement a two-phase algorithm:
 
 1. **Phase A — Full-Width Early Plies (`--full-width-plies 4`, i.e., `lv 0..3`):**
-   - Evaluates and stores **all legal moves** in the first 4 plies (`257` internal positions producing `732` `lv 4` positions) while preserving 100% of any existing `lv 4..8` subtrees already in the book.
-   - Guarantees the AI remains in book against any legal human move in the first 2 full turns (`Black -> White -> Black -> White`).
+   - Evaluates and stores **all legal moves** in the first 4 plies (`1 + 7 + 49 + 216 = 273` internal positions producing `805` `lv 4` positions) while preserving 100% of any existing `lv 4..8` subtrees already in the book.
+   - Guarantees the AI remains in book against any legal human move in the first 2 full turns (`Black -> White -> Black -> White`) and unlocks all 7 classical starting moves at `lv 0` (`22-18`, `22-17`, `24-19`, `23-19`, `21-17`, `23-18`, `24-20`).
+   - Already-widened positions at `lv 0..3` are detected and skipped in `0 ms` on subsequent runs.
 2. **Phase B — Drop-Out Expansion (DOE) from `lv 4` up to `--max-ply 12`:**
-   - Repeatedly descends from the root, filtering out candidate moves whose backed-up score trails a node's best move by more than the depth-tapered drop-out threshold $\delta(\text{ply})$ (`15 cp` at `lv 0..5`, `10 cp` at `lv 6..9`, `6 cp` at `lv 10+`).
-   - Automatically ignores weak/blunder moves among the `732` `lv 4` positions while prioritizing newly widened competitive openings (such as `23-19` *Old Faithful*, `23-18` *Cross*, and `24-19` *Double Corner*) using least-visited selection with virtual visits (`Visits + PendingVisits`) across all `8` parallel workers.
-   - Expands each chosen leaf with a `60s` Multi-PV (`width = 3`) search and propagates updated Negamax scores bottom-up to the root via topological post-order `BackUp`.
+   - Repeatedly descends from the root, filtering out candidate moves whose backed-up score trails a node's best move by more than the depth-tapered drop-out threshold $\delta(\text{ply})$ ([`BookBuilder.GetDefaultDropOutDelta`](../../src/Checkers.Core/AI/Book/BookBuilder.cs)):
+     - **`lv 0 .. lv 5`:** $\delta = 15\text{ cp}$ (`5 cp` safety margin above runtime `10 cp` randomization)
+     - **`lv 6 .. lv 9`:** $\delta = 10\text{ cp}$ (matches runtime `10 cp` randomization)
+     - **`lv 10+`:** $\delta = 6\text{ cp}$ (focuses deep search on the narrowest principal lines)
+   - Automatically ignores weak/blunder moves among the `805` `lv 4` positions (`~63%–70%` dropped out immediately) while prioritizing newly widened competitive openings (such as `24-19` *Double Corner*, `23-19` *Old Faithful*, and `23-18` *Cross*) using least-visited selection with virtual visits (`Visits + PendingVisits`) across all `8` parallel workers.
+   - Expands each chosen leaf with a `60s` Multi-PV (`--width 3`) search and propagates updated Negamax scores bottom-up to the root via topological post-order `BackUp`.
+
+---
+
+## 6. CLI Reference (`Checkers.Benchmark book`)
+
+All opening book commands are provided by [`tools/Checkers.Benchmark/BookCommands.cs`](../../tools/Checkers.Benchmark/BookCommands.cs) and invoked via:
 
 ```powershell
-# Widen lv 0..3 to store all legal moves and expand competitive lines up to 12 plies via DOE
-dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 12 --width 3 --node-time-s 60 --workers 8
+dotnet run -c Release --project tools/Checkers.Benchmark -- book <subcommand> [options]
+```
+
+### 6.1 Subcommands
+
+| Subcommand | Description |
+| :--- | :--- |
+| **`book expand-doe`** *(or `book doe`)* | Two-phase **Full-Width Early Plies (`lv 0..3`) + Drop-Out Expansion (DOE)** on existing or new books. Supports timed intervals, iteration limits, periodic live book flushes, and `.partial` checkpoint resume. |
+| **`book generate`** | Uniform top-down level-by-level (`lv 0 .. max-level`) Multi-PV book generator. |
+| **`book verify`** | Loads the opening book(s), prints per-level node statistics and root evaluations, and runs `BookBuilder.CheckBackUp` to verify 100% parent/child Negamax consistency. |
+
+### 6.2 Command-Line Switches for `book expand-doe`
+
+| Switch | Default | Description |
+| :--- | :---: | :--- |
+| `--variant <English\|International\|All>` | `All` | Variant(s) to expand (`English`, `International`, or `All` to run both sequentially). |
+| `--full-width-plies <count>` | `4` | Number of starting plies (`lv 0 .. count - 1`) where **all legal moves** are evaluated and stored (`4` = `lv 0..3`). Set to `0` to disable Phase A widening. |
+| `--max-ply <plies>` | `12` | Maximum depth ceiling per active line (`1..32`). Unexpanded leaves at `ply >= max-ply` are treated as depth-complete. |
+| `--width <1..32>` | `3` | Number of top candidate moves stored per expanded DOE leaf at `lv >= full-width-plies`. |
+| `--delta-cp <cp>` | *(tapered)* | Optional flat drop-out margin in centipawns across all plies. When omitted, uses the default depth-tapered schedule (`15 cp` at `lv 0..5`, `10 cp` at `lv 6..9`, `6 cp` at `lv 10+`). |
+| `--iterations <count>` | *(unlimited)* | Optional maximum number of newly searched positions per variant before stopping cleanly. |
+| `--max-time-min <minutes>` | *(unlimited)* | Optional wall-clock time budget in minutes per variant (e.g., `360` = `6 hours` per variant / `12 hours` total for `All`). |
+| `--node-time-s <seconds>` | `60` | Search time per position in seconds for `MinimaxPlayer.SearchMultiPv`. |
+| `--node-depth <plies>` | *(disabled)* | Optional fixed search depth per position (overrides `--node-time-s`; useful for fast testing). |
+| `--workers <count>` | `8` | Number of parallel worker threads (each with its own dedicated `32 MiB` transposition table). |
+| `--flush-interval <count>` | `25` | Number of newly expanded DOE nodes between automatic backed-up book flushes to disk (`~2.5 minutes` at `60s/node` on `8` workers). |
+| `--out <path>` | *(default book)* | Optional custom output file path (when running a single `--variant`). |
+
+### 6.3 Command-Line Switches for `book generate` and `book verify`
+
+| Subcommand | Switch | Default | Description |
+| :--- | :--- | :---: | :--- |
+| **`book generate`** | `--variant <English\|International\|All>` | `All` | Variant(s) to generate. |
+| **`book generate`** | `--max-level <0..31>` | `7` | Deepest internal level to evaluate (`7` = `lv 0..7` evaluated, reaching `lv 8` leaves). |
+| **`book generate`** | `--width <1..32>` | `3` | Top moves to store per position across all levels. |
+| **`book generate`** | `--node-time-s <seconds>` | `60` | Search time per position in seconds. |
+| **`book generate`** | `--node-depth <plies>` | *(disabled)* | Optional fixed search depth per node. |
+| **`book generate`** | `--workers <count>` | `8` | Parallel worker threads. |
+| **`book generate`** | `--out <path>` | *(default book)* | Optional custom output file path. |
+| **`book verify`** | `--variant <English\|International\|All>` | `All` | Variant(s) to verify. |
+| **`book verify`** | `--book <path>` | *(default book)* | Optional path to a specific book file to verify. |
+
+---
+
+### 6.4 Practical Examples
+
+```powershell
+# 1. Phase A only: Widen lv 0..3 to store ALL legal moves while preserving existing lv 4..8 subtrees
+dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 4 --width 3 --node-time-s 60 --workers 8
+
+# 2. Timed 12-hour interval (360 min/variant): Catch up newly widened active openings to lv 8
+dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 8 --width 3 --max-time-min 360 --node-time-s 60 --workers 8
+
+# 3. Expand competitive lines up to 12 plies (lv 12) in 12-hour intervals (360 min/variant)
+dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 12 --width 3 --max-time-min 360 --node-time-s 60 --workers 8
+
+# 4. Expand only English Checkers for a fixed budget of 200 newly searched positions
+dotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant English --full-width-plies 4 --max-ply 12 --iterations 200 --node-time-s 60 --workers 8
+
+# 5. Verify Negamax back-up consistency and print level-by-level statistics for both books
+dotnet run -c Release --project tools/Checkers.Benchmark -- book verify
 ```
