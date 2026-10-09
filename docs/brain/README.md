@@ -59,7 +59,7 @@ The documentation is organized in a logical progression from architectural overv
 | 07 | [Search](07-search.md) | **AI & Search** | Negamax Alpha-Beta, Stage A Exact (PVS, `DrawTable`) & Stage B Selective (Verified LMR, RFP, FP), Quiescence, Iterative Deepening |
 | 08 | [Transposition table](08-transposition-table.md) | **AI & Search** | 4-way set-associative 64-byte cache-line buckets, 16-byte entry with `StaticEval`, Pinned Object Heap + `Sse.Prefetch0` |
 | 09 | [Time control](09-time-control.md) | **AI & Search** | Fixed Depth, Time per Move, Time per Game, soft/hard time budgets, dynamic piece-count allocation, Undo clock refunds |
-| 10 | [Opening book](10-opening-book.md) | **AI & Search** | Top-down Multi-PV DAG book generation (`lv 0..7`), Negamax back-up, and embedded 8-ply English & International books |
+| 10 | [Opening book](10-opening-book.md) | **AI & Search** | Full-width early plies (`lv 0..3`), Drop-Out Expansion (`lv 4..12`), Negamax back-up, and embedded 12-ply English & International books |
 | 11 | [Bitboards](11-bitboards.md) | **Optimization** | 64-bit bitboard representation (`4 × ulong`), $O(1)$ `HasAnyCapture`, ray fast-rejection guards, `POPCNT` evaluation, copy-make search |
 | 12 | [Engine improvements during development](12-engine-improvements.md) | **Optimization** | Complete chronological milestones (Bitboard refactor & Phases 1–7) with 40-position deep, timed, and self-play benchmark suites |
 | 13 | [App integration](13-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly AOT macrotask yielding, live analysis pipeline |
