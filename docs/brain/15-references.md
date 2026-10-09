@@ -48,7 +48,7 @@ Official rulesets, foundational artificial intelligence research, bitboard engin
 * **Lincke, Thomas R. (2000, 2001).** *"Strategies for the Automatic Construction of Opening Books"* (Computers and Games — CG 2000, Springer LNCS, Vol. 2063, pp. 74–86) & *"Exploring the Computational Limits of Large Exhaustive Search Problems"* (ETH Zürich Ph.D. Dissertation #14099).
   * Priority-driven Drop-Out Expansion (DOE) algorithm (`W_player * delta_player + W_opponent * delta_opponent + depth`) and transposition-aware Directed Acyclic Graph (DAG) Negamax back-up for autonomous opening book construction ([Chapter 10](10-opening-book.md)).
 * **Fierz, Martin (2000–2021).** *Cake Checkers Engine & CheckerBoard Interface.*
-  * Classical $8 \times 8$ Checkers static evaluation heuristics, runaway checker promotion cones, king tail pins, structural back-rank patterns (`Bridge`, `Oreo`, `Triangle`, `Dog`, `Right Lock`), and parameterized evaluation tables ([Chapters 05](05-evaluation.md), [12](12-engine-improvements.md)).
+  * Landmark $8 \times 8$ English Checkers engine, Windows GUI protocol (`CheckerBoard`), and technical articles on bitboard move generation, endgame tablebases, and evaluation design in computer Checkers.
 * **Letouzey, Fabien (2015–2020).** *Scan 3.1 Open-Source International Draughts Engine.*
   * Bitboard move generation and Flying King evaluation experiments ([Chapters 05](05-evaluation.md), [12](12-engine-improvements.md)).
 

@@ -125,10 +125,6 @@ In addition, five classical Checkers formations from `board_eval.c` are detected
 | **Oreo** | `wm` covers `(7,2), (7,4), (6,3)` | `bm` covers `(0,3), (0,5), (1,4)` | **`+20 cp`** | Central back-rank triangle formation |
 | **Dog** | `wm & (7,6)` and `bm & (6,7)` | `bm & (0,1)` and `wm & (1,0)` | **`+10 cp`** | Back-rank defender immobilizing an advanced flank Man |
 
-> [!NOTE]
-> **Why `board_eval.c` Outperformed a Full Cake 1.89g Port in Fixed-Time Self-Play (Phase 6c Experiment):**
-> We also tested a complete 1:1 C# port of Martin Fierz's **Cake 1.89g** parameterized evaluator (`cake_eval_parametrized.c`, including `materialeval[13^4]`, `backrank[65536]`, and all 8 sections of `fineevaluation()`). While Cake's evaluator beat `LegacyEvaluationFunction` (`66.0 / 100`, `+115.2 ± 41.9 Elo`), its $7\times$ higher leaf latency (`62.1 ns/eval` vs. `8.8 ns/eval`) cost `1.19 plies` of average search depth at `1000 ms/move` and trailed our `POPCNT`-vectorized `board_eval.c` port (`69.5 / 100`, **`+143.1 ± 42.9 Elo`**) by **`27.9 Elo`**. See [Chapter 12 – Milestone 8](12-engine-improvements.md#1-english-checkers--100-game-match-neweval-vs-legacyeval-1000-msmove) for the full comparison.
-
 ---
 
 ### 2. International Draughts (Flying Kings) Evaluation (`EvaluateInternational`)
