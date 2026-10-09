@@ -86,10 +86,10 @@ Both opening books were generated on an **AMD Ryzen 7 7800X3D** (`8 physical cor
 | **Evaluated Internal Levels** | `lv 0 .. lv 11` (`12` plies of moves, reaching `lv 12`) | `lv 0 .. lv 11` (`12` plies of moves, reaching `lv 12`) |
 | **Moves Stored per Position** | **All legal moves (`lv 0..3`)** + **Top `3` via DOE (`lv 4..11`)** | **All legal moves (`lv 0..3`)** + **Top `3` via DOE (`lv 4..11`)** |
 | **Search Budget per Position** | `60s` Multi-PV, `24–31 plies` (`~400M–690M` nodes) | `60s` Multi-PV, `24–31 plies` (`~400M–690M` nodes) |
-| **Unique Internal Positions (`lv 0..11`)** | **`14,320`** (`100%` complete to `lv 12`) | **`9,634`** (`455` active leaves remaining) |
-| **Unique Frontier Leaves (`lv 4..12`)** | **`18,049`** (**`8,605` at `lv 12`**) | **`12,467`** (**`3,395` at `lv 12`**) |
-| **Total Unique Book Positions (`lv 0..12`)** | **`32,369`** (up from `2,100` baseline) | **`22,101`** (up from `2,228` baseline) |
-| **Embedded File Size** | **`1,062,670 bytes` (`1.01 MB`)** | **`733,072 bytes` (`715.9 KB`)** |
+| **Unique Internal Positions (`lv 0..11`)** | **`14,320`** (`100%` complete to `lv 12`) | **`11,541`** (`100%` complete to `lv 12`) |
+| **Unique Frontier Leaves (`lv 4..12`)** | **`18,049`** (**`8,605` at `lv 12`**) | **`14,826`** (**`4,904` at `lv 12`**) |
+| **Total Unique Book Positions (`lv 0..12`)** | **`32,369`** (up from `2,100` baseline) | **`26,367`** (up from `2,228` baseline) |
+| **Embedded File Size** | **`1,062,670 bytes` (`1.01 MB`)** | **`875,844 bytes` (`855.3 KB`)** |
 | **Root (`lv 0`) Backed-Up Score & All 7 Moves** | **`+2` — `22-18 (+2)`, `22-17 (-4)`, `24-19 (-4)`, `23-18 (-8)`, `23-19 (-8)`, `21-17 (-16)`, `24-20 (-16)`** | **`+2` — `22-18 (+2)`, `21-17 (+1)`, `24-19 (-5)`, `22-17 (-6)`, `23-19 (-9)`, `23-18 (-17)`, `24-20 (-19)`** |
 | **`BookBuilder.CheckBackUp` Verification** | **`OK (0 errors)`** | **`OK (0 errors)`** |
 
@@ -102,15 +102,15 @@ Both opening books were generated on an **AMD Ryzen 7 7800X3D** (`8 physical cor
 | **`lv 2` (`Ply 2`)** | White (Move 2) | Full-Width (`All Legal Moves`) | `49` | `49` |
 | **`lv 3` (`Ply 3`)** | Black (Move 2) | Full-Width (`All Legal Moves`) | `216` | `216` |
 | **`lv 4` (`Ply 4`)** | White (Move 3) | DOE ($\delta = 15\text{ cp}, k = 3$) | `805` | `805` |
-| **`lv 5` (`Ply 5`)** | Black (Move 3) | DOE ($\delta = 15\text{ cp}, k = 3$) | `795` | `625` |
-| **`lv 6` (`Ply 6`)** | White (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `1,333` | `1,115` |
-| **`lv 7` (`Ply 7`)** | Black (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `2,151` | `1,903` |
-| **`lv 8` (`Ply 8`)** | White (Move 5) | DOE ($\delta = 10\text{ cp}, k = 3$) | `3,378` | `3,061` |
-| **`lv 9` (`Ply 9`)** | Black (Move 5) | DOE ($\delta = 10\text{ cp}, k = 3$) | `3,453` | `3,150` |
-| **`lv 10` (`Ply 10`)** | White (Move 6) | DOE ($\delta = 6\text{ cp}, k = 3$) | `4,687` | `3,633` |
-| **`lv 11` (`Ply 11`)** | Black (Move 6) | DOE ($\delta = 6\text{ cp}, k = 3$) | `6,889` | `4,141` |
-| **`lv 12` (`Ply 12` Leaves)** | White (Move 7) | Frontier Leaves | `8,605` | `3,395` |
-| **Total (`lv 0 .. 12`)** | — | — | **`32,369`** | **`22,101`** |
+| **`lv 5` (`Ply 5`)** | Black (Move 3) | DOE ($\delta = 15\text{ cp}, k = 3$) | `795` | `632` |
+| **`lv 6` (`Ply 6`)** | White (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `1,333` | `1,161` |
+| **`lv 7` (`Ply 7`)** | Black (Move 4) | DOE ($\delta = 10\text{ cp}, k = 3$) | `2,151` | `1,999` |
+| **`lv 8` (`Ply 8`)** | White (Move 5) | DOE ($\delta = 10\text{ cp}, k = 3$) | `3,378` | `3,253` |
+| **`lv 9` (`Ply 9`)** | Black (Move 5) | DOE ($\delta = 10\text{ cp}, k = 3$) | `3,453` | `3,573` |
+| **`lv 10` (`Ply 10`)** | White (Move 6) | DOE ($\delta = 6\text{ cp}, k = 3$) | `4,687` | `4,350` |
+| **`lv 11` (`Ply 11`)** | Black (Move 6) | DOE ($\delta = 6\text{ cp}, k = 3$) | `6,889` | `5,417` |
+| **`lv 12` (`Ply 12` Leaves)** | White (Move 7) | Frontier Leaves | `8,605` | `4,904` |
+| **Total (`lv 0 .. 12`)** | — | — | **`32,369`** | **`26,367`** |
 
 ---
 
