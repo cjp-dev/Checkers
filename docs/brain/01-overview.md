@@ -134,9 +134,10 @@ sequenceDiagram
 
 ---
 
-## Design principles
+## Design principles & engineering inspiration
 
 1. **Zero UI Coupling:** `Checkers.Core` has no dependencies on WPF, Blazor, HTML, or GUI libraries. It runs identically on desktop, web browser (WASM AOT), test runners, and CLI benchmarks.
 2. **Deterministic & Testable:** Rules, Zobrist hashes, and fixed-depth search trees are 100% deterministic with no hidden side effects.
 3. **Zero-Allocation Hot Path:** By representing board states as 48-byte `BitPosition` structs and moves as 16-byte `BitMove` structs in preallocated per-ply buffers, the search engine evaluates **32–37 million nodes per second** with zero garbage collection pressure ([Chapter 11 – Bitboards](11-bitboards.md), [Chapter 12 – Engine improvements during development](12-engine-improvements.md)).
 4. **Standard Notation Compatibility:** Bidirectional $O(1)$ conversion between `(Row, Col)`, bit indices `0..63`, and official Draughts $1\text{–}32$ square numbers enables full Portable Draughts Notation (PDN) interoperability.
+5. **Open-Source Engine Inspiration ([`Stermere/Checkers-Engine`](https://github.com/Stermere/Checkers-Engine)):** Several key parts of the AI search and evaluation pipeline in `Checkers.Core` were inspired by Collin Kees's C engine **Checkers-Engine (Marcher Engine)** (available in [`Checkers-Engine-main/`](../../Checkers-Engine-main/)), including the 4-bitboard 64-square layout, 16-byte 4-way cache-line transposition table ([`hash_table.c`](../../Checkers-Engine-main/src/engine/hash_table.c)), pre-TT repetition table ([`draw_table.c`](../../Checkers-Engine-main/src/engine/draw_table.c)), 16-bit packed killer moves ([`killer_table.c`](../../Checkers-Engine-main/src/engine/killer_table.c)), PVS + Verified LMR/RFP/FP selective pruning and partial-iteration root adoption ([`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c)), handcrafted heuristic evaluation ([`board_eval.c`](../../Checkers-Engine-main/src/engine/board_eval.c)), and shared-TT opening book validation ([`opening_book.c`](../../Checkers-Engine-main/src/engine/opening_book.c)).

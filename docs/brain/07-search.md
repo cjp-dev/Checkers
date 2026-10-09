@@ -66,7 +66,7 @@ flowchart TD
 
 ## Two-Stage Search Enhancements: Exact (Stage A) vs. Selective (Stage B)
 
-To measure the exact contribution of lossless tree-search algorithms versus selective forward pruning, our search improvements are organized into two distinct stages (controllable via `MinimaxPlayer.UseSelectivePruning`):
+Inspired by the empirical search architecture and feature-ablation methodology of Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c) and [`draw_table.c`](../../Checkers-Engine-main/src/engine/draw_table.c)), our search improvements are organized into two distinct stages (controllable via `MinimaxPlayer.UseSelectivePruning`) to measure the exact contribution of lossless tree-search algorithms versus selective forward pruning:
 
 ![Two-Stage Search Architecture: Exact PVS (Stage A) & Selective Pruning (Stage B)](images/pvs-lmr-pruning.svg)
 
@@ -80,7 +80,7 @@ Stage A reduces the number of nodes required to prove the **exact same minimax v
 
 Because `OrderBitMoves` ([Chapter 06](06-move-ordering.md)) places the Transposition Table best move, mandatory captures, promotions, Killer moves, and high-history moves at the front of the move list, the first legal move ($i = 0$) is the best move at the vast majority of nodes.
 
-**Principal Variation Search (PVS)** exploits this ordering at every interior node (`ply > 0`):
+**Principal Variation Search (PVS)** (`USE_PVS` in [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c)) exploits this ordering at every interior node (`ply > 0`):
 1. **First Move ($i = 0$):** Searched with the full window $[-\beta, -\alpha]$ to establish an accurate lower bound $\alpha$:
    $$\text{score}_0 = -V\bigl(\text{Apply}(s, m_0),\, d - 1,\, -\beta,\, -\alpha,\, \text{ply} + 1\bigr)$$
 2. **Subsequent Moves ($i > 0$ when $\beta > \alpha + 1$):** Tested first with a **zero-width (null) window** $[-\alpha - 1, -\alpha]$:
@@ -95,7 +95,7 @@ Because a null-window test in an exact search tree returns $\text{score}_{\text{
 
 A cached Transposition Table entry stores the static or subtree evaluation of a board configuration without knowing the path of moves that led to it. Without path-aware repetition tracking, an engine that is ahead by $+300$ centipawns can cycle Kings back and forth into a 3-fold repetition draw because the repeated board still evaluates to $+300$ at the horizon; conversely, a losing engine cannot intentionally seek a perpetual repetition to salvage a draw.
 
-[`DrawTable`](../../src/Checkers.Core/AI/DrawTable.cs) tracks 64-bit Zobrist hashes along the active search path and from the game's `StateHistory`:
+Inspired by [`draw_table.c`](../../Checkers-Engine-main/src/engine/draw_table.c) and `GAME_HISTORY` seeding in [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c) (which identified that running the repetition check *before* the TT probe is essential to prevent stale TT cutoffs from hiding repetition draws), [`DrawTable`](../../src/Checkers.Core/AI/DrawTable.cs) tracks 64-bit Zobrist hashes along the active search path and from the game's `StateHistory`:
 1. **Checked Before TT Probe (`ply > 0`):** At the start of `NegamaxBitboard`, *before* probing `TranspositionTable`, `_drawTable.IsRepetition(in pos, ply)` checks whether `pos.Hash` repeats an ancestor or completes a game-history repetition. If so, `NegamaxBitboard` immediately returns `0` (Draw) without polluting the TT with a path-dependent score.
 2. **Pre-Root Game History Seeding (`_twoFoldHashes` & `_oneFoldHashes`):**
    - Any position that has already occurred $\ge 2$ times in `stateHashHistory` is seeded into `_twoFoldHashes`. Reaching it even once in the search (`ply >= 1`) completes a 3-fold repetition in the game and immediately returns `0`.
@@ -109,14 +109,14 @@ A cached Transposition Table entry stores the static or subtree evaluation of a 
 
 ## Stage B: Selective Pruning & Reductions (Phase 4)
 
-While Stage A explores every quiet move at full depth $d - 1$, Stage B focuses search effort on promising tactical and high-priority lines while pruning or reducing futile quiet branches at non-PV nodes (`beta <= alpha + 1`).
+While Stage A explores every quiet move at full depth $d - 1$, Stage B adapts the evaluation-guided pruning and verified reduction design from [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c) (`USE_RFP`, `USE_FUTILITY`, `USE_VERIFIED_LMR` in [`Stermere/Checkers-Engine`](https://github.com/Stermere/Checkers-Engine)) to focus search effort on promising tactical and high-priority lines while pruning or reducing futile quiet branches at non-PV nodes (`beta <= alpha + 1`).
 
 > [!IMPORTANT]
-> **Checkers Tactical Safety Invariant:** Because captures in Checkers are strictly **mandatory** ([Chapter 03](03-rules-and-move-generation.md)), any position where either player has a legal capture (`isCaptureNode` or `HasAnyCapture(in nextPos)`) can force an immediate multi-jump material swing. Therefore, all three Stage B techniques (**RFP**, **FP**, and **LMR**) are strictly disabled whenever a capture or promotion is present!
+> **Checkers Tactical Safety Invariant:** Because captures in Checkers are strictly **mandatory** ([Chapter 03](03-rules-and-move-generation.md)), any position where either player has a legal capture (`isCaptureNode` or `HasAnyCapture(in nextPos)`) can force an immediate multi-jump material swing. Following `has_any_jump` in [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c), all three Stage B techniques (**RFP**, **FP**, and **LMR**) are strictly disabled whenever a capture or promotion is present!
 
 ### 1. Reverse Futility Pruning / Static Null Move Pruning (RFP)
 
-At a shallow **non-PV** quiet node (`ply > 0`, `beta <= alpha + 1`, `depth <= 6`, `!isCaptureNode`) where neither the active player nor the opponent has an immediate capture available and $|\beta| < 28{,}000$ (non-mate window), the engine compares the static evaluation $\text{eval}_0$ against $\beta$ with a depth-scaled safety margin ($M_{\text{RFP}} = 40\text{ centipawns/ply}$):
+At a shallow **non-PV** quiet node (`ply > 0`, `beta <= alpha + 1`, `depth <= 6`, `!isCaptureNode`) where neither the active player nor the opponent has an immediate capture available and $|\beta| < 28{,}000$ (non-mate window), the engine compares the static evaluation $\text{eval}_0$ against $\beta$ with a depth-scaled safety margin ($M_{\text{RFP}} = 40\text{ centipawns/ply}$, adapted from `RFP_MAX_DEPTH = 6` in `board_search.c`):
 
 $$\text{eval}_0 - 40 \cdot d \ge \beta \quad \Longrightarrow \quad \text{Return } \text{eval}_0 \text{ immediately (Static }\beta\text{-Cutoff)}$$
 
@@ -124,7 +124,7 @@ $$\text{eval}_0 - 40 \cdot d \ge \beta \quad \Longrightarrow \quad \text{Return 
 
 ### 2. Frontier Futility Pruning (FP)
 
-Conversely, at a shallow **non-PV** quiet node near the leaves (`ply > 0`, `beta <= alpha + 1`, `depth <= 3`, `!isCaptureNode`) where $|\alpha| < 28{,}000$, if the static evaluation plus an optimistic margin ($M_{\text{FP}} = 60\text{ centipawns/ply}$) still falls short of $\alpha$:
+Conversely, at a shallow **non-PV** quiet node near the leaves (`ply > 0`, `beta <= alpha + 1`, `depth <= 3`, `!isCaptureNode`, matching `FUTILITY_MAX_DEPTH = 3` in `board_search.c`) where $|\alpha| < 28{,}000$, if the static evaluation plus an optimistic margin ($M_{\text{FP}} = 60\text{ centipawns/ply}$) still falls short of $\alpha$:
 
 $$\text{eval}_0 + 60 \cdot d \le \alpha$$
 
@@ -134,7 +134,7 @@ the node is Marked `futilityPrunable = true`. After searching at least the best 
 
 At deeper interior nodes (`depth >= 3`, `ply >= 2`), `OrderBitMoves` has already placed the TT Hash Move ($i = 0$), promotions, Killer 1, Killer 2, and top History moves in the first 3 slots ($i \in \{0, 1, 2\}$). Quiet moves ordered at index $i \ge 3$ are statistically unlikely to beat $\alpha$.
 
-When a move $m_i$ ($i \ge 3$) is quiet (`!isCaptureNode && !m.IsPromotion`) and does not leave the opponent with a mandatory capture (`!BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant)`), **Verified LMR** reduces the initial null-window search depth by $R(d, i)$:
+Using the exact LMR threshold parameters from [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c) (`LMR_MIN_MOVE_INDEX = 3`, `LMR_MIN_DEPTH = 3`, `LMR_MIN_PLY = 2`, `LMR_LATE_MOVE_INDEX = 8`), when a move $m_i$ ($i \ge 3$) is quiet (`!isCaptureNode && !m.IsPromotion`) and does not leave the opponent with a mandatory capture (`!BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant)`), **Verified LMR** reduces the initial null-window search depth by $R(d, i)$:
 
 $$R(d, i) = \min\Bigl(d - 2,\; 1 + \mathbb{I}[i \ge 8]\Bigr), \qquad d_{\text{reduced}} = (d - 1) - R(d, i) \ge 1$$
 

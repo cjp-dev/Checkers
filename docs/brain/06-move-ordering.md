@@ -52,7 +52,7 @@ $$S(m) = \begin{cases} 10{,}000{,}000 & \text{if } P(m) = P_{\text{TT}} \text{ (
 
 ## Packed 16-Bit Move Identifier (`BitMove.PackedMove`)
 
-To avoid comparing separate `From` and `To` fields (or converting between `(Row, Col)` coordinates and bitboard indices) during move ordering, [`BitMove`](../../src/Checkers.Core/Bitboards/BitMove.cs) exposes a single 16-bit packed property:
+Inspired by the compact 16-bit move encoding in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](../../Checkers-Engine-main/src/engine/hash_table.c) and [`killer_table.c`](../../Checkers-Engine-main/src/engine/killer_table.c), where `short move = (move_start << 8) | move_end` packs the start square into the high byte and the destination square into the low byte), [`BitMove`](../../src/Checkers.Core/Bitboards/BitMove.cs) exposes a single 16-bit packed property to avoid comparing separate `From` and `To` fields during move ordering:
 
 $$\text{PackedMove} = \text{ ushort }\bigl((\text{From} \ll 8) \mid \text{To}\bigr)$$
 
@@ -62,17 +62,20 @@ Both `TranspositionEntry.BestMove` ([Chapter 08](08-transposition-table.md)) and
 
 ## Killer Move & History Heuristics
 
-Whenever a quiet move (`!m.IsCapture && !m.IsPromotion`) triggers a $\beta$-cutoff ($\alpha \ge \beta$) at remaining depth $d$ and search distance `ply`:
+Following the refutation ordering architecture of [`killer_table.c`](../../Checkers-Engine-main/src/engine/killer_table.c) and [`board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c) (`USE_HISTORY`) in [`Stermere/Checkers-Engine`](https://github.com/Stermere/Checkers-Engine), whenever a quiet move (`!m.IsCapture && !m.IsPromotion`) triggers a $\beta$-cutoff ($\alpha \ge \beta$) at remaining depth $d$ and search distance `ply`:
 
 1. **Two-Slot FIFO Killer Table (`ushort _killers[MaxPly * 2]`):**
    - Sibling nodes at the same `ply` face similar quiet positional threats. If a quiet move refutes the opponent's previous move in one branch, it is highly likely to refute sibling branches at the same `ply`.
    - If `move.PackedMove != _killers[ply * 2]`, slot 0 shifts into slot 1 and the new refutation move becomes slot 0:
      $$\text{Killer}_2(\text{ply}) \leftarrow \text{Killer}_1(\text{ply}), \qquad \text{Killer}_1(\text{ply}) \leftarrow (\text{From} \ll 8) \mid \text{To}$$
-   - Maintaining two FIFO slots per ply prevents a single tactical exception in one branch from overwriting the general-purpose refutation move at that depth.
+   - Maintaining two slots per ply prevents a single tactical exception in one branch from overwriting the general-purpose refutation move at that depth.
 2. **Depth-Squared History Table (`int _history[2 * 64 * 64]`):**
    - While Killer moves capture *local* refutations at a specific `ply`, the History table captures *global* quiet moves that repeatedly succeed across the entire search tree.
    - Deeper $\beta$-cutoffs prune exponentially larger subtrees, so the move's history counter is incremented by $d^2$ and clamped to $70{,}000$ (strictly below `Killer 2 = 80,000` so ply-specific killers always take precedence):
      $$H(\text{side}, \text{from}, \text{to}) \leftarrow \min\bigl(70{,}000,\; H(\text{side}, \text{from}, \text{to}) + d^2\bigr)$$
+
+> [!NOTE]
+> **Why Checkers Needs Only TT + 2 Killers + History (From `board_search.c`):** As documented in [`Checkers-Engine-main/src/engine/board_search.c`](../../Checkers-Engine-main/src/engine/board_search.c), a typical Checkers node has only ~8 legal quiet moves (compared to ~35 in Chess). Because the TT Hash Move plus two Killer slots already populate the front of the list, heavier chess ordering heuristics such as Counter-Move tables, History Malus, or History Ageing add per-node overhead without improving cutoff rank.
 
 ### Principal Variation (PV) Ordering at the Root
 

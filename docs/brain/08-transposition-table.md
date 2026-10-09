@@ -17,7 +17,7 @@ When `MinimaxPlayer` encounters a position—either via a different move order i
 
 ## Compact 16-byte entry & 64-byte cache-line bucket layout
 
-[`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**:
+Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](../../Checkers-Engine-main/src/engine/hash_table.c), `NUMBER_OF_BUCKETS = 4` and `sizeof(struct hash_table_entry) == 16`), [`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**:
 
 ```
 ┌────────────────────┬───────────┬────────────┬───────────┬───────┬──────┬───────┬───────────┐
@@ -82,11 +82,11 @@ flowchart TD
 
 In a direct-mapped (1-slot) hash table, whenever two active positions map to the same index, one must immediately overwrite or be rejected by the other. Grouping 4 entries into a **64-byte set-associative bucket** (`BucketSize = 4`) provides 4 independent ways within the exact same L1/L3 cache line fetch.
 
-When `Store` is called for `key`:
+Following `get_storage_index` and `add_hash_entry` in [`hash_table.c`](../../Checkers-Engine-main/src/engine/hash_table.c), when `Store` is called for `key`:
 1. **Pass 1 — Exact Match or Empty Way:** If any of the 4 ways (`w = 0..3`) already holds `Key32 == key32` or is empty (`Flags == 0`), that way is selected immediately (`victimWay = w`).
    - **BestMove Preservation on Fail-Low:** When updating the same position (`existing.Key32 == key32`), if the new store has no best move (`bestMove == 0`, e.g., an `UpperBound` fail-low) or is an eval-only store, the existing `BestMove` and `StaticEval` are preserved!
    - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth - 2`.
-2. **Pass 2 — Priority-Based Victim Eviction:** If all 4 ways in the bucket hold distinct keys (`Key32 != key32`), `Store` evaluates a replacement priority score for each way $w \in \{0, 1, 2, 3\}$ and overwrites the slot with the **lowest priority**:
+2. **Pass 2 — Priority-Based Victim Eviction:** If all 4 ways in the bucket hold distinct keys (`Key32 != key32`), `Store` evaluates a replacement priority score (`get_storage_index` in `hash_table.c:341`) for each way $w \in \{0, 1, 2, 3\}$ and overwrites the slot with the **lowest priority**:
 
 $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}) \bmod 256\bigr) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$
 
@@ -100,7 +100,7 @@ $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}
 
 In the 64-bit bitboard engine, per-node move generation, copy-make, and `POPCNT` evaluation take only **~28–30 nanoseconds**. By comparison, a random Zobrist lookup into a 16 MiB–256 MiB Transposition Table in L3 cache or main DRAM takes **15–40 nanoseconds**.
 
-To hide this memory latency:
+Inspired by `prefetch_hash_entry` (`_mm_prefetch(addr, _MM_HINT_T0)`) in [`hash_table.c`](../../Checkers-Engine-main/src/engine/hash_table.c), `TranspositionTable` hides this memory latency using two techniques:
 1. **Pinned Object Heap Allocation:** `TranspositionTable` allocates `_entries` on the .NET **Pinned Object Heap** (`GC.AllocateArray<TranspositionEntry>(count, pinned: true)`) and caches the fixed base pointer `TranspositionEntry* _entriesPtr = (TranspositionEntry*) Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_entries))`. Because the GC never relocates POH arrays, address calculation requires zero pinning overhead during search.
 2. **Early Hardware Prefetch (`Sse.Prefetch0`):** Inside `MinimaxPlayer.NegamaxBitboard`, immediately after `BitPosition nextPos = pos.Apply(in moves[i])` computes the child's Zobrist hash `nextPos.Hash`—*before* checking futility pruning, setting up LMR reductions, or pushing the recursive stack frame—the engine issues a hardware prefetch instruction:
 

@@ -11,7 +11,7 @@ The evaluation operates directly on 64-bit [`BitPosition`](11-bitboards.md) stru
 * **Zero ($0$):** Dynamic balance.
 * **Negative ($< 0$):** The opponent has the advantage.
 
-In **Phase 6** ([Chapter 12 – Milestone 8](12-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification)), the static evaluator was upgraded with a hardware `POPCNT`-vectorized, $2\times$-scaled centipawn port of [`board_eval.c`](../../Checkers-Engine-main/src/engine/board_eval.c) for **English Checkers** (`+143.1 ± 42.9 Elo`, `69.5 / 100` in 100-game self-play) and a domain-adapted **Flying Kings** evaluation for **International Draughts** (`+45.4 ± 37.8 Elo`, `56.5 / 100` in 100-game self-play).
+In **Phase 6** ([Chapter 12 – Milestone 8](12-engine-improvements.md#milestone-8-phase-6-static-evaluation-overhaul--200-game-bot-vs-bot-verification)), the static evaluator was upgraded with a hardware `POPCNT`-vectorized, $2\times$-scaled centipawn port of [`board_eval.c`](../../Checkers-Engine-main/src/engine/board_eval.c) from Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) (`Checkers-Engine-main`) for **English Checkers** (`+143.1 ± 42.9 Elo`, `69.5 / 100` in 100-game self-play) and a domain-adapted **Flying Kings** evaluation for **International Draughts** (`+45.4 ± 37.8 Elo`, `56.5 / 100` in 100-game self-play).
 
 ![Static Evaluation Positional Zones and Bitboard Masks](images/evaluation-zones.svg)
 
