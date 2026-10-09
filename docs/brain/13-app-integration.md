@@ -32,7 +32,7 @@ flowchart TD
     subgraph Domain ["Domain &amp; AI Engine (Checkers.Core)"]
         Session["GameSession"]
         RuleEngine["RuleEngine &amp; BitboardMoveGenerator"]
-        AI["MinimaxPlayer &amp; EvaluationFunction"]
+        AI["MinimaxPlayer, EvaluationFunction &amp; OpeningBook"]
         Zobrist["Zobrist Hashing, DrawTable &amp; TranspositionTable"]
         PDN["GameRecordFormat (PDN)"]
     end
@@ -65,7 +65,7 @@ flowchart TD
 
 ### `AnalysisViewModel`
 [`AnalysisViewModel.cs`](../../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:
-* Observable properties: `Move`, `Depth`, `Value`, `BestMove`, `Nodes`, `Evaluations`, `Time`.
+* Observable properties: `Move`, `Depth` (including `Book (12 plies)` on opening book hits), `Value`, `BestMove`, `Nodes` (`0 (Book)` on book hits), `Evaluations`, `Time`.
 * **`Updated` Event:** Raises `public event Action? Updated;` whenever a new `SearchAnalysis` snapshot arrives so Blazor components can trigger `InvokeAsync(StateHasChanged)`.
 
 ### `SettingsViewModel`
@@ -73,6 +73,7 @@ flowchart TD
 * Rule variant selection: **International Draughts (Flying Kings)** vs. **English Checkers (1-Step Kings)**.
 * Time control mode & sliders: **Fixed Depth** ($1\text{–}20$), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
 * Transposition Table size selector: **$1,048,576$ ($16\text{ MiB}$)** up to **$16,777,216$ ($256\text{ MiB}$)** entries.
+* Opening Book toggle (`UseOpeningBook`): Enables or disables the embedded 12-ply opening book (`true` by default).
 
 ---
 

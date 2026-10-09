@@ -14,12 +14,12 @@ The domain library `Checkers.Core` has zero UI dependencies, produces determinis
 
 | Project | Type | Role & Contents |
 |---|---|---|
-| `Checkers.Core` | Class library (`net10.0`) | 64-bit bitboards (`BitPosition`, `BitMove`), rules engine, move generator, Zobrist hashing, Negamax $\alpha$-$\beta$ AI (PVS, LMR, RFP, FP, Killer/History heuristics, `DrawTable`), 4-way bucket transposition table, PDN serializer, and benchmark runners. |
+| `Checkers.Core` | Class library (`net10.0`) | 64-bit bitboards (`BitPosition`, `BitMove`), rules engine, move generator, Zobrist hashing, Negamax $\alpha$-$\beta$ AI (PVS, LMR, RFP, FP, Killer/History heuristics, `DrawTable`), embedded 12-ply Drop-Out Expansion (DOE) opening books (`OpeningBook`, `BookBuilder`), 4-way bucket transposition table, PDN serializer, and benchmark/self-play runners. |
 | `Checkers.App` | Class library (`net10.0`) | Shared MVVM ViewModels (`CommunityToolkit.Mvvm`), game loop coordinator, chess clock management, and platform service abstractions (`ISoundService`, `IDialogService`, `IGameFileService`). |
 | `Checkers.Wpf` | WPF Application (`net10.0-windows`) | Desktop presentation client: 60 FPS board rendering, click-to-move, drag-and-drop, sound effects, Settings dialog, and live search telemetry pane. |
 | `Checkers.Web` | Blazor WebAssembly (`net10.0`) | Web presentation client: Ahead-Of-Time (AOT) compiled WebAssembly app with responsive board UI, cooperative AI search yielding, and integrated Markdig/KaTeX/Mermaid `/docs` viewer. |
-| `Checkers.Benchmark` | Console CLI (`net10.0`) | Automated 40-position and 5-position empirical benchmark runner measuring search depth, node reductions, transposition table sizing ($1\text{M}$ vs. $16\text{M}$), and throughput across development phases. |
-| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 103 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, `DrawTable` repetitions, PVS/LMR search, and PDN persistence. |
+| `Checkers.Benchmark` | Console CLI (`net10.0`) | Automated 40-position and 5-position empirical benchmark runner, 10M-evaluation microbenchmark (`eval-speed`), 200-game bot-vs-bot self-play match runner (`eval-match`), and opening book construction/verification CLI (`book generate`, `book expand-doe`, `book verify`). |
+| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 123 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, `DrawTable` repetitions, Phase 6 evaluation terms, PVS/LMR search, 12-ply DOE opening books, and PDN persistence. |
 | `Checkers.App.Tests` | xUnit (`net10.0`) | 40 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, and UI command workflows. |
 
 ```mermaid
@@ -27,7 +27,7 @@ flowchart TD
     subgraph Presentation ["Presentation Layer"]
         WPF["Checkers.Wpf<br/>(Windows Desktop)"]
         Web["Checkers.Web<br/>(Blazor WebAssembly + /docs)"]
-        CLI["Checkers.Benchmark<br/>(Empirical CLI Suite)"]
+        CLI["Checkers.Benchmark<br/>(Empirical &amp; Book CLI Suite)"]
     end
 
     subgraph Application ["Application Layer"]
@@ -35,11 +35,11 @@ flowchart TD
     end
 
     subgraph Domain ["Domain &amp; AI Engine"]
-        Core["Checkers.Core<br/>(64-Bit Bitboards, Rules, PVS/LMR AI, 4-Way TT, PDN)"]
+        Core["Checkers.Core<br/>(64-Bit Bitboards, Rules, PVS/LMR AI, 12-Ply Book, 4-Way TT, PDN)"]
     end
 
     subgraph Verification ["Automated Test Suites"]
-        CoreTests["Checkers.Core.Tests (103 tests)"]
+        CoreTests["Checkers.Core.Tests (123 tests)"]
         AppTests["Checkers.App.Tests (40 tests)"]
     end
 
@@ -68,14 +68,15 @@ flowchart TD
 | `GameStatus` & `GameOverReason` | `Checkers.Core.Models` | Enums representing terminal states (`InProgress`, `WhiteWon`, `BlackWon`, `Draw`) and exact win/draw causes. |
 | `BitPosition`, `BitMove`, `BitboardMoveGenerator`, `BitboardMasks` | `Checkers.Core.Bitboards` | 48-byte value-type bitboard state (`4 × ulong`), 16-byte value-type move (`PackedMove`), parallel shift/mask & ray-scan move generator with $O(1)$ `HasAnyCapture`, and precomputed diagonal masks ([Chapter 11](11-bitboards.md)). |
 | `IRuleEngine` & `RuleEngine` | `Checkers.Core.Engine` | Pure rule engine backed by 64-bit bitboards: legal move generation, variant-specific king behaviors, mandatory captures, and terminal evaluation. |
-| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist XOR hashing for rapid state identification, threefold repetition detection, and transposition table indexing. |
+| `Zobrist` | `Checkers.Core.Engine` | Deterministic 64-bit Zobrist XOR hashing for rapid state identification, threefold repetition detection, transposition table indexing, and opening book lookup. |
 | `GameRecordFormat` | `Checkers.Core.Engine` | PDN (Portable Draughts Notation) serializer and parser with metadata tags (`[Variant ...]`, `[TimeControlMode ...]`). |
 | `GameSession` | `Checkers.Core.Engine` | High-level coordinator managing current board state, move history, Undo/Redo stacks, and lifecycle events. |
-| `IEvaluationFunction` & `EvaluationFunction` | `Checkers.Core.AI` | Hardware `BitOperations.PopCount`-accelerated bitboard evaluation tailored per variant: material weights, advancement, center control, king centralization, and back-rank defense. |
-| `SearchLimits` | `Checkers.Core.AI` | Value object encapsulating time control and depth bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`). |
+| `IEvaluationFunction`, `EvaluationFunction` & `LegacyEvaluationFunction` | `Checkers.Core.AI` | Hardware `BitOperations.PopCount`-accelerated static evaluation: `board_eval.c` $2\times$ port for English Checkers and Flying Kings adaptation for International Draughts (material, PSTs, late/continuous advancement, runaway checker cones, king tail pins, simplification bonuses, and structural patterns; [Chapter 05](05-evaluation.md)). |
+| `SearchLimits` | `Checkers.Core.AI` | Value object encapsulating time control, depth bounds (`FixedDepth`, `TimePerMove`, `TimePerGame`), and opening book settings (`UseOpeningBook`, `BookRandomMarginCp`). |
 | `DrawTable` | `Checkers.Core.AI` | In-search repetition detector tracking active search-path Zobrist hashes (`_pathHashes[ply]`) and pre-root game history (`_twoFoldHashes`, `_oneFoldHashes`). |
-| `MinimaxPlayer` | `Checkers.Core.AI` | Allocation-free 64-bit bitboard Negamax $\alpha$-$\beta$ engine with Principal Variation Search (PVS), Killer/History move ordering, Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence search, and live telemetry ([Chapter 07](07-search.md)). |
+| `MinimaxPlayer` | `Checkers.Core.AI` | Allocation-free 64-bit bitboard Negamax $\alpha$-$\beta$ engine with 12-ply Opening Book lookup, Principal Variation Search (PVS), Killer/History move ordering, Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence search, Multi-PV root search, and live telemetry ([Chapter 07](07-search.md)). |
 | `TranspositionTable` | `Checkers.Core.AI` | 4-way set-associative 64-byte cache-line Zobrist table ($1\text{M}\text{–}16\text{M}$ entries on the Pinned Object Heap) with `Sse.Prefetch0` hardware prefetching, caching `Score`, `StaticEval`, `BestMove`, `Depth`, `Age`, and `Bound` ([Chapter 08](08-transposition-table.md)). |
+| `OpeningBook`, `BookBuilder`, `BookFile`, `BookNode` | `Checkers.Core.AI.Book` | Transposition-aware 12-ply Directed Acyclic Graph (DAG) opening books (`32,369` English / `26,367` International positions), built via full-width early plies (`lv 0..3`), priority-driven Drop-Out Expansion (`lv 4..12`), and bottom-up Negamax score propagation ([Chapter 10](10-opening-book.md)). |
 
 ---
 
@@ -125,7 +126,7 @@ sequenceDiagram
     VM->>Player: Update 8x8 SquareViewModels, play sound, trigger AI if next turn
 ```
 
-1. **Move Submission:** A human player clicks/drags a piece to a highlighted destination square, or `MinimaxPlayer.GetMoveAsync` completes its search and returns a `Move`.
+1. **Move Submission:** A human player clicks/drags a piece to a highlighted destination square, or `MinimaxPlayer.GetMoveAsync` returns a `Move` (either instantaneously via an $O(1)$ Zobrist lookup in the embedded 12-ply `OpeningBook` or after completing its iterative deepening Negamax search).
 2. **Validation:** `GameSession.TryMakeMove(move)` verifies legality via `IRuleEngine.IsLegalMove(state, move)`.
 3. **Bitboard Copy-Make Transition:** `RuleEngine.ApplyMove` converts the move to a 16-byte `BitMove` and invokes `BitPosition.Apply(in bitMove)`, which updates the four 64-bit bitboards (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`), clears all jumped pieces via `& ~move.Captured`, crowns the piece if it reached the promotion rank, increments or resets `HalfMoveClock`, flips `SideToMove`, and incrementally XOR-updates the 64-bit Zobrist hash.
 4. **Terminal Evaluation:** `EvaluateGameStatus` checks whether the new active player has zero pieces (`OpponentPiecesEliminated`), zero legal moves via $O(1)$ bitwise mobility detection (`OpponentNoLegalMoves`), `HalfMoveClock >= 80` (`FortyMoveRuleWithoutCaptureOrPromotion`), or a Zobrist hash appearing 3 times (`ThreefoldRepetition`).

@@ -19,8 +19,8 @@ The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) boun
 | Mode | Factory Method | UI Slider Range | Max Iterative Depth | Description |
 |---|---|:---:|:---:|---|
 | **Fixed depth** | `SearchLimits.FixedDepth(plies)` | $1\text{–}20$ plies (default: $8$) | $D = \text{Depth}$ | Explores depths $1, 2, \dots, D$ with no wall-clock timeout ($T_{\text{soft}} = T_{\text{hard}} = \infty$). |
-| **Time per move** | `SearchLimits.TimePerMove(time)` | $1\text{–}60\text{ s}$ (default: $5\text{ s}$) | $64$ plies | Allocates a fixed wall-clock budget $T$ for every computer turn. |
-| **Time per game** | `SearchLimits.TimePerGame(remaining)` | $1\text{–}60\text{ min}$ (default: $5\text{ min}$) | $64$ plies | Shared chess clock dynamically apportioned across the remaining moves of the match. |
+| **Time per move** | `SearchLimits.TimePerMove(time)` | $1\text{–}60\text{ s}$ (default: $5\text{ s}$) | $48$ plies (`MaxPly = 64`) | Allocates a fixed wall-clock budget $T$ for every computer turn. |
+| **Time per game** | `SearchLimits.TimePerGame(remaining)` | $1\text{–}60\text{ min}$ (default: $5\text{ min}$) | $48$ plies (`MaxPly = 64`) | Shared chess clock dynamically apportioned across the remaining moves of the match. |
 
 ---
 
@@ -46,9 +46,11 @@ $$T_{\text{hard}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{rem}
 
 ```mermaid
 flowchart TD
-    Start["Start Turn<br/>Stopwatch.StartNew()"] --> Forced{"Only 1 legal<br/>root move?"}
+    Start["Start Turn"] --> Forced{"Only 1 legal<br/>root move?"}
     Forced -- "Yes" --> RetForced["Immediate Return (1 ply Forced)<br/>LastSearchTerminatedEarly = true"]
-    Forced -- "No" --> D1["Complete Depth 1<br/>(Always finishes)"]
+    Forced -- "No" --> BookCheck{"UseOpeningBook &amp;<br/>Book Hit (12 plies)?"}
+    BookCheck -- "Yes" --> RetBook["Immediate Return (0 ms, 0 Nodes)<br/>FromBook = true"]
+    BookCheck -- "No" --> D1["Stopwatch.StartNew()<br/>Complete Depth 1 (Always finishes)"]
     D1 --> CheckSoft{"Elapsed >= T_soft<br/>(2/3 of budget)?"}
     CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>&amp; bestScoreOverall"]
     CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1<br/>(currentOrder[0] = previous best move)"]
@@ -97,14 +99,14 @@ During each root pass $d$, `GetMoveAsync` tracks both the highest score $S_d^{(1
 
 In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainViewModel.cs) manages the computer's chess clock across the game lifecycle:
 1. **Snapshot Before Search:** Before each move at ply $k$, the remaining computer clock is recorded in `_timeLeftAtPly[k]`.
-2. **Elapsed Deduction:** While the computer searches, a UI timer updates the live countdown banner (`[Clock: 4:32]`) and sidebar clock card. Upon move completion, elapsed thinking time is subtracted from `_computerTimeRemaining`.
+2. **Elapsed Deduction:** While the computer searches, a UI timer updates the live countdown banner (`[Clock: 4:32]`) and sidebar clock card. Upon move completion, elapsed thinking time is subtracted from `_computerTimeRemaining` (opening book hits take `0 ms`, preserving 100% of the clock for the middlegame).
 3. **Exact Undo Refund:** If the human player presses **Undo** (`Ctrl+Z`), `MainViewModel` restores `_computerTimeRemaining` to the exact value saved in `_timeLeftAtPly` for that ply, preventing Undo from draining the computer's clock.
 
 ---
 
 ## Settings Dialog Configuration
 
-The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs)) consolidates all rule, time control, and memory settings:
+The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs)) consolidates all rule, time control, opening book, and memory settings:
 
 1. **Checkers Rules & Variant:**
    - **International Draughts (Flying Kings):** Kings slide and capture across open diagonals with mandatory continuation.
@@ -114,3 +116,5 @@ The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Che
    - Radio selection between **Fixed Depth** ($1\text{–}20$ plies), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
 3. **Transposition Table Capacity:**
    - Selector from **$1,048,576$ entries ($16\text{ MiB}$, default)** up to **$16,777,216$ entries ($256\text{ MiB}$)** ([Chapter 08](08-transposition-table.md)).
+4. **Opening Book (`UseOpeningBook`):**
+   - Checkbox toggle (**enabled by default**) to use the embedded 12-ply Drop-Out Expansion opening book (`32,369` English / `26,367` International positions; [Chapter 10](10-opening-book.md)).

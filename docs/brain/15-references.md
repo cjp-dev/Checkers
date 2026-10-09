@@ -39,6 +39,12 @@ Official rulesets, foundational artificial intelligence research, bitboard engin
   * Late Move Reductions (LMR) with two-stage null-window verification and multi-way set-associative cache-line transposition buckets ([Chapters 07](07-search.md), [08](08-transposition-table.md), [12](12-engine-improvements.md)).
 * **Schaeffer, Jonathan, et al. (1996, 2007).** *"Chinook: The World Man-Machine Checkers Champion"* (AI Magazine, 17(1)) & *"Checkers Is Solved"* (Science, 317(5844), pp. 1518–1522).
   * Architecture of the World Champion Checkers program and computational proof ($5 \times 10^{20}$ state space) that perfect play in $8 \times 8$ English Checkers results in a draw.
+* **Lincke, Thomas R. (2000, 2001).** *"Strategies for the Automatic Construction of Opening Books"* (Computers and Games — CG 2000, Springer LNCS, Vol. 2063, pp. 74–86) & *"Exploring the Computational Limits of Large Exhaustive Search Problems"* (ETH Zürich Ph.D. Dissertation #14099).
+  * Priority-driven Drop-Out Expansion (DOE) algorithm (`W_player * delta_player + W_opponent * delta_opponent + depth`) and transposition-aware Directed Acyclic Graph (DAG) Negamax back-up for autonomous opening book construction ([Chapter 10](10-opening-book.md)).
+* **Fierz, Martin (2000–2021).** *Cake Checkers Engine & CheckerBoard Interface.*
+  * Classical $8 \times 8$ Checkers static evaluation heuristics, runaway checker promotion cones, king tail pins, structural back-rank patterns (`Bridge`, `Oreo`, `Triangle`, `Dog`, `Right Lock`), and parameterized evaluation tables ([Chapters 05](05-evaluation.md), [12](12-engine-improvements.md)).
+* **Letouzey, Fabien (2015–2020).** *Scan 3.1 Open-Source International Draughts Engine.*
+  * Bitboard move generation and Flying King evaluation experiments ([Chapters 05](05-evaluation.md), [12](12-engine-improvements.md)).
 
 ---
 

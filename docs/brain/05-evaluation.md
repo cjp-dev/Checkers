@@ -21,7 +21,7 @@ In **Phase 6** ([Chapter 12 – Milestone 8](12-engine-improvements.md#milestone
 
 Although English Checkers and International ($8 \times 8$ Brazilian/Flying Kings) Draughts share the same 32 dark squares and 64-bit bitboard layout (`sq = (row << 3) | col`), their strategic dynamics differ fundamentally in three ways:
 1. **King Mobility & Material Ratio:** An English 1-step King is worth **$1.40\times$ a Man (`140 cp`)**, so two Men (`200 cp`) outweigh a single King (`140 cp`). An International **Flying King** slides and jumps any distance along diagonals and is worth **$3.00\times$ a Man (`300 cp`)**, so a single Flying King (`300 cp`) decisively outweighs two Men (`200 cp`).
-2. **Forward-Only vs. Backward Man Captures:** In English Checkers, Men capture only forward, allowing flank lock patterns (`Right Lock`, `Dog`) and safe late-only advancement (`totalPieces <= 12`). In International Draughts, Men capture **both forward and backward**, making early crowning races (`+200 cp` promotion swing) critical across all game phases.
+2. **Crowning Swing & Long-Range King Reach:** In English Checkers, crowning a Man yields a modest $+40\text{ cp}$ material gain (`100 cp` $\to$ `140 cp`) and a 1-step King, allowing flank lock patterns (`Right Lock`, `Dog`) and late-only linear advancement (`totalPieces <= 12`). In International Draughts, crowning a Flying King produces a massive **$+200\text{ cp}$ promotion swing** (`100 cp` $\to$ `300 cp`) and unleashes full-diagonal ray attacks from behind, making continuous Man advancement (`+5` $\to$ `+6 cp/rank`) and full 4-square back-rank defense (`+15 cp`) critical across all game phases.
 3. **Piece-Count vs. Material-Gated Simplification:** In English Checkers, having strictly more total pieces (`whiteCount > blackCount`) reliably indicates a material lead. In International Draughts, a player with `1 Flying King + 2 Men` (`3 pieces = 500 cp`) has *fewer* pieces than an opponent with `4 Men` (`4 pieces = 400 cp`) while leading by `+100 cp` in material; therefore, International simplification bonuses must be gated on **material advantage** (`>= 80 cp`) rather than raw piece count.
 
 ```mermaid
@@ -39,7 +39,7 @@ flowchart TD
         E1 --> E2 --> E3 --> E4 --> E5 --> E6 --> E7
     end
 
-    subgraph International["EvaluateInternational(in pos) — Flying Kings &amp; Backward-Capture Adaptation"]
+    subgraph International["EvaluateInternational(in pos) — Flying Kings Adaptation"]
         I1["1. Material: Man = 100 cp, Flying King = 300 cp"]
         I2["2. Continuous Man Advancement:<br/>+5 cp/rank (opening/mid) → +6 cp/rank (totalPieces &lt;= 12)"]
         I3["3. Positional Masks:<br/>Center (+12), Full Back Rank (+15), Man PST Nuances (+2/+4/+6)"]
@@ -124,6 +124,10 @@ In addition, five classical Checkers formations from `board_eval.c` are detected
 | **Triangle** | `wm` covers `(7,4), (7,6), (6,5)` | `bm` covers `(0,1), (0,3), (1,2)` | **`+20 cp`** | Solid three-man defensive pyramid on the crown rank |
 | **Oreo** | `wm` covers `(7,2), (7,4), (6,3)` | `bm` covers `(0,3), (0,5), (1,4)` | **`+20 cp`** | Central back-rank triangle formation |
 | **Dog** | `wm & (7,6)` and `bm & (6,7)` | `bm & (0,1)` and `wm & (1,0)` | **`+10 cp`** | Back-rank defender immobilizing an advanced flank Man |
+
+> [!NOTE]
+> **Why `board_eval.c` Outperformed a Full Cake 1.89g Port in Fixed-Time Self-Play (Phase 6c Experiment):**
+> We also tested a complete 1:1 C# port of Martin Fierz's **Cake 1.89g** parameterized evaluator (`cake_eval_parametrized.c`, including `materialeval[13^4]`, `backrank[65536]`, and all 8 sections of `fineevaluation()`). While Cake's evaluator beat `LegacyEvaluationFunction` (`66.0 / 100`, `+115.2 ± 41.9 Elo`), its $7\times$ higher leaf latency (`62.1 ns/eval` vs. `8.8 ns/eval`) cost `1.19 plies` of average search depth at `1000 ms/move` and trailed our `POPCNT`-vectorized `board_eval.c` port (`69.5 / 100`, **`+143.1 ± 42.9 Elo`**) by **`27.9 Elo`**. See [Chapter 12 – Milestone 8](12-engine-improvements.md#1-english-checkers--100-game-match-neweval-vs-legacyeval-1000-msmove) for the full comparison.
 
 ---
 

@@ -4,13 +4,14 @@
 
 ## In short
 
-During the development of `Checkers.Core`, the AI engine evolved through **eight rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), root-level partial-iteration adoption & dominant-move early termination, and a hardware `POPCNT`-vectorized static evaluation overhaul (`board_eval.c` 1:1 port for English Checkers + Flying Kings adaptation for International Draughts).
+During the development of `Checkers.Core`, the AI engine evolved through **nine rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), root-level partial-iteration adoption & dominant-move early termination, a hardware `POPCNT`-vectorized static evaluation overhaul (`board_eval.c` 1:1 port for English Checkers + Flying Kings adaptation for International Draughts), and embedded 12-ply Drop-Out Expansion (DOE) opening books (`32,369` English / `26,367` International positions).
 
 Every milestone was validated against automated benchmark suites (`tools/Checkers.Benchmark`) to verify search correctness, measure exact node reductions, and quantify wall-clock throughput (`nodes/s`), search depth gains, and head-to-head self-play Elo strength:
 * **Raw Tree-Walk Throughput:** Increased from **`0.64M–0.66M nodes/s`** in the `Piece?[8, 8]` array engine to **`32.83M–37.18M nodes/s`** in the bitboard engine (**51×–65× raw speedup** with 100% node-for-node equivalence).
 * **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`193 ms` ($0.19\text{ seconds}$)** in Phase 6 (**771× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
 * **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **21-ply forced win** on Position #40 in **`< 2.2 seconds`**.
 * **200-Game Bot-vs-Bot Self-Play Verification (`1000 ms/move`, 50 Balanced Opening Ballots × 2 Sides per Variant):** The Phase 6 static evaluation overhaul defeated the baseline evaluation by **`69.5 – 30.5` (`+41 =57 -2`, `+143.1 ± 42.9 Elo`, `100.0% LOS`)** in **English Checkers** and **`56.5 – 43.5` (`+22 =69 -9`, `+45.4 ± 37.8 Elo`, `99.2% LOS`)** in **International (Flying Kings) Checkers** (`126.0 / 200` combined, `+63 =126 -11`).
+* **Embedded 12-Ply DOE Opening Books (Phase 7):** Built across 3 stages of innovation—Stage 1 Top-Down Multi-PV ($k=3$) DAG to `lv 8` (`999` / `995` positions), Stage 2 Full-Width Early Plies (`lv 0..3`, `149` positions), and Stage 3 Depth-First Drop-Out Expansion (`lv 4..12`, search depth $d=16$)—yielding **`32,369` English** and **`26,367` International** book positions (`0` Negamax back-up errors).
 
 ![Checkers Engine Evolution: From 2D Array Prototype to Phase 5 Bitboard Engine](images/engine-evolution-chart.svg)
 
@@ -28,6 +29,7 @@ flowchart LR
     P3 --> P4["Milestone 6 (Phase 4): Stage B<br/>Verified LMR + RFP + FP<br/>−93.7% Nodes • 21–25 Plies in 5s"]
     P4 --> P5["Milestone 7 (Phase 5): Root &amp; Time<br/>Partial Iteration Adoption<br/>+ Dominant Move Early Exit"]
     P5 --> P6["Milestone 8 (Phase 6): Static Eval<br/>board_eval.c + Flying Kings Adaptation<br/>+143.1 Elo (Eng) • +45.4 Elo (Intl)"]
+    P6 --> P7["Milestone 9 (Phase 7): Opening Book<br/>Full-Width lv 0..3 + DOE to lv 12<br/>32,369 Eng • 26,367 Intl Nodes"]
 ```
 
 ### Executive Summary: 40-Position Deep Suite ($7\text{–}14$ Plies) Across All Milestones
@@ -477,9 +479,31 @@ Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/Evaluati
 
 ---
 
+## Milestone 9 (Phase 7): 12-Ply Transposition-Aware Opening Book (3 Stages of Innovation)
+
+Detailed architectural documentation: [Chapter 10 – Opening book](10-opening-book.md).
+
+In **Phase 7**, we designed and generated embedded, human-readable opening books ([`OpeningBook.English.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.English.txt) and [`OpeningBook.International.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.International.txt)) across three iterative stages:
+1. **Stage 1 — Top-Down Multi-PV ($k = 3$) DAG (`lv 0..8`):** Used `MinimaxPlayer.SearchMultiPv` ($k=3$, $d=14$) to build a compact initial book of `999` English and `995` International positions, proving the Zobrist DAG format and bottom-up Negamax verification (`BookBuilder.CheckBackUp`).
+2. **Stage 2 — Full-Width Early Plies (`lv 0..3`):** Expanded all legal moves (`100%` width) across the first 4 plies (`149` core nodes) so the computer never falls out of book on moves 1–2 regardless of which of the 7 legal opening moves (`22-18`, `24-19`, `22-17`, `23-18`, `23-19`, `21-17`, `24-20`) a human opponent chooses.
+3. **Stage 3 — Depth-First Drop-Out Expansion (`lv 4..12`, Search Depth $d = 16$):** Replaced breadth-first expansion with Thomas Lincke's priority-driven **Drop-Out Expansion (DOE)** (`BookBuilder.ExpandDropOut`), continuously walking from the root to the highest-priority leaf within ` MaxDelta = 30 cp` (`W_player = 2`, `W_opponent = 1`), evaluating all legal moves at depth $d = 16$ (`32 MiB` TT), and immediately propagating backed-up Negamax scores (`PropagateBackUp`) to guide the next trajectory all the way to **100% completion at `lv 12`**.
+
+| Metric | Stage 1 (Width-3 DAG to `lv 8`) | **Stage 2 + 3 Final Book (`OpeningBook.English.txt`)** | **Stage 2 + 3 Final Book (`OpeningBook.International.txt`)** |
+| :--- | :---: | :---: | :---: |
+| **Book Horizon (`MaxPly`)** | `8 plies` | **`12 plies` (100% complete)** | **`12 plies` (100% complete)** |
+| **Node Evaluation Search Depth** | `14 plies` | **`16 plies` (`32 MiB` 4-Way TT)** | **`16 plies` (`32 MiB` 4-Way TT)** |
+| **Total Unique DAG Positions** | `999` (Eng) / `995` (Intl) | **`32,369`** | **`26,367`** |
+| **Evaluated Internal Nodes (`lv 0..11`)** | `472` (Eng) / `468` (Intl) | **`14,320`** | **`11,541`** |
+| **Evaluated Frontier Leaves** | `527` (at `lv 8`) | **`18,049` (`8,605` at `lv 12`)** | **`14,826` (`4,904` at `lv 12`)** |
+| **Backed-Up Root Score (`lv 0`)** | `+2 cp` | **`+2 cp` (`22-18 +2`)** | **`+2 cp` (`22-18 +2`, `21-17 +1`)** |
+| **Negamax Back-Up Consistency** | `0 errors` | **`0 errors` (100% exact)** | **`0 errors` (100% exact)** |
+| **Embedded File Size** | `~26 KB` | **`1,062,670 bytes` (`1.01 MB`)** | **`875,844 bytes` (`855.3 KB`)** |
+
+---
+
 ## Reproducing the Benchmarks
 
-All benchmarks can be executed directly from the command line using `tools/Checkers.Benchmark`:
+All benchmarks and opening book tools can be executed directly from the command line using `tools/Checkers.Benchmark`:
 
 ```powershell
 # Run the Phase 0..5 progression benchmark (40-position deep suite + 5-position 5.0s timed suite)
@@ -490,6 +514,10 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 
 # Run the Phase 6 200-Game Bot-vs-Bot Self-Play Match (50 ballots × 2 sides per variant, 1000 ms/move, 4 workers)
 dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- eval-match --variant All --time-ms 1000 --workers 4 --ballots 50
+
+# Verify or expand the Phase 7 12-Ply Drop-Out Expansion Opening Books
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- book verify --variant All
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- book expand-doe --variant English --max-ply 12 --full-width-plies 4 --search-depth 16 --max-delta 30
 
 # Run the 40-position standard and deep TT suites
 dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --deep

@@ -134,14 +134,15 @@ flowchart TD
 
 ## Bitboard Static Evaluation (`EvaluationFunction.cs`)
 
-`EvaluationFunction.Evaluate(in BitPosition pos, CheckersVariant variant)` replaces the 64-square nested array loop with hardware `BitOperations.PopCount` instructions ([Chapter 05](05-evaluation.md)):
+`EvaluationFunction.Evaluate(in BitPosition pos, CheckersVariant variant)` (and `LegacyEvaluationFunction.Evaluate` for Phase 0–5 equivalence testing) replaces 64-square nested array loops with hardware `BitOperations.PopCount` (`POPCNT`), `TrailingZeroCount` (`TZCNT`), and `LeadingZeroCount` (`LZCNT`) instructions ([Chapter 05](05-evaluation.md)), evaluating a position in **8.8–13.1 nanoseconds**:
 
 1. **Material:**
    $$\text{Score}_{\text{mat}} = 100 \cdot \bigl(\text{PopCount}(W_M) - \text{PopCount}(B_M)\bigr) + W_{\text{king}} \cdot \bigl(\text{PopCount}(W_K) - \text{PopCount}(B_K)\bigr)$$
-   where $W_{\text{king}} = 300$ (`International`) or $170$ (`English`).
-2. **Advancement Bonus:** Computed per rank using `BitOperations.PopCount(pos.WhiteMen & BitboardMasks.Rows[r]) * ((7 - r) * 5)`.
-3. **Center Control (`+12`):** `12 * (PopCount(pos.White & CenterMask) - PopCount(pos.Black & CenterMask))`.
-4. **English King Centralization (`+10`):** `10 * (PopCount(pos.WhiteKings & KingCenterMask) - PopCount(pos.BlackKings & KingCenterMask))`.
+   where $W_{\text{king}} = 300$ (`International` Flying Kings) or $140$ (`English` 1-Step Kings; $170$ in `LegacyEvaluationFunction`).
+2. **Vectorized Piece-Square Tables (PSTs):** Evaluated across all pieces simultaneously in $O(1)$ using precomputed 64-bit weight masks (`PopCount(wm & WhiteManPst1/2/3Mask)`, `PopCount(wk & EnglishKingPst4/5Mask)`, `PopCount(wk & FlyingKingMainDiagonalMask)`).
+3. **Advancement Bonus:** Computed per rank using `BitOperations.PopCount(pos.WhiteMen & Row[r]) * (7 - r)` (late-game gated $|A| \le 12$ in English; continuous $+5\text{ to }+6\text{ cp/rank}$ in International).
+4. **Precomputed Forward Promotion Cones (`ConeWhite[64]`, `ConeBlack[64]`):** Detects unstoppable Runaway Checkers when `enemyKings == 0` via `(ConeWhite[sq] & allPieces) == 0UL`.
+5. **Parallel Bitshift Tail Pins & Structural Masks:** Computes King tail pins (`(wk & Cols0To5) & (bm >> 9) & (bm >> 18)`) and classical formations (`Right Lock`, `Bridge`, `Triangle`, `Oreo`, `Dog`) in $O(1)$ bitwise operations.
 
 ---
 

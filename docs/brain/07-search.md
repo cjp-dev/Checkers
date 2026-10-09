@@ -176,11 +176,16 @@ Incorporating `ply` guarantees three critical behaviors:
 
 ## Iterative Deepening, Root Search & Asynchronous Execution
 
-Rather than jumping straight to target depth $D$, `MinimaxPlayer.GetMoveAsync` searches progressively through depths $d = 1, 2, 3, \dots, D$:
+Before starting tree search, `MinimaxPlayer.GetMoveAsync` checks two $O(1)$ fast-paths:
+* **Forced Single Move:** If `legalMoves.Count == 1`, returns `legalMoves[0]` immediately (`1 ply (Forced)`).
+* **12-Ply Opening Book Lookup ([Chapter 10](10-opening-book.md)):** If `UseOpeningBook` is enabled, probes `OpeningBook.TryGetMove(state, legalMoves, BookRandom, Limits.BookRandomMarginCp, ...)`. On a hit, returns the pre-calculated book move in $O(1)$ time (`Depth = "Book (12 plies)"`, `Nodes = "0 (Book)"`, `FromBook = true`).
+
+When the position is outside the opening book (or the book is disabled), `MinimaxPlayer.GetMoveAsync` searches progressively through depths $d = 1, 2, 3, \dots, D$:
 1. **Partial-Iteration Root Move Adoption on Timeout (Phase 5.1):** Because `currentOrder[0]` is always the best move from depth $d - 1$, once $i = 0$ completes cleanly at depth $d$, any subsequent root move $i > 0$ that finishes without timeout and beats `bestScoreThisDepth` is proven superior at full depth $d$. `GetMoveAsync` publishes it to `bestMoveOverall` and `bestScoreOverall` immediately so that if a later root move hits `hardLimitMs`, the deeper depth-$d$ result is preserved (`LastSearchAdoptedPartialIteration = true`; see [Chapter 09 – Time control](09-time-control.md#root-search--time-management-optimizations-phase-5)).
 2. **Early Root Termination on Dominant Move (Phase 5.2):** In timed modes (`TimePerMove` and `TimePerGame`), `GetMoveAsync` tracks `bestScoreThisDepth` and `secondBestScoreThisDepth` across root moves. If a forced mate is reached or if at $d \ge 8$ the same root move leads all alternatives by $\ge 150\text{ cp}$ ($1.5\text{ men}$) for $2$ consecutive completed iterations, iterative deepening terminates early (`LastSearchTerminatedEarly = true`) to conserve clock time.
-3. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
-4. **Non-Blocking UI & Cancellation:**
+3. **Single-Search Multi-PV Root Mode (`SearchMultiPv`):** For opening book construction ([Chapter 10](10-opening-book.md#stage-1-top-down-multi-pv-dag-to-level-8-k--3-best-moves)) and multi-line analysis, `MinimaxPlayer.SearchMultiPv(state, topK, depth)` holds the root lower bound $\alpha$ at the $k$-th best score (`topKScores[k - 1]`) instead of the $1$-st best score, returning exact minimax scores (`MultiPvMoveResult`) for the top $k$ root moves in a single iterative-deepening pass.
+4. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
+5. **Non-Blocking UI & Cancellation:**
    - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`.
    - **Blazor WebAssembly:** Yields cooperatively to the browser event loop via `await Task.Delay(1, cancellationToken)` after each completed depth and on $\ge 150\text{ ms}$ heartbeats ([Chapter 13](13-app-integration.md)).
    - **Amortized Cancellation Check:** Every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`), `cancellationToken.ThrowIfCancellationRequested()` and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.
@@ -193,13 +198,14 @@ While thinking, `MinimaxPlayer` streams real-time `SearchAnalysis` snapshots thr
 
 | Field | Example | Meaning |
 |---|---|---|
-| **Move** | `23-19` | Candidate root move currently being explored (or completed best move) |
-| **Depth** | `21 plies` / `22 plies...` | Highest completed depth (or in-progress depth with ellipsis during heartbeats) |
+| **Move** | `23-19` / `22-18` | Candidate root move currently being explored (or completed best / book move) |
+| **Depth** | `21 plies` / `Book (12 plies)` | Highest completed depth, in-progress depth with ellipsis, or `Book (12 plies)` |
 | **Value** | `+35` / `+Win in 23 plies` | Heuristic score in centipawns, `Forced`, or exact distance-to-win/loss |
 | **Best move** | `24-20` | Principal Variation root move from the latest finished iteration |
-| **Nodes** | `34,374,464` | Total interior and quiescence nodes visited (`NodesEvaluated`) |
-| **Evaluations** | `8,612,044` | Total static leaf evaluations executed (`LeafEvaluations`) |
-| **Time** | `0:04.2` | Elapsed wall-clock time formatted as `m:ss.f` |
+| **Nodes** | `34,374,464` / `0 (Book)` | Total interior and quiescence nodes visited (`NodesEvaluated`), or `0 (Book)` on book hit |
+| **Evaluations** | `8,612,044` / `0` | Total static leaf evaluations executed (`LeafEvaluations`) |
+| **Time** | `0:04.2` / `0:00.0` | Elapsed wall-clock time formatted as `m:ss.f` |
+| **FromBook** | `true` / `false` | Indicates whether the move was played instantaneously from the embedded `OpeningBook` |
 
 ---
 

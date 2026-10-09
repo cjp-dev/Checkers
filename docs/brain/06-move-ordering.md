@@ -42,7 +42,7 @@ $$S(m) = \begin{cases} 10{,}000{,}000 & \text{if } P(m) = P_{\text{TT}} \text{ (
 |:---:|---|:---:|---|
 | **1 (Highest)** | **Transposition Table Hash Move** | $10{,}000{,}000$ | Proven best move (or $\beta$-cutoff refutation) from a previous search depth or transposed branch (`m.PackedMove == ttPackedMove`). |
 | **2** | **Multi-Jump & Single Captures** | $1{,}000{,}000 + 10{,}000c + 1{,}000p$ | Mandatory captures ordered by capture count $c$ (Most Valuable Victim / longest chain) and promotion $p \in \{0, 1\}$. |
-| **3** | **Quiet Promotion** | $500{,}000$ | Non-capturing slide onto the crown row, creating a new King ($+200\text{ pts}$ in International, $+70\text{ pts}$ in English). |
+| **3** | **Quiet Promotion** | $500{,}000$ | Non-capturing slide onto the crown row, creating a new King ($+200\text{ cp}$ in International, $+40\text{ cp}$ base in English). |
 | **4** | **Killer Move 1 (Primary)** | $90{,}000$ | Most recent quiet move at the same `ply` that caused a $\beta$-cutoff in a sibling node (`_killers[ply * 2]`). |
 | **5** | **Killer Move 2 (Secondary)** | $80{,}000$ | Second most recent quiet refutation move at the same `ply` (`_killers[ply * 2 + 1]`). |
 | **6** | **Quiet History Heuristic** | $1 \dots 70{,}000$ | Cumulative $\sum d^2$ cutoff bonus indexed by `[SideToMove][From][To]` (`_history[(side << 12) | (from << 6) | to]`). |

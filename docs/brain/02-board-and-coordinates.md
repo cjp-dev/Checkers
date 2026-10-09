@@ -147,6 +147,7 @@ See [Chapter 11 – Bitboards](11-bitboards.md) for a deep dive into the bitboar
 Zobrist hashing maps any board configuration and side-to-move to a deterministic 64-bit fingerprint (`ulong`). It powers:
 1. **Threefold Repetition Detection** ([Chapter 04](04-game-record.md)): Detecting in $O(1)$ per historical state whether the current position has occurred 3 times.
 2. **Transposition Table Caching** ([Chapter 08](08-transposition-table.md)): Indexing millions of evaluated search subtrees in $O(1)$ time.
+3. **Opening Book Lookup & DAG Transposition Deduplication** ([Chapter 10](10-opening-book.md)): Indexing the embedded 12-ply opening books (`32,369` English / `26,367` International positions) in $O(1)$ time and merging transposed opening paths into a single Directed Acyclic Graph (DAG) node.
 
 ### Key Generation and Incremental XOR Math
 
