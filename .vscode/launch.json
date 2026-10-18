@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Play Checkers in Web Browser (Blazor)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Checkers.Web/Checkers.Web.csproj"
+    },
+    {
+      "name": "Play Checkers Desktop (WPF)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Checkers.Wpf/Checkers.Wpf.csproj"
+    }
+  ]
+}
+
