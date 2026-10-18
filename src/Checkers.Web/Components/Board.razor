@@ -3,10 +3,12 @@
 
 <div class="checkerboard-container">
     <div class="checkerboard" role="grid" aria-label="Checkers Board">
-        @for (int r = 0; r < 8; r++)
+        @for (int sr = 0; sr < 8; sr++)
         {
-            @for (int c = 0; c < 8; c++)
+            @for (int sc = 0; sc < 8; sc++)
             {
+                int r = IsFlipped ? 7 - sr : sr;
+                int c = IsFlipped ? 7 - sc : sc;
                 var sq = Squares[r, c];
                 bool isDark = sq.IsDarkSquare;
                 string squareClass = GetSquareClasses(sq);
@@ -60,6 +62,9 @@
 
     [Parameter, EditorRequired]
     public SquareViewModel[,] Squares { get; set; } = new SquareViewModel[8, 8];
+
+    [Parameter]
+    public bool IsFlipped { get; set; }
 
     [Parameter]
     public EventCallback<SquareViewModel> OnSquareClick { get; set; }

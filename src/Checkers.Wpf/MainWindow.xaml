@@ -50,12 +50,17 @@
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
             <MenuItem Header="_Game">
-                <MenuItem Header="Human vs _Computer"
+                <MenuItem Header="vs _Computer (You play Black)"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsComputerVsHuman, Mode=OneWay}"
+                          Command="{Binding SetGameModeCommand}"
+                          CommandParameter="{x:Static models:GameMode.ComputerVsHuman}" />
+                <MenuItem Header="vs Computer (You play _White)"
                           IsCheckable="True"
                           IsChecked="{Binding IsHumanVsComputer, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
                           CommandParameter="{x:Static models:GameMode.HumanVsComputer}" />
-                <MenuItem Header="Human vs _Human"
+                <MenuItem Header="vs _Human (Two players)"
                           IsCheckable="True"
                           IsChecked="{Binding IsHumanVsHuman, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
@@ -109,9 +114,9 @@
                         </Border>
 
                         <TextBlock Text="AI: " FontSize="11" FontWeight="Bold" Foreground="#888888" VerticalAlignment="Center" Margin="0,0,4,0"
-                                   Visibility="{Binding IsHumanVsComputer, Converter={StaticResource BoolToVis}}" />
+                                   Visibility="{Binding IsVsComputer, Converter={StaticResource BoolToVis}}" />
                         <Border Background="#2980B9" CornerRadius="4" Padding="8,3" Margin="0,0,6,0"
-                                Visibility="{Binding IsHumanVsComputer, Converter={StaticResource BoolToVis}}">
+                                Visibility="{Binding IsVsComputer, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="{Binding SettingsBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" />
                         </Border>
 
@@ -220,22 +225,23 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0"
                                     Command="{Binding SetGameModeCommand}"
-                                    CommandParameter="{x:Static models:GameMode.HumanVsComputer}"
-                                    Margin="0,0,3,0" Padding="6,6" FontSize="11" FontWeight="SemiBold"
+                                    CommandParameter="{x:Static models:GameMode.ComputerVsHuman}"
+                                    Margin="0,0,2,0" Padding="3,6" FontSize="10" FontWeight="SemiBold"
                                     BorderThickness="0" Cursor="Hand">
                                 <Button.Style>
                                     <Style TargetType="Button">
                                         <Setter Property="Background" Value="#ECEFF1" />
                                         <Setter Property="Foreground" Value="#546E7A" />
-                                        <Setter Property="Content" Value="vs Computer" />
+                                        <Setter Property="Content" Value="AI (Black)" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsHumanVsComputer}" Value="True">
+                                            <DataTrigger Binding="{Binding IsComputerVsHuman}" Value="True">
                                                 <Setter Property="Background" Value="#2C3E50" />
                                                 <Setter Property="Foreground" Value="#FFFFFF" />
-                                                <Setter Property="Content" Value="✓ vs Computer" />
+                                                <Setter Property="Content" Value="✓ Black" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -243,8 +249,28 @@
                             </Button>
                             <Button Grid.Column="1"
                                     Command="{Binding SetGameModeCommand}"
+                                    CommandParameter="{x:Static models:GameMode.HumanVsComputer}"
+                                    Margin="2,0,2,0" Padding="3,6" FontSize="10" FontWeight="SemiBold"
+                                    BorderThickness="0" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="#ECEFF1" />
+                                        <Setter Property="Foreground" Value="#546E7A" />
+                                        <Setter Property="Content" Value="AI (White)" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHumanVsComputer}" Value="True">
+                                                <Setter Property="Background" Value="#2C3E50" />
+                                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                                <Setter Property="Content" Value="✓ White" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Grid.Column="2"
+                                    Command="{Binding SetGameModeCommand}"
                                     CommandParameter="{x:Static models:GameMode.HumanVsHuman}"
-                                    Margin="3,0,0,0" Padding="6,6" FontSize="11" FontWeight="SemiBold"
+                                    Margin="2,0,0,0" Padding="3,6" FontSize="10" FontWeight="SemiBold"
                                     BorderThickness="0" Cursor="Hand">
                                 <Button.Style>
                                     <Style TargetType="Button">
@@ -255,7 +281,7 @@
                                             <DataTrigger Binding="{Binding IsHumanVsHuman}" Value="True">
                                                 <Setter Property="Background" Value="#2C3E50" />
                                                 <Setter Property="Foreground" Value="#FFFFFF" />
-                                                <Setter Property="Content" Value="✓ vs Human" />
+                                                <Setter Property="Content" Value="✓ Human" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>

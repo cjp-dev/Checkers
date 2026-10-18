@@ -831,4 +831,101 @@ public class MainViewModelTests
         var updatedAi = (MinimaxPlayer)vm.CreateAiPlayer();
         updatedAi.TranspositionTable!.Capacity.Should().Be(16_777_216);
     }
+
+    [Fact]
+    public void SetGameMode_ComputerVsHuman_FlipsBoardAndSetsPlayerLabels()
+    {
+        var vm = new MainViewModel();
+
+        // Initially un-flipped
+        vm.IsBoardFlipped.Should().BeFalse();
+        vm.BoardSquares[0].Position.Should().Be(new Position(0, 0));
+
+        // Switch to ComputerVsHuman
+        vm.SetGameModeCommand.Execute(GameMode.ComputerVsHuman);
+
+        vm.GameMode.Should().Be(GameMode.ComputerVsHuman);
+        vm.IsComputerVsHuman.Should().BeTrue();
+        vm.IsBoardFlipped.Should().BeTrue();
+        vm.WhitePlayerLabel.Should().Contain("Computer");
+        vm.BlackPlayerLabel.Should().Be("Human (You)");
+
+        // BoardSquares should now be ordered in flipped orientation (sr=0, sc=0 -> r=7, c=7)
+        vm.BoardSquares[0].Position.Should().Be(new Position(7, 7));
+        vm.BoardSquares[63].Position.Should().Be(new Position(0, 0));
+    }
+
+    [Fact]
+    public async Task SetGameMode_ComputerVsHuman_TriggersAiOpeningMoveForWhite()
+    {
+        var vm = new MainViewModel
+        {
+            AiDelayMs = 0
+        };
+
+        var openingMove = vm.Session.LegalMoves.First();
+        vm.AiPlayerFactory = (settings, time) => new TestAiPlayer(openingMove);
+
+        // When switching to ComputerVsHuman at start of game (move 1, White to play),
+        // AI should immediately execute White's move.
+        vm.SetGameModeCommand.Execute(GameMode.ComputerVsHuman);
+
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 1)
+                break;
+            await Task.Delay(25);
+        }
+
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.Session.MoveHistory[0].Notation.Should().Be(openingMove.Notation);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+    }
+
+    [Fact]
+    public async Task Undo_InComputerVsHuman_UndosToHumanTurn()
+    {
+        var vm = new MainViewModel
+        {
+            AiDelayMs = 0
+        };
+
+        var whiteMove1 = vm.Session.LegalMoves.First();
+        vm.AiPlayerFactory = (settings, time) =>
+        {
+            var moves = vm.Session.LegalMoves;
+            return new TestAiPlayer(moves.First());
+        };
+
+        // 1. Switch to ComputerVsHuman: AI makes move 1 (White)
+        vm.SetGameModeCommand.Execute(GameMode.ComputerVsHuman);
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 1) break;
+            await Task.Delay(25);
+        }
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+
+        // 2. Human (Black) makes move 2
+        var blackMove = vm.Session.LegalMoves.First();
+        vm.ExecutePlayerMove(blackMove);
+        vm.Session.MoveHistory.Should().HaveCount(2);
+
+        // 3. AI makes move 3 (White)
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 3) break;
+            await Task.Delay(25);
+        }
+        vm.Session.MoveHistory.Should().HaveCount(3);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+
+        // 4. Human clicks Undo -> both move 3 (White AI) and move 2 (Black Human) should be undone,
+        // returning to Black Human's turn at ply 1.
+        vm.UndoCommand.Execute(null);
+
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+    }
 }

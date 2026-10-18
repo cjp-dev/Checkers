@@ -56,6 +56,7 @@
         <!-- Checkerboard View -->
         <div class="board-area">
             <Board Squares="Vm.Squares"
+                   IsFlipped="Vm.IsBoardFlipped"
                    OnSquareClick="HandleSquareClick"
                    OnSquareDragDrop="HandleSquareDragDrop" />
         </div>
@@ -196,8 +197,9 @@
             ]),
             new("Game",
             [
-                new("vs Computer", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
-                new("vs Human", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
+                new("vs Computer (You play Black)", new RelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
+                new("vs Computer (You play White)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
+                new("vs Human (Two players)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
                 new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: true),
             ]),
             new("Options",
@@ -218,9 +220,12 @@
         Vm.Analysis.Updated += OnAnalysisUpdated;
         Dialogs.Changed += OnDialogChanged;
 
-        foreach (var square in Vm.BoardSquares)
+        for (int r = 0; r < 8; r++)
         {
-            square.PropertyChanged += OnChanged;
+            for (int c = 0; c < 8; c++)
+            {
+                Vm.Squares[r, c].PropertyChanged += OnChanged;
+            }
         }
 
         foreach (var command in _commands)
@@ -244,9 +249,12 @@
         Vm.Analysis.Updated -= OnAnalysisUpdated;
         Dialogs.Changed -= OnDialogChanged;
 
-        foreach (var square in Vm.BoardSquares)
+        for (int r = 0; r < 8; r++)
         {
-            square.PropertyChanged -= OnChanged;
+            for (int c = 0; c < 8; c++)
+            {
+                Vm.Squares[r, c].PropertyChanged -= OnChanged;
+            }
         }
 
         foreach (var command in _commands)

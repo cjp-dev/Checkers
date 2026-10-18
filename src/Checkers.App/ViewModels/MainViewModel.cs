@@ -74,12 +74,15 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Dictionary<int, TimeSpan> _timeLeftAtPly = [];
 
     public bool IsHumanVsComputer => GameMode == GameMode.HumanVsComputer;
+    public bool IsComputerVsHuman => GameMode == GameMode.ComputerVsHuman;
+    public bool IsVsComputer => GameMode is GameMode.HumanVsComputer or GameMode.ComputerVsHuman;
     public bool IsHumanVsHuman => GameMode == GameMode.HumanVsHuman;
+    public bool IsBoardFlipped => GameMode == GameMode.ComputerVsHuman;
 
     public string SettingsBadgeText => Settings.Summary;
     public string VariantBadgeText => Settings.VariantBadgeText;
 
-    public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame && GameMode == GameMode.HumanVsComputer;
+    public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame && IsVsComputer;
 
     public string ClockText => IsClockVisible
         ? $"Clock: {FormatClock(_computerTimeLeft)}"
@@ -92,6 +95,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string GameModeBadgeText => GameMode switch
     {
         GameMode.HumanVsComputer => "vs Computer",
+        GameMode.ComputerVsHuman => "vs Computer",
         GameMode.HumanVsHuman => "vs Human",
         GameMode.ComputerVsComputer => "Computer vs Computer",
         _ => "Checkers"
@@ -100,6 +104,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string GameModeDescription => GameMode switch
     {
         GameMode.HumanVsComputer => $"vs Computer ({Settings.Summary})",
+        GameMode.ComputerVsHuman => $"vs Computer ({Settings.Summary})",
         GameMode.HumanVsHuman => "Human vs Human",
         GameMode.ComputerVsComputer => "Computer vs Computer",
         _ => string.Empty
@@ -108,6 +113,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string WhitePlayerLabel => GameMode switch
     {
         GameMode.HumanVsComputer => "Human (You)",
+        GameMode.ComputerVsHuman => $"Computer ({Settings.Summary})",
         GameMode.HumanVsHuman => "Player 1",
         GameMode.ComputerVsComputer => "Computer 1",
         _ => "White"
@@ -116,6 +122,7 @@ public sealed partial class MainViewModel : ObservableObject
     public string BlackPlayerLabel => GameMode switch
     {
         GameMode.HumanVsComputer => $"Computer ({Settings.Summary})",
+        GameMode.ComputerVsHuman => "Human (You)",
         GameMode.HumanVsHuman => "Player 2",
         GameMode.ComputerVsComputer => "Computer 2",
         _ => "Black"
@@ -126,7 +133,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAnalysisVisible = true;
 
-    public bool ShowAnalysis => IsAnalysisVisible && GameMode == GameMode.HumanVsComputer;
+    public bool ShowAnalysis => IsAnalysisVisible && IsVsComputer;
 
     [RelayCommand]
     public void ToggleAnalysis()
@@ -136,8 +143,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnGameModeChanged(GameMode value)
     {
+        UpdateBoardSquaresOrder();
         OnPropertyChanged(nameof(IsHumanVsComputer));
+        OnPropertyChanged(nameof(IsComputerVsHuman));
+        OnPropertyChanged(nameof(IsVsComputer));
         OnPropertyChanged(nameof(IsHumanVsHuman));
+        OnPropertyChanged(nameof(IsBoardFlipped));
         OnPropertyChanged(nameof(ShowAnalysis));
         OnPropertyChanged(nameof(GameModeBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
@@ -170,6 +181,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SettingsBadgeText));
         OnPropertyChanged(nameof(VariantBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
+        OnPropertyChanged(nameof(WhitePlayerLabel));
         OnPropertyChanged(nameof(BlackPlayerLabel));
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
@@ -206,14 +218,28 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 var sq = new SquareViewModel(r, c);
                 Squares[r, c] = sq;
-                BoardSquares.Add(sq);
             }
         }
+        UpdateBoardSquaresOrder();
 
         Session.MoveExecuted += OnMoveExecutedHandler;
         Session.GameOver += OnGameOverHandler;
 
         RefreshBoard();
+    }
+
+    private void UpdateBoardSquaresOrder()
+    {
+        BoardSquares.Clear();
+        for (int sr = 0; sr < 8; sr++)
+        {
+            for (int sc = 0; sc < 8; sc++)
+            {
+                int r = IsBoardFlipped ? 7 - sr : sr;
+                int c = IsBoardFlipped ? 7 - sc : sc;
+                BoardSquares.Add(Squares[r, c]);
+            }
+        }
     }
 
     public void ResetClock()
@@ -481,8 +507,12 @@ public sealed partial class MainViewModel : ObservableObject
             ClearSelection();
             Session.Undo();
             
-            // If in HumanVsComputer and it is now the computer's turn, undo one more step to return to Human
+            // If in vs Computer and it is now the computer's turn, undo one more step to return to Human
             if (GameMode == GameMode.HumanVsComputer && Session.CurrentState.ActivePlayer == PieceColor.Black && Session.CanUndo)
+            {
+                Session.Undo();
+            }
+            else if (GameMode == GameMode.ComputerVsHuman && Session.CurrentState.ActivePlayer == PieceColor.White && Session.CanUndo)
             {
                 Session.Undo();
             }
@@ -580,6 +610,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             GameMode.HumanVsHuman => true,
             GameMode.HumanVsComputer => Session.CurrentState.ActivePlayer == PieceColor.White,
+            GameMode.ComputerVsHuman => Session.CurrentState.ActivePlayer == PieceColor.Black,
             GameMode.ComputerVsComputer => false,
             _ => true
         };
