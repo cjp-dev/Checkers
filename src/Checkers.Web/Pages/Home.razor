@@ -12,37 +12,39 @@
 <div class="app" inert="@(Dialogs.Current is not null)">
     <!-- Top Menu Bar -->
     <nav class="menubar" aria-label="Menu">
-        @foreach (MenuDefinition menu in _menus)
-        {
-            <div class="menu">
-                <button class="menu-title @(menu == _openMenu ? "open" : null)"
-                        aria-haspopup="menu"
-                        aria-expanded="@(menu == _openMenu ? "true" : "false")"
-                        @onclick="() => ToggleMenu(menu)"
-                        @onmouseenter="() => HoverMenu(menu)">
-                    @menu.Title
-                </button>
-                @if (menu == _openMenu)
-                {
-                    <div class="menu-items" role="menu">
-                        @foreach (MenuEntry entry in menu.Entries)
-                        {
-                            bool? isChecked = entry.IsChecked?.Invoke();
-                            string role = isChecked is null ? "menuitem" : entry.Radio ? "menuitemradio" : "menuitemcheckbox";
-                            <button role="@role"
-                                    aria-checked="@(isChecked is { } c ? (c ? "true" : "false") : null)"
-                                    class="@(entry.SeparatorBefore ? "separator-before" : null)"
-                                    disabled="@(!entry.Command.CanExecute(null))"
-                                    @onclick="() => RunAsync(entry.Command)">
-                                <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
-                                <span>@entry.Text</span>
-                                <span class="shortcut">@entry.Shortcut</span>
-                            </button>
-                        }
-                    </div>
-                }
-            </div>
-        }
+        <div class="menubar-inner">
+            @foreach (MenuDefinition menu in _menus)
+            {
+                <div class="menu">
+                    <button class="menu-title @(menu == _openMenu ? "open" : null)"
+                            aria-haspopup="menu"
+                            aria-expanded="@(menu == _openMenu ? "true" : "false")"
+                            @onclick="() => ToggleMenu(menu)"
+                            @onmouseenter="() => HoverMenu(menu)">
+                        @menu.Title
+                    </button>
+                    @if (menu == _openMenu)
+                    {
+                        <div class="menu-items" role="menu">
+                            @foreach (MenuEntry entry in menu.Entries)
+                            {
+                                bool? isChecked = entry.IsChecked?.Invoke();
+                                string role = isChecked is null ? "menuitem" : entry.Radio ? "menuitemradio" : "menuitemcheckbox";
+                                <button role="@role"
+                                        aria-checked="@(isChecked is { } c ? (c ? "true" : "false") : null)"
+                                        class="@(entry.SeparatorBefore ? "separator-before" : null)"
+                                        disabled="@(!entry.Command.CanExecute(null))"
+                                        @onclick="() => RunAsync(entry.Command)">
+                                    <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
+                                    <span>@entry.Text</span>
+                                    <span class="shortcut">@entry.Shortcut</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     </nav>
     @if (_openMenu is not null)
     {
