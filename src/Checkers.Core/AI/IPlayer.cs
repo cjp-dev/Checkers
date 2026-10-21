@@ -44,4 +44,17 @@ public interface IPlayer
         IReadOnlyList<ulong>? stateHashHistory,
         CancellationToken cancellationToken = default) =>
         GetMoveAsync(state, legalMoves, progress, cancellationToken);
+
+    /// <summary>
+    /// Chooses a move from the available legal moves for the given state,
+    /// supporting both hard cancellation and early "Move Now" termination.
+    /// </summary>
+    ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
+        IReadOnlyList<ulong>? stateHashHistory,
+        CancellationToken cancellationToken,
+        CancellationToken moveNowToken) =>
+        GetMoveAsync(state, legalMoves, progress, stateHashHistory, cancellationToken);
 }

@@ -584,6 +584,25 @@ public class AiTests
         (summary.NewEvalWins + summary.Draws + summary.LegacyEvalWins).Should().Be(2);
     }
 
+    [Fact]
+    public async Task MinimaxPlayer_MoveNowToken_AbortsDeepSearchEarlyWithValidMove()
+    {
+        var board = BoardState.CreateInitial();
+        var legalMoves = _ruleEngine.GetLegalMoves(board);
+        var player = new MinimaxPlayer(depth: 30);
+
+        using var cts = new CancellationTokenSource();
+        using var moveNowCts = new CancellationTokenSource();
+
+        moveNowCts.CancelAfter(50);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var move = await player.GetMoveAsync(board, legalMoves, progress: null, stateHashHistory: null, cts.Token, moveNowCts.Token);
+        sw.Stop();
+
+        legalMoves.Should().Contain(move);
+        sw.ElapsedMilliseconds.Should().BeLessThan(3000);
+    }
+
     private static ulong Flip180(ulong mask)
     {
         ulong result = 0UL;

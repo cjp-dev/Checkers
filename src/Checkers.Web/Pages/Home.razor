@@ -112,37 +112,17 @@
                     <button class="btn btn-primary" @onclick="() => RunAsync(Vm.NewGameCommand)">New</button>
                     <button class="btn btn-secondary" disabled="@(!Vm.CanUndo)" @onclick="() => RunAsync(Vm.UndoCommand)">Undo</button>
                     <button class="btn btn-secondary" disabled="@(!Vm.CanRedo)" @onclick="() => RunAsync(Vm.RedoCommand)">Redo</button>
+                    @if (Vm.IsAiThinking)
+                    {
+                        <button class="btn btn-warning" @onclick="() => RunAsync(Vm.MoveNowCommand)">Move Now</button>
+                    }
                 </div>
             </section>
 
             <!-- Real-time Analysis Panel (Live updates while AI thinks) -->
             @if (Vm.ShowAnalysis)
             {
-                <aside class="panel analysis-panel" aria-label="Analysis">
-                    <h2>ANALYSIS</h2>
-                    <dl class="analysis-grid">
-                        <dt>Move:</dt>
-                        <dd>@Vm.Analysis.Move</dd>
-
-                        <dt>Depth:</dt>
-                        <dd>@Vm.Analysis.Depth</dd>
-
-                        <dt>Value:</dt>
-                        <dd>@Vm.Analysis.Value</dd>
-
-                        <dt>Best move:</dt>
-                        <dd>@Vm.Analysis.BestMove</dd>
-
-                        <dt>Nodes:</dt>
-                        <dd>@Vm.Analysis.Nodes</dd>
-
-                        <dt>Evaluations:</dt>
-                        <dd>@Vm.Analysis.Evaluations</dd>
-
-                        <dt>Time:</dt>
-                        <dd>@Vm.Analysis.Time</dd>
-                    </dl>
-                </aside>
+                <AnalysisPanel Analysis="Vm.Analysis" />
             }
 
             <!-- Move History Panel -->
@@ -200,7 +180,8 @@
                 new("vs Computer (You play Black)", new RelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
                 new("vs Computer (You play White)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
                 new("vs Human (Two players)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
-                new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: true),
+                new("Move Now", Vm.MoveNowCommand, "Ctrl+M", SeparatorBefore: true),
+                new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: false),
             ]),
             new("Options",
             [
@@ -217,7 +198,6 @@
         _commands = _menus.SelectMany(menu => menu.Entries).Select(entry => entry.Command).ToArray();
 
         Vm.PropertyChanged += OnChanged;
-        Vm.Analysis.Updated += OnAnalysisUpdated;
         Dialogs.Changed += OnDialogChanged;
 
         for (int r = 0; r < 8; r++)
@@ -246,7 +226,6 @@
     public void Dispose()
     {
         Vm.PropertyChanged -= OnChanged;
-        Vm.Analysis.Updated -= OnAnalysisUpdated;
         Dialogs.Changed -= OnDialogChanged;
 
         for (int r = 0; r < 8; r++)
@@ -277,6 +256,7 @@
         "z" => RunAsync(Vm.UndoCommand),
         "y" => RunAsync(Vm.RedoCommand),
         "a" => RunAsync(Vm.ToggleAnalysisCommand),
+        "m" => RunAsync(Vm.MoveNowCommand),
         _ => Task.CompletedTask,
     };
 
@@ -287,8 +267,6 @@
 
     private void OpenDocs() =>
         ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute(""), "_blank", "noopener");
-
-    private void OnAnalysisUpdated() => _ = InvokeAsync(StateHasChanged);
 
     private void OnChanged(object? sender, EventArgs e)
     {

@@ -14,9 +14,16 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ISoundService _soundService;
     private readonly IDialogService? _dialogService;
     private readonly IGameFileService? _fileService;
+    private readonly LocalEngineHost _localEngineHost = new();
+    private readonly IEngineHost _engineHost;
+    private readonly ISettingsStore? _settingsStore;
+    private readonly bool _settingsLoaded;
     private Position? _selectedPosition;
     private CancellationTokenSource? _aiCts;
+    private CancellationTokenSource? _moveNowCts;
     private int _searchId;
+
+    public IEngineHost EngineHost => _engineHost;
 
     /// <summary>
     /// Artificial delay in milliseconds before AI starts searching to provide a natural feel.
@@ -60,7 +67,11 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isSoundOn = true;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MoveNowCommand))]
     private bool _isAiThinking;
+
+    [RelayCommand(CanExecute = nameof(IsAiThinking))]
+    public void MoveNow() => _moveNowCts?.Cancel();
 
     [ObservableProperty]
     private GameMode _gameMode = GameMode.HumanVsHuman;
@@ -161,6 +172,13 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnIsAnalysisVisibleChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowAnalysis));
+        SavePreferences();
+    }
+
+    partial void OnIsSoundOnChanged(bool value)
+    {
+        _soundService.IsEnabled = value;
+        SavePreferences();
     }
 
     partial void OnSettingsChanging(GameSettings? oldValue, GameSettings newValue)
@@ -185,6 +203,15 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BlackPlayerLabel));
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
+        SavePreferences();
+    }
+
+    private void SavePreferences()
+    {
+        if (_settingsLoaded)
+        {
+            _settingsStore?.Save(new AppPreferences(Settings, IsAnalysisVisible, IsSoundOn));
+        }
     }
 
     [ObservableProperty]
@@ -203,12 +230,28 @@ public sealed partial class MainViewModel : ObservableObject
         GameSession? session = null,
         ISoundService? soundService = null,
         IDialogService? dialogService = null,
-        IGameFileService? fileService = null)
+        IGameFileService? fileService = null,
+        IEngineHost? engineHost = null,
+        ISettingsStore? settingsStore = null)
     {
-        Session = session ?? new GameSession(new RuleEngine(Settings.Variant));
         _soundService = soundService ?? new DummySoundService();
         _dialogService = dialogService;
         _fileService = fileService;
+        _engineHost = engineHost ?? _localEngineHost;
+        _settingsStore = settingsStore;
+
+        if (_settingsStore != null)
+        {
+            var saved = _settingsStore.Load();
+            _settings = saved.Game.Normalize();
+            _isAnalysisVisible = saved.ShowAnalysis;
+            _isSoundOn = saved.SoundEnabled;
+            _soundService.IsEnabled = saved.SoundEnabled;
+            _transpositionTable = TranspositionTable.FromEntries(Settings.TranspositionTableEntries);
+        }
+        _settingsLoaded = true;
+
+        Session = session ?? new GameSession(new RuleEngine(Settings.Variant));
         _computerTimeLeft = Settings.GameTime;
 
         // Initialize 8x8 squares
@@ -837,7 +880,9 @@ public sealed partial class MainViewModel : ObservableObject
 
         CancelAi();
         _aiCts = new CancellationTokenSource();
+        _moveNowCts = new CancellationTokenSource();
         var token = _aiCts.Token;
+        var moveNowToken = _moveNowCts.Token;
 
         IsAiThinking = true;
         CanUndo = false;
@@ -860,7 +905,6 @@ public sealed partial class MainViewModel : ObservableObject
 
         try
         {
-            var ai = CreateAiPlayer();
             var legalMoves = Session.LegalMoves;
 
             // Small delay for natural feel
@@ -871,7 +915,8 @@ public sealed partial class MainViewModel : ObservableObject
 
             var stateHashes = Session.StateHistory.Select(s => s.ZobristHash).ToList();
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var move = await Task.Run(async () => await ai.GetMoveAsync(Session.CurrentState, legalMoves, progress, stateHashes, token), token);
+            var (move, lastAnalysis) = await _engineHost.ChooseMoveAsync(
+                Session.CurrentState, legalMoves, Settings, _computerTimeLeft, stateHashes, progress, token, moveNowToken);
             sw.Stop();
 
             if (Settings.Mode == TimeControlMode.TimePerGame)
@@ -880,9 +925,9 @@ public sealed partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(ClockText));
             }
 
-            if (searchId == _searchId && !token.IsCancellationRequested && ai.LastAnalysis != null)
+            if (searchId == _searchId && !token.IsCancellationRequested && lastAnalysis != null)
             {
-                Analysis.Update(ai.LastAnalysis);
+                Analysis.Update(lastAnalysis);
             }
 
             if (searchId == _searchId && !token.IsCancellationRequested && Session.Status == GameStatus.InProgress)
@@ -907,6 +952,9 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
+            _moveNowCts?.Dispose();
+            _moveNowCts = null;
+
             if (searchId == _searchId)
             {
                 IsAiThinking = false;
@@ -920,7 +968,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// Optional factory to instantiate AI players (e.g. for testing or custom engines).
     /// </summary>
-    public Func<GameSettings, TimeSpan, IPlayer>? AiPlayerFactory { get; set; }
+    public Func<GameSettings, TimeSpan, IPlayer>? AiPlayerFactory
+    {
+        get => _localEngineHost.PlayerFactory;
+        set => _localEngineHost.PlayerFactory = value;
+    }
 
     public IPlayer CreateAiPlayer() =>
         AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(
@@ -932,6 +984,12 @@ public sealed partial class MainViewModel : ObservableObject
     public void CancelAi()
     {
         _searchId++;
+        if (_moveNowCts != null)
+        {
+            _moveNowCts.Cancel();
+            _moveNowCts.Dispose();
+            _moveNowCts = null;
+        }
         if (_aiCts != null)
         {
             _aiCts.Cancel();

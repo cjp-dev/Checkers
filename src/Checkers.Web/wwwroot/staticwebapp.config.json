@@ -1,4 +1,8 @@
 {
+  "globalHeaders": {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp"
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": [ "/_framework/*", "/content/*", "/css/*", "/images/*", "/js/*", "*.{bin,css,dat,ico,jpg,js,json,md,png,svg,wasm}" ]

@@ -125,21 +125,30 @@ public sealed class MinimaxPlayer : IPlayer
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         CancellationToken cancellationToken = default) =>
-        GetMoveAsync(state, legalMoves, progress: null, stateHashHistory: null, cancellationToken);
+        GetMoveAsync(state, legalMoves, progress: null, stateHashHistory: null, cancellationToken, moveNowToken: default);
 
     public ValueTask<Move> GetMoveAsync(
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         IProgress<SearchAnalysis>? progress,
         CancellationToken cancellationToken = default) =>
-        GetMoveAsync(state, legalMoves, progress, stateHashHistory: null, cancellationToken);
+        GetMoveAsync(state, legalMoves, progress, stateHashHistory: null, cancellationToken, moveNowToken: default);
 
-    public async ValueTask<Move> GetMoveAsync(
+    public ValueTask<Move> GetMoveAsync(
         BoardState state,
         IReadOnlyList<Move> legalMoves,
         IProgress<SearchAnalysis>? progress,
         IReadOnlyList<ulong>? stateHashHistory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        GetMoveAsync(state, legalMoves, progress, stateHashHistory, cancellationToken, moveNowToken: default);
+
+    public ValueTask<Move> GetMoveAsync(
+        BoardState state,
+        IReadOnlyList<Move> legalMoves,
+        IProgress<SearchAnalysis>? progress,
+        IReadOnlyList<ulong>? stateHashHistory,
+        CancellationToken cancellationToken,
+        CancellationToken moveNowToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         LastSearchAdoptedPartialIteration = false;
@@ -163,11 +172,7 @@ public sealed class MinimaxPlayer : IPlayer
                 Time = "0:00.0"
             };
             progress?.Report(LastAnalysis);
-            if (progress != null)
-            {
-                await Task.Delay(1, cancellationToken);
-            }
-            return singleMove;
+            return ValueTask.FromResult(singleMove);
         }
 
         if (UseOpeningBook)
@@ -191,11 +196,7 @@ public sealed class MinimaxPlayer : IPlayer
                     FromBook = true
                 };
                 progress?.Report(LastAnalysis);
-                if (progress != null)
-                {
-                    await Task.Delay(1, cancellationToken);
-                }
-                return bookMove;
+                return ValueTask.FromResult(bookMove);
             }
         }
 
@@ -258,7 +259,7 @@ public sealed class MinimaxPlayer : IPlayer
             {
                 var entry = currentOrder[i];
                 cancellationToken.ThrowIfCancellationRequested();
-                if (sw.ElapsedMilliseconds >= hardLimitMs)
+                if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
                 {
                     depthAborted = true;
                     break;
@@ -281,7 +282,8 @@ public sealed class MinimaxPlayer : IPlayer
                     entry.Move,
                     bestMoveOverall,
                     bestScoreOverall,
-                    out bool aborted);
+                    out bool aborted,
+                    moveNowToken);
 
                 if (aborted)
                 {
@@ -326,7 +328,6 @@ public sealed class MinimaxPlayer : IPlayer
                         Time = sw.Elapsed.ToString(@"m\:ss\.f")
                     };
                     progress.Report(heartbeatAnalysis);
-                    await Task.Delay(1, cancellationToken);
                 }
             }
 
@@ -367,11 +368,6 @@ public sealed class MinimaxPlayer : IPlayer
                 LastAnalysis = iterationAnalysis;
                 lastReportMs = sw.ElapsedMilliseconds;
                 progress?.Report(iterationAnalysis);
-
-                if (progress != null)
-                {
-                    await Task.Delay(1, cancellationToken);
-                }
 
                 if (bestScoreOverall >= TranspositionTable.WinThreshold)
                     break;
@@ -417,7 +413,7 @@ public sealed class MinimaxPlayer : IPlayer
 
         progress?.Report(LastAnalysis);
 
-        return bestMoveOverall;
+        return ValueTask.FromResult(bestMoveOverall);
     }
 
     /// <summary>
@@ -630,14 +626,15 @@ public sealed class MinimaxPlayer : IPlayer
         Move? currentRootMove,
         Move? bestRootMoveOverall,
         int bestScoreOverall,
-        out bool aborted)
+        out bool aborted,
+        CancellationToken moveNowToken = default)
     {
         aborted = false;
 
         if ((NodesEvaluated & 4095) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (sw.ElapsedMilliseconds >= hardLimitMs)
+            if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
             {
                 aborted = true;
                 return 0;
@@ -716,7 +713,7 @@ public sealed class MinimaxPlayer : IPlayer
         {
             if (UseQuiescence)
             {
-                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, cachedStaticEval, out aborted);
+                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, cachedStaticEval, out aborted, moveNowToken);
             }
             if (cachedStaticEval != TranspositionEntry.NoStaticEval)
             {
@@ -815,7 +812,8 @@ public sealed class MinimaxPlayer : IPlayer
                     currentRootMove,
                     bestRootMoveOverall,
                     bestScoreOverall,
-                    out aborted);
+                    out aborted,
+                    moveNowToken);
             }
             else
             {
@@ -853,7 +851,8 @@ public sealed class MinimaxPlayer : IPlayer
                     currentRootMove,
                     bestRootMoveOverall,
                     bestScoreOverall,
-                    out aborted);
+                    out aborted,
+                    moveNowToken);
 
                 // Verified LMR re-search: if reduced search beat alpha, verify at full depth (depth - 1) on the null window
                 if (!aborted && reduction > 0 && score > alpha)
@@ -873,7 +872,8 @@ public sealed class MinimaxPlayer : IPlayer
                         currentRootMove,
                         bestRootMoveOverall,
                         bestScoreOverall,
-                        out aborted);
+                        out aborted,
+                        moveNowToken);
                 }
 
                 // PVS full-window re-search: if null-window search beat alpha inside a PV node, re-search with full window (-beta, -alpha)
@@ -894,7 +894,8 @@ public sealed class MinimaxPlayer : IPlayer
                         currentRootMove,
                         bestRootMoveOverall,
                         bestScoreOverall,
-                        out aborted);
+                        out aborted,
+                        moveNowToken);
                 }
             }
 
@@ -958,14 +959,15 @@ public sealed class MinimaxPlayer : IPlayer
         CancellationToken cancellationToken,
         bool legalMovesVerified,
         int cachedStaticEval,
-        out bool aborted)
+        out bool aborted,
+        CancellationToken moveNowToken = default)
     {
         aborted = false;
 
         if ((NodesEvaluated & 4095) == 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (sw.ElapsedMilliseconds >= hardLimitMs)
+            if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
             {
                 aborted = true;
                 return 0;
@@ -1026,7 +1028,7 @@ public sealed class MinimaxPlayer : IPlayer
         for (int i = 0; i < captures.Length; i++)
         {
             BitPosition nextPos = pos.Apply(in captures[i]);
-            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, TranspositionEntry.NoStaticEval, out aborted);
+            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, TranspositionEntry.NoStaticEval, out aborted, moveNowToken);
 
             if (aborted)
                 return 0;

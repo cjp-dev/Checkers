@@ -17,6 +17,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 /* Menubar */
@@ -135,6 +136,7 @@ body {
     margin: 0 auto;
     width: 100%;
     align-items: flex-start;
+    container-type: inline-size;
 }
 
 /* Checkerboard */
@@ -145,10 +147,8 @@ body {
 }
 
 .checkerboard-container {
-    width: min(calc(100vw - 480px), 78vh, 1080px);
-    height: min(calc(100vw - 480px), 78vh, 1080px);
-    min-width: 320px;
-    min-height: 320px;
+    width: min(calc(100cqw - 420px), 80dvh, 1080px);
+    min-width: 300px;
     aspect-ratio: 1 / 1;
     box-sizing: border-box;
     background: #4A3323;
@@ -177,6 +177,12 @@ body {
     align-items: center;
     justify-content: center;
     cursor: default;
+}
+
+.square:focus-visible {
+    outline: 3px solid #3498DB;
+    outline-offset: -2px;
+    z-index: 5;
 }
 
 .square.light {
@@ -299,7 +305,8 @@ body {
     max-width: 420px;
 }
 
-@media (max-width: 900px) {
+/* Mobile vertical stack (narrow screens or portrait aspect ratio) */
+@media (max-width: 900px) and (max-aspect-ratio: 1/1), (max-width: 600px) {
     .menubar-inner {
         padding: 0 0.75rem;
     }
@@ -312,16 +319,39 @@ body {
     }
 
     .checkerboard-container {
-        width: min(92vw, 65vh, 1080px);
-        height: min(92vw, 65vh, 1080px);
-        min-width: 280px;
-        min-height: 280px;
+        width: min(94cqw, 62dvh, 1080px);
+        min-width: 260px;
     }
 
     .side-panels {
-        width: min(92vw, 65vh, 1080px);
-        min-width: 280px;
+        width: min(94cqw, 62dvh, 1080px);
+        min-width: 260px;
         max-width: 100%;
+    }
+}
+
+/* Compact landscape mobile/tablet screens */
+@media (max-width: 900px) and (min-aspect-ratio: 1/1) and (min-width: 601px) {
+    .menubar-inner {
+        padding: 0 0.75rem;
+    }
+
+    .content {
+        flex-direction: row;
+        align-items: flex-start;
+        padding: 0.5rem 0.75rem;
+        gap: 0.75rem;
+    }
+
+    .checkerboard-container {
+        width: min(calc(100cqw - 300px), 82dvh, 700px);
+        min-width: 260px;
+        padding: 8px;
+    }
+
+    .side-panels {
+        min-width: 240px;
+        max-width: 280px;
     }
 }
 
@@ -573,6 +603,14 @@ body {
 
 .dialog-with-picture {
     max-width: 580px;
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 0 1.25rem;
+}
+
+.dialog-with-picture h2,
+.dialog-with-picture .dialog-buttons {
+    grid-column: 1 / -1;
 }
 
 .dialog h2 {
@@ -584,10 +622,21 @@ body {
 }
 
 .dialog-picture {
-    margin: 0 1rem 1rem 0;
-    float: left;
-    width: 140px;
+    margin: 0;
+    width: 100%;
     text-align: center;
+}
+
+@media (max-width: 520px) {
+    .dialog-with-picture {
+        display: block;
+    }
+
+    .dialog-picture {
+        margin: 0 0 1rem 0;
+        width: 120px;
+        float: left;
+    }
 }
 
 .dialog-picture img {
@@ -706,15 +755,10 @@ body {
 }
 
 .loading-progress circle:last-child {
-    stroke-dasharray: calc(3.141 * 40%);
-    stroke-dashoffset: calc(3.141 * 40%);
-    animation: loading-dash 1.6s infinite ease-in-out;
-}
-
-@keyframes loading-dash {
-    0% { stroke-dashoffset: calc(3.141 * 40%); }
-    50% { stroke-dashoffset: 0; }
-    100% { stroke-dashoffset: calc(-3.141 * 40%); }
+    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+    stroke-dashoffset: 0;
+    transition: stroke-dasharray 0.1s ease;
+    animation: none;
 }
 
 .loading-progress-text {
@@ -723,6 +767,20 @@ body {
     font-weight: 600;
     color: #64748B;
     inset: calc(50vh + 3rem) 0 0 0;
+}
+
+.loading-progress-text:after {
+    content: var(--blazor-load-percentage-text, "Loading Checkers...");
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .square.mandatory-capture,
+    .capture-target-indicator,
+    .thinking-progress,
+    .piece {
+        animation: none !important;
+        transition: none !important;
+    }
 }
 
 #blazor-error-ui {

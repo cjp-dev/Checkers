@@ -928,4 +928,117 @@ public class MainViewModelTests
         vm.Session.MoveHistory.Should().HaveCount(1);
         vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
     }
+
+    [Fact]
+    public void Constructor_WithSettingsStore_LoadsPreferences()
+    {
+        var store = new TestSettingsStore
+        {
+            Preferences = new AppPreferences(
+                GameSettings.Default with { Variant = CheckersVariant.International, SecondsPerMove = 5 },
+                ShowAnalysis: false,
+                SoundEnabled: false)
+        };
+
+        var vm = new MainViewModel(settingsStore: store);
+
+        vm.Settings.Variant.Should().Be(CheckersVariant.International);
+        vm.IsAnalysisVisible.Should().BeFalse();
+        vm.IsSoundOn.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ToggleSound_And_ToggleAnalysis_AutoSavesToSettingsStore()
+    {
+        var store = new TestSettingsStore();
+        var vm = new MainViewModel(settingsStore: store);
+
+        store.SavedHistory.Should().BeEmpty();
+
+        vm.ToggleSoundCommand.Execute(null);
+        store.SavedHistory.Should().HaveCount(1);
+        store.Preferences.SoundEnabled.Should().BeFalse();
+
+        vm.ToggleAnalysisCommand.Execute(null);
+        store.SavedHistory.Should().HaveCount(2);
+        store.Preferences.ShowAnalysis.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MoveNowCommand_CanExecute_OnlyWhenAiThinking_AndCancelsAiEarly()
+    {
+        var tcs = new TaskCompletionSource<Move>();
+        var fakeEngineHost = new FakeEngineHost(tcs);
+
+        var vm = new MainViewModel(engineHost: fakeEngineHost)
+        {
+            AiDelayMs = 0
+        };
+
+        vm.MoveNowCommand.CanExecute(null).Should().BeFalse();
+
+        vm.SetGameModeCommand.Execute(GameMode.ComputerVsHuman);
+
+        for (int i = 0; i < 20 && !vm.IsAiThinking; i++)
+        {
+            await Task.Delay(25);
+        }
+
+        vm.IsAiThinking.Should().BeTrue();
+        vm.MoveNowCommand.CanExecute(null).Should().BeTrue();
+
+        fakeEngineHost.MoveNowTokenReceived.IsCancellationRequested.Should().BeFalse();
+
+        vm.MoveNowCommand.Execute(null);
+
+        fakeEngineHost.MoveNowTokenReceived.IsCancellationRequested.Should().BeTrue();
+
+        tcs.SetResult(vm.Session.LegalMoves.First());
+
+        for (int i = 0; i < 20 && vm.IsAiThinking; i++)
+        {
+            await Task.Delay(25);
+        }
+
+        vm.IsAiThinking.Should().BeFalse();
+        vm.MoveNowCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    private class TestSettingsStore : ISettingsStore
+    {
+        public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);
+        public List<AppPreferences> SavedHistory { get; } = [];
+
+        public AppPreferences Load() => Preferences;
+        public bool Save(AppPreferences preferences)
+        {
+            Preferences = preferences;
+            SavedHistory.Add(preferences);
+            return true;
+        }
+    }
+
+    private class FakeEngineHost : IEngineHost
+    {
+        private readonly TaskCompletionSource<Move> _tcs;
+        public CancellationToken MoveNowTokenReceived { get; private set; }
+
+        public FakeEngineHost(TaskCompletionSource<Move> tcs) => _tcs = tcs;
+        public void ClearTranspositionTable() { }
+
+        public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(
+            BoardState state,
+            IReadOnlyList<Move> legalMoves,
+            GameSettings settings,
+            TimeSpan computerTimeLeft,
+            IReadOnlyList<ulong> stateHashHistory,
+            IProgress<SearchAnalysis>? progress,
+            CancellationToken cancellationToken,
+            CancellationToken moveNowToken)
+        {
+            MoveNowTokenReceived = moveNowToken;
+            var move = await _tcs.Task;
+            return (move, null);
+        }
+    }
 }
