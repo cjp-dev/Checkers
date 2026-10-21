@@ -9,18 +9,21 @@ namespace Checkers.Web.Services;
 
 public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
 {
+    private const int CooperativeGracePeriodMs = 300;
+
     private readonly IJSRuntime _js;
     private readonly LocalEngineHost _fallbackHost = new();
     private IJSObjectReference? _clientModule;
     private DotNetObjectReference<WebEngineHost>? _selfRef;
+    private Task<IJSObjectReference?>? _startTask;
     private IProgress<SearchAnalysis>? _activeProgress;
     private SearchAnalysis? _lastAnalysis;
     private bool _useFallback;
-    private bool _isStarted;
 
     public WebEngineHost(IJSRuntime js)
     {
         _js = js;
+        _startTask = StartAsync();
     }
 
     [JSInvokable]
@@ -38,42 +41,25 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         }
     }
 
-    private async ValueTask<IJSObjectReference?> EnsureClientAsync()
+    private async Task<IJSObjectReference?> StartAsync()
     {
         if (_useFallback)
         {
             return null;
         }
 
-        if (_clientModule == null)
+        try
         {
-            try
-            {
-                _clientModule = await _js.InvokeAsync<IJSObjectReference>("import", "./js/engine-client.js");
-                _selfRef = DotNetObjectReference.Create(this);
-            }
-            catch
-            {
-                _useFallback = true;
-                return null;
-            }
+            _clientModule ??= await _js.InvokeAsync<IJSObjectReference>("import", "./js/engine-client.js");
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await _clientModule.InvokeVoidAsync("start", _selfRef);
+            return _clientModule;
         }
-
-        if (!_isStarted)
+        catch
         {
-            try
-            {
-                await _clientModule.InvokeVoidAsync("start", _selfRef);
-                _isStarted = true;
-            }
-            catch
-            {
-                _useFallback = true;
-                return null;
-            }
+            _useFallback = true;
+            return null;
         }
-
-        return _clientModule;
     }
 
     public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(
@@ -86,8 +72,8 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         CancellationToken cancellationToken,
         CancellationToken moveNowToken)
     {
-        var client = await EnsureClientAsync();
-        if (client == null || _useFallback)
+        IJSObjectReference? client = await (_startTask ??= StartAsync());
+        if (client is null || _useFallback)
         {
             return await _fallbackHost.ChooseMoveAsync(
                 state, legalMoves, settings, computerTimeLeft, stateHashHistory, progress, cancellationToken, moveNowToken);
@@ -97,60 +83,61 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         _lastAnalysis = null;
 
         string requestJson = EngineProtocol.WriteRequest(state, settings, computerTimeLeft, stateHashHistory);
+        Task<string> searchTask = client.InvokeAsync<string>("call", "chooseMove", requestJson).AsTask();
 
-        var searchTask = client.InvokeAsync<string>("call", "chooseMove", requestJson).AsTask();
-
-        using var moveNowReg = moveNowToken.Register(async () =>
-        {
-            try
-            {
-                bool signaled = await client.InvokeAsync<bool>("signal", 1);
-                if (!signaled)
-                {
-                    await RestartAsync(client);
-                }
-            }
-            catch
-            {
-                // Ignore signaling failure
-            }
-        });
-
-        using var cancelReg = cancellationToken.Register(async () =>
-        {
-            try
-            {
-                bool signaled = await client.InvokeAsync<bool>("signal", 2);
-                if (!signaled)
-                {
-                    await RestartAsync(client);
-                }
-            }
-            catch
-            {
-                // Ignore signaling failure
-            }
-        });
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, moveNowToken);
+        var stopSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stopReg = linkedCts.Token.Register(() => stopSignal.TrySetResult());
 
         try
         {
-            var completed = await Task.WhenAny(searchTask, Task.Delay(Timeout.Infinite, cancellationToken));
-            if (completed != searchTask)
+            Task firstCompleted = await Task.WhenAny(searchTask, stopSignal.Task);
+            if (firstCompleted != searchTask)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                int signalCode = cancellationToken.IsCancellationRequested ? 2 : 1;
+                bool signaled = false;
+                try
+                {
+                    signaled = await client.InvokeAsync<bool>("signal", signalCode);
+                }
+                catch
+                {
+                    // Ignore signaling failure
+                }
+
+                if (signaled)
+                {
+                    using var upgradeReg = cancellationToken.Register(() => _ = client.InvokeAsync<bool>("signal", 2));
+                    await Task.WhenAny(searchTask, Task.Delay(CooperativeGracePeriodMs));
+                }
+
+                if (!searchTask.IsCompleted)
+                {
+                    Restart(client);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(cancellationToken);
+                    }
+
+                    Move fallbackMove = FindBestMoveFromAnalysis(legalMoves, _lastAnalysis);
+                    return (fallbackMove, _lastAnalysis);
+                }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             string responseJson = await searchTask;
             return EngineProtocol.ReadResponse(responseJson, legalMoves);
         }
         catch (OperationCanceledException)
         {
-            await RestartAsync(client);
             throw;
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
         catch (Exception) when (moveNowToken.IsCancellationRequested)
         {
-            await RestartAsync(client);
             Move chosen = FindBestMoveFromAnalysis(legalMoves, _lastAnalysis);
             return (chosen, _lastAnalysis);
         }
@@ -176,27 +163,34 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         return legalMoves[0];
     }
 
-    private async Task RestartAsync(IJSObjectReference client)
+    private void Restart(IJSObjectReference client)
     {
-        try
-        {
-            await client.InvokeVoidAsync("terminate");
-            _isStarted = false;
-            await client.InvokeVoidAsync("start", _selfRef);
-            _isStarted = true;
-        }
-        catch
-        {
-            _useFallback = true;
-        }
+        _ = client.InvokeVoidAsync("terminate");
+        _startTask = StartAsync();
     }
 
     public void ClearTranspositionTable()
     {
         _fallbackHost.ClearTranspositionTable();
-        if (_clientModule != null && _isStarted && !_useFallback)
+        if (_clientModule != null && !_useFallback)
         {
-            _ = _clientModule.InvokeVoidAsync("call", "clearTt");
+            _ = ClearWorkerTtAsync();
+        }
+    }
+
+    private async Task ClearWorkerTtAsync()
+    {
+        try
+        {
+            IJSObjectReference? client = await (_startTask ??= StartAsync());
+            if (client != null)
+            {
+                await client.InvokeVoidAsync("call", "clearTt");
+            }
+        }
+        catch
+        {
+            // Ignore if worker is restarting
         }
     }
 
@@ -219,4 +213,3 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         _selfRef = null;
     }
 }
-

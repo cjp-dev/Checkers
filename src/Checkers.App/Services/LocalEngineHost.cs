@@ -10,10 +10,34 @@ namespace Checkers.App.Services;
 /// </summary>
 public sealed class LocalEngineHost : IEngineHost
 {
-    private TranspositionTable _transpositionTable = TranspositionTable.FromEntries(GameSettings.DefaultTranspositionTableEntries);
+    private TranspositionTable? _transpositionTable;
     private CheckersVariant _lastVariant = GameSettings.Default.Variant;
 
     public Func<GameSettings, TimeSpan, IPlayer>? PlayerFactory { get; set; }
+
+    public IPlayer CreatePlayer(GameSettings settings, TimeSpan computerTimeLeft)
+    {
+        if (PlayerFactory != null)
+        {
+            return PlayerFactory(settings, computerTimeLeft);
+        }
+
+        if (_transpositionTable == null || _transpositionTable.Capacity != settings.TranspositionTableEntries)
+        {
+            _transpositionTable = TranspositionTable.FromEntries(settings.TranspositionTableEntries);
+        }
+        else if (_lastVariant != settings.Variant)
+        {
+            _transpositionTable.Clear();
+        }
+        _lastVariant = settings.Variant;
+
+        return new MinimaxPlayer(
+            settings.ToLimits(computerTimeLeft),
+            ruleEngine: new RuleEngine(settings.Variant),
+            evaluator: new EvaluationFunction(settings.Variant),
+            transpositionTable: _transpositionTable);
+    }
 
     public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(
         BoardState state,
@@ -25,21 +49,7 @@ public sealed class LocalEngineHost : IEngineHost
         CancellationToken cancellationToken,
         CancellationToken moveNowToken)
     {
-        if (_transpositionTable.Capacity != settings.TranspositionTableEntries)
-        {
-            _transpositionTable = TranspositionTable.FromEntries(settings.TranspositionTableEntries);
-        }
-        else if (_lastVariant != settings.Variant)
-        {
-            _transpositionTable.Clear();
-        }
-        _lastVariant = settings.Variant;
-
-        IPlayer ai = PlayerFactory?.Invoke(settings, computerTimeLeft) ?? new MinimaxPlayer(
-            settings.ToLimits(computerTimeLeft),
-            ruleEngine: new RuleEngine(settings.Variant),
-            evaluator: new EvaluationFunction(settings.Variant),
-            transpositionTable: _transpositionTable);
+        IPlayer ai = CreatePlayer(settings, computerTimeLeft);
 
         Move move = await Task.Run(
             async () => await ai.GetMoveAsync(state, legalMoves, progress, stateHashHistory, cancellationToken, moveNowToken),
@@ -49,5 +59,5 @@ public sealed class LocalEngineHost : IEngineHost
         return (move, lastAnalysis);
     }
 
-    public void ClearTranspositionTable() => _transpositionTable.Clear();
+    public void ClearTranspositionTable() => _transpositionTable?.Clear();
 }

@@ -168,6 +168,7 @@ body {
     border-radius: 4px;
     overflow: hidden;
     user-select: none;
+    touch-action: none;
     box-sizing: border-box;
 }
 
@@ -488,7 +489,7 @@ body {
 /* Action Buttons */
 .action-buttons {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
     gap: 0.5rem;
 }
 
@@ -523,6 +524,15 @@ body {
 
 .btn-secondary:hover:not(:disabled) {
     background: #CBD5E1;
+}
+
+.btn-warning {
+    background: #E67E22;
+    color: #FFFFFF;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background: #D35400;
 }
 
 /* Analysis Panel */

@@ -251,6 +251,7 @@
     [JSInvokable]
     public Task OnShortcut(string key) => Dialogs.Current is not null ? Task.CompletedTask : key switch
     {
+        "n" => RunAsync(Vm.NewGameCommand),
         "o" => RunAsync(Vm.OpenCommand),
         "s" => RunAsync(Vm.SaveCommand),
         "z" => RunAsync(Vm.UndoCommand),

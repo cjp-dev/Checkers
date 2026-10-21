@@ -314,7 +314,7 @@ public sealed class MinimaxPlayer : IPlayer
                     alpha = score;
                 }
 
-                if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 150)
+                if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 100)
                 {
                     lastReportMs = sw.ElapsedMilliseconds;
                     var heartbeatAnalysis = new SearchAnalysis
@@ -640,7 +640,7 @@ public sealed class MinimaxPlayer : IPlayer
                 return 0;
             }
 
-            if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 200)
+            if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 100)
             {
                 lastReportMs = sw.ElapsedMilliseconds;
                 progress.Report(new SearchAnalysis

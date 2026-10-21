@@ -79,8 +79,6 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private GameSettings _settings = GameSettings.Default;
 
-    private TranspositionTable _transpositionTable = TranspositionTable.FromEntries(GameSettings.DefaultTranspositionTableEntries);
-
     private TimeSpan _computerTimeLeft;
     private readonly Dictionary<int, TimeSpan> _timeLeftAtPly = [];
 
@@ -183,19 +181,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSettingsChanging(GameSettings? oldValue, GameSettings newValue)
     {
-        if (oldValue != null && oldValue.Variant != newValue.Variant && _transpositionTable.Capacity == newValue.TranspositionTableEntries)
+        if (oldValue != null && oldValue.Variant != newValue.Variant)
         {
-            _transpositionTable.Clear();
+            _engineHost.ClearTranspositionTable();
         }
     }
 
     partial void OnSettingsChanged(GameSettings value)
     {
-        if (_transpositionTable.Capacity != value.TranspositionTableEntries)
-        {
-            _transpositionTable = TranspositionTable.FromEntries(value.TranspositionTableEntries);
-        }
-
         OnPropertyChanged(nameof(SettingsBadgeText));
         OnPropertyChanged(nameof(VariantBadgeText));
         OnPropertyChanged(nameof(GameModeDescription));
@@ -247,7 +240,6 @@ public sealed partial class MainViewModel : ObservableObject
             _isAnalysisVisible = saved.ShowAnalysis;
             _isSoundOn = saved.SoundEnabled;
             _soundService.IsEnabled = saved.SoundEnabled;
-            _transpositionTable = TranspositionTable.FromEntries(Settings.TranspositionTableEntries);
         }
         _settingsLoaded = true;
 
@@ -417,7 +409,7 @@ public sealed partial class MainViewModel : ObservableObject
         ClearSelection();
         Analysis.Reset();
         ResetClock();
-        _transpositionTable.Clear();
+        _engineHost.ClearTranspositionTable();
         FileName = string.Empty;
         Session.StartNewGame();
         RefreshBoard();
@@ -448,7 +440,7 @@ public sealed partial class MainViewModel : ObservableObject
         CancelAi();
         ClearSelection();
         Analysis.Reset();
-        _transpositionTable.Clear();
+        _engineHost.ClearTranspositionTable();
 
         if (loaded.Tags.TryGetValue("GameMode", out var gmStr) &&
             Enum.TryParse<GameMode>(gmStr, true, out var gm))
@@ -587,7 +579,6 @@ public sealed partial class MainViewModel : ObservableObject
     public void ToggleSound()
     {
         IsSoundOn = !IsSoundOn;
-        _soundService.IsEnabled = IsSoundOn;
     }
 
     [RelayCommand]
@@ -632,7 +623,7 @@ public sealed partial class MainViewModel : ObservableObject
                 CancelAi();
                 ClearSelection();
                 Analysis.Reset();
-                _transpositionTable.Clear();
+                _engineHost.ClearTranspositionTable();
                 FileName = string.Empty;
                 AttachSession(new GameSession(new RuleEngine(Settings.Variant)));
             }
@@ -974,12 +965,7 @@ public sealed partial class MainViewModel : ObservableObject
         set => _localEngineHost.PlayerFactory = value;
     }
 
-    public IPlayer CreateAiPlayer() =>
-        AiPlayerFactory?.Invoke(Settings, _computerTimeLeft) ?? new MinimaxPlayer(
-            Settings.ToLimits(_computerTimeLeft),
-            ruleEngine: new RuleEngine(Settings.Variant),
-            evaluator: new EvaluationFunction(Settings.Variant),
-            transpositionTable: _transpositionTable);
+    public IPlayer CreateAiPlayer() => _localEngineHost.CreatePlayer(Settings, _computerTimeLeft);
 
     public void CancelAi()
     {

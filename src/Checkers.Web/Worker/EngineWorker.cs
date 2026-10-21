@@ -11,7 +11,7 @@ namespace Checkers.Web.Worker;
 [SupportedOSPlatform("browser")]
 public static partial class EngineWorker
 {
-    private static TranspositionTable s_tt = TranspositionTable.FromEntries(TranspositionTable.DefaultEntries);
+    private static TranspositionTable? s_tt;
     private static CheckersVariant s_lastVariant = CheckersVariant.International;
 
     [JSExport]
@@ -22,7 +22,7 @@ public static partial class EngineWorker
     }
 
     [JSExport]
-    public static void ClearTranspositionTable() => s_tt.Clear();
+    public static void ClearTranspositionTable() => s_tt?.Clear();
 
     [JSExport]
     public static string ChooseMove(string requestJson)
@@ -30,7 +30,7 @@ public static partial class EngineWorker
         (BoardState state, CheckersVariant variant, SearchLimits limits, int ttEntries, ulong[] history) =
             EngineProtocol.ReadRequest(requestJson);
 
-        if (s_tt.Capacity != ttEntries)
+        if (s_tt is null || s_tt.Capacity != ttEntries)
         {
             s_tt = TranspositionTable.FromEntries(ttEntries);
         }
@@ -53,10 +53,19 @@ public static partial class EngineWorker
             evaluator: new EvaluationFunction(variant),
             transpositionTable: s_tt);
 
-        Move move = ai.GetMoveAsync(state, legalMoves, poster, history, cancelCts.Token, moveNowCts.Token)
-            .GetAwaiter().GetResult();
+        try
+        {
+            Move move = ai.GetMoveAsync(state, legalMoves, poster, history, cancelCts.Token, moveNowCts.Token)
+                .GetAwaiter().GetResult();
 
-        return EngineProtocol.WriteResponse(move, ai.LastAnalysis);
+            return EngineProtocol.WriteResponse(move, ai.LastAnalysis);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cooperative cancellation via SharedArrayBuffer signal (code = 2):
+            // return cleanly so the worker stays alive and preserves its Transposition Table.
+            return EngineProtocol.WriteResponse(legalMoves[0], ai.LastAnalysis);
+        }
     }
 
     [JSImport("postProgress", "engine-worker")]
@@ -100,4 +109,3 @@ public static partial class EngineWorker
         }
     }
 }
-

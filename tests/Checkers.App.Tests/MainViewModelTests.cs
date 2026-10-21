@@ -1004,6 +1004,21 @@ public class MainViewModelTests
         vm.MoveNowCommand.CanExecute(null).Should().BeFalse();
     }
 
+    [Fact]
+    public void NewGame_And_VariantChange_ClearsEngineHostTranspositionTable()
+    {
+        var fakeEngineHost = new FakeEngineHost(new TaskCompletionSource<Move>());
+        var vm = new MainViewModel(engineHost: fakeEngineHost);
+
+        fakeEngineHost.ClearTranspositionTableCount.Should().Be(0);
+
+        vm.NewGameCommand.Execute(null);
+        fakeEngineHost.ClearTranspositionTableCount.Should().Be(1);
+
+        vm.Settings = vm.Settings with { Variant = CheckersVariant.English };
+        fakeEngineHost.ClearTranspositionTableCount.Should().Be(2);
+    }
+
     private class TestSettingsStore : ISettingsStore
     {
         public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);
@@ -1024,7 +1039,8 @@ public class MainViewModelTests
         public CancellationToken MoveNowTokenReceived { get; private set; }
 
         public FakeEngineHost(TaskCompletionSource<Move> tcs) => _tcs = tcs;
-        public void ClearTranspositionTable() { }
+        public int ClearTranspositionTableCount { get; private set; }
+        public void ClearTranspositionTable() => ClearTranspositionTableCount++;
 
         public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(
             BoardState state,
