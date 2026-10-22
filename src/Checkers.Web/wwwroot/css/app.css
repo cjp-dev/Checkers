@@ -489,8 +489,15 @@ body {
 /* Action Buttons */
 .action-buttons {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+    gap: 0.35rem;
+}
+
+.action-buttons .btn {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-align: center;
 }
 
 .btn {
@@ -533,6 +540,13 @@ body {
 
 .btn-warning:hover:not(:disabled) {
     background: #D35400;
+}
+
+.btn-warning:disabled {
+    background: #E2E8F0;
+    color: #94A3B8;
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 /* Analysis Panel */

@@ -109,12 +109,11 @@
 
                 <!-- Quick Action Buttons -->
                 <div class="action-buttons">
-                    <button class="btn btn-primary" @onclick="() => RunAsync(Vm.NewGameCommand)">New</button>
                     <button class="btn btn-secondary" disabled="@(!Vm.CanUndo)" @onclick="() => RunAsync(Vm.UndoCommand)">Undo</button>
                     <button class="btn btn-secondary" disabled="@(!Vm.CanRedo)" @onclick="() => RunAsync(Vm.RedoCommand)">Redo</button>
-                    @if (Vm.IsAiThinking)
+                    @if (Vm.IsVsComputer)
                     {
-                        <button class="btn btn-warning" @onclick="() => RunAsync(Vm.MoveNowCommand)">Move Now</button>
+                        <button class="btn btn-warning" disabled="@(!Vm.IsAiThinking)" @onclick="() => RunAsync(Vm.MoveNowCommand)">Move Now</button>
                     }
                 </div>
             </section>
@@ -169,11 +168,6 @@
                 new("Open...", Vm.OpenCommand, "Ctrl+O"),
                 new("Save", Vm.SaveCommand, "Ctrl+S"),
                 new("Save As...", Vm.SaveAsCommand),
-            ]),
-            new("Edit",
-            [
-                new("Undo", Vm.UndoCommand, "Ctrl+Z"),
-                new("Redo", Vm.RedoCommand, "Ctrl+Y"),
             ]),
             new("Game",
             [

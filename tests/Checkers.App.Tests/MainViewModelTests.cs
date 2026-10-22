@@ -1019,6 +1019,18 @@ public class MainViewModelTests
         fakeEngineHost.ClearTranspositionTableCount.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData(GameMode.HumanVsComputer, true)]
+    [InlineData(GameMode.ComputerVsHuman, true)]
+    [InlineData(GameMode.ComputerVsComputer, true)]
+    [InlineData(GameMode.HumanVsHuman, false)]
+    public void IsVsComputer_ReturnsTrue_WhenPlayingComputer(GameMode mode, bool expected)
+    {
+        var vm = new MainViewModel();
+        vm.SetGameMode(mode);
+        vm.IsVsComputer.Should().Be(expected);
+    }
+
     private class TestSettingsStore : ISettingsStore
     {
         public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);

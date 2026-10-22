@@ -84,7 +84,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool IsHumanVsComputer => GameMode == GameMode.HumanVsComputer;
     public bool IsComputerVsHuman => GameMode == GameMode.ComputerVsHuman;
-    public bool IsVsComputer => GameMode is GameMode.HumanVsComputer or GameMode.ComputerVsHuman;
+    public bool IsVsComputer => GameMode is GameMode.HumanVsComputer or GameMode.ComputerVsHuman or GameMode.ComputerVsComputer;
     public bool IsHumanVsHuman => GameMode == GameMode.HumanVsHuman;
     public bool IsBoardFlipped => GameMode == GameMode.ComputerVsHuman;
 
