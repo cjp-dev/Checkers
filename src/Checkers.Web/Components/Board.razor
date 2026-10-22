@@ -1,13 +1,10 @@
 @using Checkers.App.ViewModels
 @using Checkers.Core.Models
-@inject IJSRuntime JS
 
 <div class="checkerboard-container">
     <div class="checkerboard"
          role="grid"
-         aria-label="Checkers Board"
-         @onpointerup="HandlePointerUp"
-         @onpointercancel="() => _draggedSquare = null">
+         aria-label="Checkers Board">
         @for (int sr = 0; sr < 8; sr++)
         {
             @for (int sc = 0; sc < 8; sc++)
@@ -25,9 +22,7 @@
                      data-col="@c"
                      aria-label="@GetSquareAriaLabel(sq)"
                      @onclick="() => OnSquareClick.InvokeAsync(sq)"
-                     @onkeydown="e => HandleKeyDown(e, sq)"
-                     @ondragover:preventDefault
-                     @ondrop="() => HandleDrop(sq)">
+                     @onkeydown="e => HandleKeyDown(e, sq)">
 
                     @if (isDark && sq.DraughtsNumber.HasValue)
                     {
@@ -42,10 +37,7 @@
                         if (sq.IsSelected) pieceClass += " piece-selected";
                         if (sq.IsMovable) pieceClass += " piece-movable";
 
-                        <div class="@pieceClass"
-                             draggable="@(sq.IsMovable ? "true" : "false")"
-                             @ondragstart="() => _draggedSquare = sq"
-                             @onpointerdown="() => HandlePointerDown(sq)">
+                        <div class="@pieceClass">
                             @if (piece.IsKing)
                             {
                                 <span class="crown">👑</span>
@@ -68,8 +60,6 @@
 </div>
 
 @code {
-    private SquareViewModel? _draggedSquare;
-
     [Parameter, EditorRequired]
     public SquareViewModel[,] Squares { get; set; } = new SquareViewModel[8, 8];
 
@@ -79,63 +69,11 @@
     [Parameter]
     public EventCallback<SquareViewModel> OnSquareClick { get; set; }
 
-    [Parameter]
-    public EventCallback<(SquareViewModel From, SquareViewModel To)> OnSquareDragDrop { get; set; }
-
-    private async Task HandleDrop(SquareViewModel target)
-    {
-        if (_draggedSquare != null && _draggedSquare != target)
-        {
-            await OnSquareDragDrop.InvokeAsync((_draggedSquare, target));
-            _draggedSquare = null;
-        }
-    }
-
     private async Task HandleKeyDown(KeyboardEventArgs e, SquareViewModel sq)
     {
         if (e.Key is "Enter" or " ")
         {
             await OnSquareClick.InvokeAsync(sq);
-        }
-    }
-
-    private void HandlePointerDown(SquareViewModel sq)
-    {
-        if (sq.IsMovable)
-        {
-            _draggedSquare = sq;
-        }
-    }
-
-    private async Task HandlePointerUp(PointerEventArgs e)
-    {
-        if (_draggedSquare != null)
-        {
-            try
-            {
-                var coords = await JS.InvokeAsync<int[]?>("checkers.getSquareAtPoint", e.ClientX, e.ClientY);
-                if (coords != null && coords.Length == 2)
-                {
-                    int tr = coords[0];
-                    int tc = coords[1];
-                    if (tr >= 0 && tr < 8 && tc >= 0 && tc < 8)
-                    {
-                        var target = Squares[tr, tc];
-                        if (target != _draggedSquare)
-                        {
-                            await OnSquareDragDrop.InvokeAsync((_draggedSquare, target));
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore JS interop failure on pointerup
-            }
-            finally
-            {
-                _draggedSquare = null;
-            }
         }
     }
 

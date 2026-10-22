@@ -344,7 +344,7 @@ public sealed partial class MainViewModel : ObservableObject
                 }
                 else
                 {
-                    StatusText = $"Piece on square {sqNum} has no legal moves (blocked). Select a highlighted piece.";
+                    StatusText = $"Piece on square {sqNum} has no legal moves (blocked). Select a piece that can move.";
                 }
                 ClearSelection();
                 return;
@@ -695,7 +695,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         else
         {
-            StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
+            StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click a green circle to move.";
         }
     }
 
@@ -745,7 +745,7 @@ public sealed partial class MainViewModel : ObservableObject
                 }
                 else
                 {
-                    StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click or drag to a green circle to move.";
+                    StatusText = $"{TurnIndicatorText} — Selected #{sqNum}. Click a green circle to move.";
                 }
             }
         }
@@ -860,7 +860,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         else
         {
-            StatusText = $"{TurnIndicatorText} — Click or drag a highlighted piece to move";
+            StatusText = $"{TurnIndicatorText} — Click a piece to move it";
         }
     }
 

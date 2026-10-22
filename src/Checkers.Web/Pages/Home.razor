@@ -57,8 +57,7 @@
         <div class="board-area">
             <Board Squares="Vm.Squares"
                    IsFlipped="Vm.IsBoardFlipped"
-                   OnSquareClick="HandleSquareClick"
-                   OnSquareDragDrop="HandleSquareDragDrop" />
+                   OnSquareClick="HandleSquareClick" />
         </div>
 
         <!-- Right Side Information Panels -->
@@ -256,9 +255,6 @@
     };
 
     private void HandleSquareClick(SquareViewModel square) => Vm.SquareClicked(square);
-
-    private void HandleSquareDragDrop((SquareViewModel From, SquareViewModel To) pair) =>
-        Vm.TryDragMove(pair.From, pair.To);
 
     private void OpenDocs() =>
         ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute(""), "_blank", "noopener");

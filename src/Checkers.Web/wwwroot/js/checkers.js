@@ -30,14 +30,6 @@ window.checkers = (() => {
             }
         },
 
-        getSquareAtPoint(x, y) {
-            const el = document.elementFromPoint(x, y)?.closest('.square');
-            if (!el) return null;
-            const r = parseInt(el.getAttribute('data-row'), 10);
-            const c = parseInt(el.getAttribute('data-col'), 10);
-            return isNaN(r) || isNaN(c) ? null : [r, c];
-        },
-
         // Resolves to [name, text], or null if the user cancels.
         openTextFile(accept) {
             return new Promise((resolve, reject) => {
