@@ -6,10 +6,11 @@ using Checkers.Core.Engine;
 using Checkers.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Diagnostics;
 
 namespace Checkers.App.ViewModels;
 
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly ISoundService _soundService;
     private readonly IDialogService? _dialogService;
@@ -103,8 +104,12 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private GameSettings _settings = GameSettings.Default;
 
-    private TimeSpan _computerTimeLeft;
-    private readonly Dictionary<int, TimeSpan> _timeLeftAtPly = [];
+    private TimeSpan _whiteTimeLeft;
+    private TimeSpan _blackTimeLeft;
+    private readonly Dictionary<int, (TimeSpan White, TimeSpan Black)> _timeLeftAtPly = [];
+    private long _lastTickTimestamp;
+    private readonly Timer _clockTimer;
+    private readonly SynchronizationContext? _syncContext;
 
     public bool IsHumanVsComputer => GameMode == GameMode.HumanVsComputer;
     public bool IsComputerVsHuman => GameMode == GameMode.ComputerVsHuman;
@@ -115,15 +120,28 @@ public sealed partial class MainViewModel : ObservableObject
     public string SettingsBadgeText => Settings.Summary;
     public string VariantBadgeText => Settings.VariantBadgeText;
 
-    public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame && IsVsComputer;
+    public bool IsGameSettingVisible => IsVsComputer;
+    public bool IsClockVisible => Settings.Mode == TimeControlMode.TimePerGame;
+
+    public TimeSpan WhiteTimeLeft => _whiteTimeLeft;
+    public TimeSpan BlackTimeLeft => _blackTimeLeft;
+
+    public string WhiteClockText => FormatClock(_whiteTimeLeft);
+    public string BlackClockText => FormatClock(_blackTimeLeft);
+
+    public TimeSpan ComputerTimeLeft => GameMode switch
+    {
+        GameMode.ComputerVsHuman => _whiteTimeLeft,
+        GameMode.HumanVsComputer => _blackTimeLeft,
+        GameMode.ComputerVsComputer => (Session.CurrentState.ActivePlayer == PieceColor.White ? _whiteTimeLeft : _blackTimeLeft),
+        _ => TimeSpan.Zero
+    };
 
     public string ClockText => IsClockVisible
-        ? $"Clock: {FormatClock(_computerTimeLeft)}"
+        ? $"Clock: {FormatClock(ComputerTimeLeft)}"
         : string.Empty;
 
-    public TimeSpan ComputerTimeLeft => _computerTimeLeft;
-
-    private static string FormatClock(TimeSpan span) => span < TimeSpan.Zero ? "0:00" : $"{(int)span.TotalMinutes}:{span.Seconds:00}";
+    private static string FormatClock(TimeSpan span) => span <= TimeSpan.Zero ? "0:00" : $"{(int)span.TotalMinutes}:{span.Seconds:00}";
 
     public string GameModeBadgeText => GameMode switch
     {
@@ -145,8 +163,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string WhitePlayerLabel => GameMode switch
     {
-        GameMode.HumanVsComputer => "Human (You)",
-        GameMode.ComputerVsHuman => $"Computer ({Settings.Summary})",
+        GameMode.HumanVsComputer => "Human",
+        GameMode.ComputerVsHuman => "Computer",
         GameMode.HumanVsHuman => "Player 1",
         GameMode.ComputerVsComputer => "Computer 1",
         _ => "White"
@@ -154,8 +172,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string BlackPlayerLabel => GameMode switch
     {
-        GameMode.HumanVsComputer => $"Computer ({Settings.Summary})",
-        GameMode.ComputerVsHuman => "Human (You)",
+        GameMode.HumanVsComputer => "Computer",
+        GameMode.ComputerVsHuman => "Human",
         GameMode.HumanVsHuman => "Player 2",
         GameMode.ComputerVsComputer => "Computer 2",
         _ => "Black"
@@ -189,6 +207,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BlackPlayerLabel));
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
+        OnPropertyChanged(nameof(IsGameSettingVisible));
     }
 
     partial void OnIsAnalysisVisibleChanged(bool value)
@@ -220,6 +239,9 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BlackPlayerLabel));
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
+        OnPropertyChanged(nameof(IsGameSettingVisible));
+        OnPropertyChanged(nameof(WhiteClockText));
+        OnPropertyChanged(nameof(BlackClockText));
         SavePreferences();
     }
 
@@ -268,7 +290,10 @@ public sealed partial class MainViewModel : ObservableObject
         _settingsLoaded = true;
 
         Session = session ?? new GameSession(new RuleEngine(Settings.Variant));
-        _computerTimeLeft = Settings.GameTime;
+        _whiteTimeLeft = Settings.GameTime;
+        _blackTimeLeft = Settings.GameTime;
+        _syncContext = SynchronizationContext.Current;
+        _clockTimer = new Timer(OnClockTimerTick, null, 250, 250);
 
         // Initialize 8x8 squares
         for (int r = 0; r < 8; r++)
@@ -303,8 +328,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void ResetClock()
     {
-        _computerTimeLeft = Settings.GameTime;
+        _whiteTimeLeft = Settings.GameTime;
+        _blackTimeLeft = Settings.GameTime;
         _timeLeftAtPly.Clear();
+        _lastTickTimestamp = 0;
+        OnPropertyChanged(nameof(WhiteTimeLeft));
+        OnPropertyChanged(nameof(BlackTimeLeft));
+        OnPropertyChanged(nameof(WhiteClockText));
+        OnPropertyChanged(nameof(BlackClockText));
         OnPropertyChanged(nameof(ClockText));
     }
 
@@ -581,9 +612,20 @@ public sealed partial class MainViewModel : ObservableObject
             int currentPly = Session.MoveHistory.Count;
             if (_timeLeftAtPly.TryGetValue(currentPly, out var restoredTime))
             {
-                _computerTimeLeft = restoredTime;
-                OnPropertyChanged(nameof(ClockText));
+                _whiteTimeLeft = restoredTime.White;
+                _blackTimeLeft = restoredTime.Black;
             }
+            else
+            {
+                _whiteTimeLeft = Settings.GameTime;
+                _blackTimeLeft = Settings.GameTime;
+            }
+            _lastTickTimestamp = Session.MoveHistory.Count == 0 ? 0 : Stopwatch.GetTimestamp();
+            OnPropertyChanged(nameof(WhiteTimeLeft));
+            OnPropertyChanged(nameof(BlackTimeLeft));
+            OnPropertyChanged(nameof(WhiteClockText));
+            OnPropertyChanged(nameof(BlackClockText));
+            OnPropertyChanged(nameof(ClockText));
 
             RefreshBoard();
         }
@@ -791,6 +833,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnMoveExecuted()
     {
+        int ply = Session.MoveHistory.Count;
+        _timeLeftAtPly[ply] = (_whiteTimeLeft, _blackTimeLeft);
+        _lastTickTimestamp = Stopwatch.GetTimestamp();
         RefreshBoard();
     }
 
@@ -860,12 +905,16 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (Session.Status == GameStatus.WhiteWon)
         {
-            StatusText = "Game Over — White Won!";
+            StatusText = Session.GameOverReason == GameOverReason.Timeout
+                ? "Game Over — White Won on time!"
+                : "Game Over — White Won!";
             return;
         }
         if (Session.Status == GameStatus.BlackWon)
         {
-            StatusText = "Game Over — Black Won!";
+            StatusText = Session.GameOverReason == GameOverReason.Timeout
+                ? "Game Over — Black Won on time!"
+                : "Game Over — Black Won!";
             return;
         }
         if (Session.Status == GameStatus.Draw)
@@ -909,7 +958,7 @@ public sealed partial class MainViewModel : ObservableObject
         SwitchSidesCommand.NotifyCanExecuteChanged();
 
         int plyBefore = Session.MoveHistory.Count;
-        _timeLeftAtPly[plyBefore] = _computerTimeLeft;
+        _timeLeftAtPly[plyBefore] = (_whiteTimeLeft, _blackTimeLeft);
 
         int searchId = ++_searchId;
         Analysis.Reset();
@@ -933,16 +982,9 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             var stateHashes = Session.StateHistory.Select(s => s.ZobristHash).ToList();
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var computerTime = Session.CurrentState.ActivePlayer == PieceColor.White ? _whiteTimeLeft : _blackTimeLeft;
             var (move, lastAnalysis) = await _engineHost.ChooseMoveAsync(
-                Session.CurrentState, legalMoves, Settings, _computerTimeLeft, stateHashes, progress, token, moveNowToken);
-            sw.Stop();
-
-            if (Settings.Mode == TimeControlMode.TimePerGame)
-            {
-                _computerTimeLeft = _computerTimeLeft > sw.Elapsed ? _computerTimeLeft - sw.Elapsed : TimeSpan.Zero;
-                OnPropertyChanged(nameof(ClockText));
-            }
+                Session.CurrentState, legalMoves, Settings, computerTime, stateHashes, progress, token, moveNowToken);
 
             if (searchId == _searchId && !token.IsCancellationRequested && lastAnalysis != null)
             {
@@ -994,7 +1036,7 @@ public sealed partial class MainViewModel : ObservableObject
         set => _localEngineHost.PlayerFactory = value;
     }
 
-    public IPlayer CreateAiPlayer() => _localEngineHost.CreatePlayer(Settings, _computerTimeLeft);
+    public IPlayer CreateAiPlayer() => _localEngineHost.CreatePlayer(Settings, ComputerTimeLeft);
 
     public void CancelAi()
     {
@@ -1016,11 +1058,92 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void HandleGameOver(GameOverEventArgs e)
     {
+        _lastTickTimestamp = 0;
         RefreshBoard();
         if (e.Status is GameStatus.WhiteWon or GameStatus.BlackWon)
         {
             _soundService.Play(SoundType.Win);
         }
+    }
+
+    private void OnClockTimerTick(object? state)
+    {
+        if (_syncContext != null && SynchronizationContext.Current != _syncContext)
+        {
+            _syncContext.Post(_ => TickClock(), null);
+        }
+        else
+        {
+            TickClock();
+        }
+    }
+
+    private void TickClock()
+    {
+        if (Settings.Mode != TimeControlMode.TimePerGame ||
+            Session.Status != GameStatus.InProgress ||
+            Session.MoveHistory.Count == 0)
+        {
+            _lastTickTimestamp = 0;
+            return;
+        }
+
+        long now = Stopwatch.GetTimestamp();
+        if (_lastTickTimestamp == 0)
+        {
+            _lastTickTimestamp = now;
+            return;
+        }
+
+        double elapsedSeconds = (now - _lastTickTimestamp) / (double)Stopwatch.Frequency;
+        _lastTickTimestamp = now;
+
+        if (elapsedSeconds <= 0)
+            return;
+
+        var elapsed = TimeSpan.FromSeconds(elapsedSeconds);
+        var active = Session.CurrentState.ActivePlayer;
+
+        if (active == PieceColor.White)
+        {
+            _whiteTimeLeft = _whiteTimeLeft > elapsed ? _whiteTimeLeft - elapsed : TimeSpan.Zero;
+            if (_whiteTimeLeft <= TimeSpan.Zero)
+            {
+                _whiteTimeLeft = TimeSpan.Zero;
+                OnTimeout(PieceColor.White);
+                return;
+            }
+        }
+        else
+        {
+            _blackTimeLeft = _blackTimeLeft > elapsed ? _blackTimeLeft - elapsed : TimeSpan.Zero;
+            if (_blackTimeLeft <= TimeSpan.Zero)
+            {
+                _blackTimeLeft = TimeSpan.Zero;
+                OnTimeout(PieceColor.Black);
+                return;
+            }
+        }
+
+        OnPropertyChanged(nameof(WhiteTimeLeft));
+        OnPropertyChanged(nameof(BlackTimeLeft));
+        OnPropertyChanged(nameof(WhiteClockText));
+        OnPropertyChanged(nameof(BlackClockText));
+        OnPropertyChanged(nameof(ClockText));
+    }
+
+    private void OnTimeout(PieceColor timedOutPlayer)
+    {
+        _lastTickTimestamp = 0;
+        CancelAi();
+        Session.FlagFell(timedOutPlayer);
+        RefreshBoard();
+    }
+
+    public void Dispose()
+    {
+        CancelAi();
+        _clockTimer.Dispose();
     }
 
     private static string FormatDrawReason(GameOverReason reason) => reason switch

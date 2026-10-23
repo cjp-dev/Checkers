@@ -106,6 +106,24 @@ public sealed class GameSession
         return true;
     }
 
+    public bool FlagFell(PieceColor timedOutPlayer)
+    {
+        if (Status != GameStatus.InProgress)
+            return false;
+
+        Status = timedOutPlayer == PieceColor.White ? GameStatus.BlackWon : GameStatus.WhiteWon;
+        GameOverReason = GameOverReason.Timeout;
+        LegalMoves = [];
+
+        GameOver?.Invoke(this, new GameOverEventArgs
+        {
+            Status = Status,
+            Reason = GameOverReason
+        });
+
+        return true;
+    }
+
     public bool Undo()
     {
         if (!CanUndo)

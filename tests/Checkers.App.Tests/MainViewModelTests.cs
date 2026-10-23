@@ -290,8 +290,8 @@ public class MainViewModelTests
         vm.IsHumanVsComputer.Should().BeTrue();
         vm.IsHumanVsHuman.Should().BeFalse();
         vm.GameModeBadgeText.Should().Be("vs Computer");
-        vm.WhitePlayerLabel.Should().Contain("You");
-        vm.BlackPlayerLabel.Should().Contain("Computer");
+        vm.WhitePlayerLabel.Should().Be("Human");
+        vm.BlackPlayerLabel.Should().Be("Computer");
     }
 
     [Fact]
@@ -302,24 +302,26 @@ public class MainViewModelTests
         // Default settings is TimePerGame 5 min
         vm.Settings.Mode.Should().Be(TimeControlMode.TimePerGame);
         vm.SettingsBadgeText.Should().Be("5 min / game");
-        vm.IsClockVisible.Should().BeFalse(); // Because default mode is HumanVsHuman
+        vm.IsClockVisible.Should().BeTrue();
+        vm.IsGameSettingVisible.Should().BeFalse(); // Because default mode is HumanVsHuman
 
-        // Switch to HumanVsComputer -> Clock becomes visible
+        // Switch to HumanVsComputer -> Clock and setting badge become visible
         vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
         vm.IsClockVisible.Should().BeTrue();
+        vm.IsGameSettingVisible.Should().BeTrue();
         vm.ClockText.Should().Be("Clock: 5:00");
 
         // Change to TimePerMove
         vm.Settings = new GameSettings(TimeControlMode.TimePerMove, 8, 10, 5);
         vm.SettingsBadgeText.Should().Be("10s / move");
         vm.IsClockVisible.Should().BeFalse();
-        vm.ClockText.Should().BeEmpty();
+        vm.IsGameSettingVisible.Should().BeTrue();
 
         // Change to FixedDepth
         vm.Settings = new GameSettings(TimeControlMode.FixedDepth, 6, 10, 5);
         vm.SettingsBadgeText.Should().Be("6 plies");
         vm.IsClockVisible.Should().BeFalse();
-        vm.ClockText.Should().BeEmpty();
+        vm.IsGameSettingVisible.Should().BeTrue();
     }
 
     [Fact]
@@ -847,8 +849,8 @@ public class MainViewModelTests
         vm.GameMode.Should().Be(GameMode.ComputerVsHuman);
         vm.IsComputerVsHuman.Should().BeTrue();
         vm.IsBoardFlipped.Should().BeTrue();
-        vm.WhitePlayerLabel.Should().Contain("Computer");
-        vm.BlackPlayerLabel.Should().Be("Human (You)");
+        vm.WhitePlayerLabel.Should().Be("Computer");
+        vm.BlackPlayerLabel.Should().Be("Human");
 
         // BoardSquares should now be ordered in flipped orientation (sr=0, sc=0 -> r=7, c=7)
         vm.BoardSquares[0].Position.Should().Be(new Position(7, 7));
@@ -1077,6 +1079,37 @@ public class MainViewModelTests
         vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
         vm.IsHumanVsComputer.Should().BeFalse();
         vm.IsComputerVsHuman.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Clocks_StartAtInitialTime_AndDoNotTickBeforeFirstMove()
+    {
+        var vm = new MainViewModel();
+        vm.Settings = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5); // 5 min
+        vm.ResetClock();
+
+        vm.WhiteClockText.Should().Be("5:00");
+        vm.BlackClockText.Should().Be("5:00");
+        vm.WhiteTimeLeft.Should().Be(TimeSpan.FromMinutes(5));
+        vm.BlackTimeLeft.Should().Be(TimeSpan.FromMinutes(5));
+
+        Thread.Sleep(300);
+        vm.WhiteClockText.Should().Be("5:00");
+        vm.BlackClockText.Should().Be("5:00");
+    }
+
+    [Fact]
+    public void FlagFell_EndsGameWithTimeoutLoss()
+    {
+        var vm = new MainViewModel();
+        vm.SetGameMode(GameMode.HumanVsComputer);
+        vm.Session.Status.Should().Be(GameStatus.InProgress);
+
+        vm.Session.FlagFell(PieceColor.White);
+
+        vm.Session.Status.Should().Be(GameStatus.BlackWon);
+        vm.Session.GameOverReason.Should().Be(GameOverReason.Timeout);
+        vm.StatusText.Should().Contain("Black Won on time");
     }
 
     private class TestSettingsStore : ISettingsStore

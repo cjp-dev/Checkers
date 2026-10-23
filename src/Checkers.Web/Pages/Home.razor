@@ -67,9 +67,9 @@
                 <div class="panel-header">
                     <h2>STATUS</h2>
                     <span class="mode-badge" style="background: #16a085; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">@Vm.VariantBadgeText</span>
-                    @if (Vm.IsClockVisible)
+                    @if (Vm.IsGameSettingVisible)
                     {
-                        <span class="clock-badge">@Vm.ClockText</span>
+                        <span class="setting-text">@Vm.SettingsBadgeText</span>
                     }
                 </div>
 
@@ -85,20 +85,32 @@
 
                 <!-- Piece Counts & Player Indicators -->
                 <div class="pieces-scoreboard">
-                    <div class="score-card white-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.White ? "active-turn" : "")">
-                        <div class="player-header">
-                            <span class="piece-dot white-dot"></span>
-                            <span class="player-name">White</span>
+                    <div class="score-card white-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.White && Vm.Session.Status == GameStatus.InProgress ? "active-turn" : "")">
+                        <div class="player-header @(Vm.IsClockVisible ? "" : "no-clock")">
+                            <div class="player-title">
+                                <span class="piece-dot white-dot"></span>
+                                <span class="player-name">White</span>
+                            </div>
+                            @if (Vm.IsClockVisible)
+                            {
+                                <span class="player-clock">@Vm.WhiteClockText</span>
+                            }
                         </div>
                         <span class="player-role">@Vm.WhitePlayerLabel</span>
                         <div class="piece-count">@Vm.WhitePiecesCount</div>
                         <span class="kings-count">Kings: @Vm.WhiteKingsCount</span>
                     </div>
 
-                    <div class="score-card black-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.Black ? "active-turn" : "")">
-                        <div class="player-header">
-                            <span class="piece-dot black-dot"></span>
-                            <span class="player-name">Black</span>
+                    <div class="score-card black-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.Black && Vm.Session.Status == GameStatus.InProgress ? "active-turn" : "")">
+                        <div class="player-header @(Vm.IsClockVisible ? "" : "no-clock")">
+                            <div class="player-title">
+                                <span class="piece-dot black-dot"></span>
+                                <span class="player-name">Black</span>
+                            </div>
+                            @if (Vm.IsClockVisible)
+                            {
+                                <span class="player-clock">@Vm.BlackClockText</span>
+                            }
                         </div>
                         <span class="player-role">@Vm.BlackPlayerLabel</span>
                         <div class="piece-count">@Vm.BlackPiecesCount</div>

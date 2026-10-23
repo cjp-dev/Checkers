@@ -21,5 +21,6 @@ public enum GameOverReason
     OpponentNoLegalMoves,
     ThreefoldRepetition,
     FortyMoveRuleWithoutCaptureOrPromotion,
-    MutualAgreement
+    MutualAgreement,
+    Timeout
 }

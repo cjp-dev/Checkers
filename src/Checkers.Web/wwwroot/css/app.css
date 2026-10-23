@@ -390,10 +390,10 @@ body {
     color: #2D3748;
 }
 
-.clock-badge {
+.setting-text {
     font-size: 0.82rem;
-    font-weight: 700;
-    color: #E67E22;
+    font-weight: 600;
+    color: #718096;
 }
 
 .thinking-bar {
@@ -442,8 +442,29 @@ body {
 .player-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.2rem;
+}
+
+.player-header.no-clock {
     justify-content: center;
+}
+
+.player-title {
+    display: flex;
+    align-items: center;
     gap: 0.4rem;
+}
+
+.player-clock {
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #475569;
+}
+
+.score-card.active-turn .player-clock {
+    color: #1E3A8A;
 }
 
 .piece-dot {
