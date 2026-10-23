@@ -111,7 +111,7 @@
             <!-- Game Status Panel -->
             <section class="panel status-panel" role="status" aria-label="Game Status">
                 <div class="panel-header">
-                    <h2>STATUS</h2>
+                    <h2 class="@(Vm.IsStatusModified ? "status-modified" : null)">STATUS</h2>
                     <span class="mode-badge">@Vm.VariantBadgeText</span>
                     @if (Vm.IsGameSettingVisible)
                     {

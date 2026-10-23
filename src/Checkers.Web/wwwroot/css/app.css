@@ -572,6 +572,10 @@ body {
     line-height: 1.2;
 }
 
+.panel-header h2.status-modified {
+    color: #E74C3C;
+}
+
 .panel-header .mode-badge {
     background: #16a085;
     color: #FFFFFF;

@@ -151,7 +151,18 @@
                     </Border.Effect>
                     <StackPanel>
                         <Grid Margin="0,0,0,4">
-                            <TextBlock Text="GAME STATUS" FontSize="11" FontWeight="Bold" Foreground="#888888" HorizontalAlignment="Left" />
+                            <TextBlock Text="GAME STATUS" FontSize="11" FontWeight="Bold" HorizontalAlignment="Left">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#888888" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStatusModified}" Value="True">
+                                                <Setter Property="Foreground" Value="#E74C3C" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="{Binding GameModeDescription}" FontSize="10" FontWeight="SemiBold" Foreground="#3498DB" HorizontalAlignment="Right" />
                         </Grid>
                         <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="#2C3E50" Margin="0,0,0,4" />

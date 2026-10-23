@@ -79,6 +79,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(SwitchSidesCommand))]
     private GameMode _gameMode = GameMode.HumanVsHuman;
 
+    [ObservableProperty]
+    private bool _isGameModified;
+
+    public bool IsStatusModified => IsVsComputer && IsGameModified;
+
+    partial void OnIsGameModifiedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsStatusModified));
+    }
+
     public bool CanSwitchSides =>
         (GameMode is GameMode.HumanVsComputer or GameMode.ComputerVsHuman) &&
         IsHumanTurn() &&
@@ -97,6 +107,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         GameMode = GameMode == GameMode.HumanVsComputer
             ? GameMode.ComputerVsHuman
             : GameMode.HumanVsComputer;
+
+        IsGameModified = true;
 
         RefreshBoard();
     }
@@ -208,6 +220,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
         OnPropertyChanged(nameof(IsGameSettingVisible));
+        OnPropertyChanged(nameof(IsStatusModified));
     }
 
     partial void OnIsAnalysisVisibleChanged(bool value)
@@ -240,6 +253,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ClockText));
         OnPropertyChanged(nameof(IsClockVisible));
         OnPropertyChanged(nameof(IsGameSettingVisible));
+        OnPropertyChanged(nameof(IsStatusModified));
         OnPropertyChanged(nameof(WhiteClockText));
         OnPropertyChanged(nameof(BlackClockText));
         SavePreferences();
@@ -345,6 +359,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Session.GameOver -= OnGameOverHandler;
 
         Session = newSession;
+        IsGameModified = false;
 
         Session.MoveExecuted += OnMoveExecutedHandler;
         Session.GameOver += OnGameOverHandler;
@@ -468,6 +483,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ResetClock();
         _engineHost.ClearTranspositionTable();
         FileName = string.Empty;
+        IsGameModified = false;
         Session.StartNewGame();
         RefreshBoard();
     }
@@ -595,6 +611,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (Session.CanUndo)
         {
+            if (IsVsComputer)
+            {
+                IsGameModified = true;
+            }
+
             CancelAi();
             ClearSelection();
             Session.Undo();
@@ -673,6 +694,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ResetClock();
             _engineHost.ClearTranspositionTable();
             FileName = string.Empty;
+            IsGameModified = false;
             GameMode = mode;
             Session.StartNewGame();
             RefreshBoard();
@@ -709,6 +731,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     updated = updated with { Variant = Settings.Variant };
                     variantChanged = false;
                 }
+            }
+
+            if (!variantChanged && Session.MoveHistory.Count > 0 && Session.Status == GameStatus.InProgress && IsVsComputer)
+            {
+                IsGameModified = true;
             }
 
             Settings = updated;

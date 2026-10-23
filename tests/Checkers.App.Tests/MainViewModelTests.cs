@@ -1204,6 +1204,84 @@ public class MainViewModelTests
         vm.Session.MoveHistory.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task GameModified_Undo_MarksModifiedWhenPlayingComputer()
+    {
+        var vm = new MainViewModel();
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        vm.IsGameModified.Should().BeFalse();
+        vm.IsStatusModified.Should().BeFalse();
+
+        // Make move
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        // Undo move
+        vm.UndoCommand.Execute(null);
+
+        vm.IsGameModified.Should().BeTrue();
+        vm.IsStatusModified.Should().BeTrue();
+
+        // New game resets modified
+        vm.NewGameCommand.Execute(null);
+        vm.IsGameModified.Should().BeFalse();
+        vm.IsStatusModified.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GameModified_SwitchSides_MarksModified()
+    {
+        var vm = new MainViewModel();
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        vm.IsGameModified.Should().BeFalse();
+        vm.IsStatusModified.Should().BeFalse();
+
+        vm.SwitchSidesCommand.Execute(null);
+
+        vm.IsGameModified.Should().BeTrue();
+        vm.IsStatusModified.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GameModified_SettingsMidGame_MarksModified()
+    {
+        var dialogs = new TestDialogService
+        {
+            SettingsToReturn = new GameSettings(TimeControlMode.FixedDepth, 4, 1, 1)
+        };
+        var vm = new MainViewModel(dialogService: dialogs);
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        // Play move
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        vm.IsGameModified.Should().BeFalse();
+
+        // Edit settings mid game
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        vm.IsGameModified.Should().BeTrue();
+        vm.IsStatusModified.Should().BeTrue();
+    }
+
+    [Fact]
+    public void GameModified_TwoPlayers_DoesNotShowStatusModified()
+    {
+        var vm = new MainViewModel();
+        // Default mode is HumanVsHuman
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        vm.UndoCommand.Execute(null);
+
+        vm.IsGameModified.Should().BeFalse();
+        vm.IsStatusModified.Should().BeFalse();
+    }
+
     private class TestSettingsStore : ISettingsStore
     {
         public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);
