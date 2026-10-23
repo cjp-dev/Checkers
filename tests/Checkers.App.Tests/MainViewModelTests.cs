@@ -1282,6 +1282,94 @@ public class MainViewModelTests
         vm.IsStatusModified.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task HandleTimeout_WhenHumanTimesOutVsComputer_AndUserSaysYes_AllowsGameToContinue_KeepsTimeAtZero_AndMarksModified()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+        vm.Settings = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5);
+        vm.ResetClock();
+
+        // White (Human) times out
+        await vm.HandleTimeoutAsync(PieceColor.White);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        dialogs.LastConfirmTitle.Should().Be("Time Expired");
+        dialogs.LastConfirmMessage.Should().Contain("continue playing");
+
+        // Game continues
+        vm.Session.Status.Should().Be(GameStatus.InProgress);
+        vm.WhiteTimeLeft.Should().Be(TimeSpan.Zero);
+        vm.WhiteClockText.Should().Be("0:00");
+        vm.IsGameModified.Should().BeTrue();
+        vm.IsStatusModified.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HandleTimeout_WhenHumanTimesOutVsComputer_AndUserSaysNo_EndsGameOnTime()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = false };
+        var vm = new MainViewModel(dialogService: dialogs);
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        // White (Human) times out and rejects continuation
+        await vm.HandleTimeoutAsync(PieceColor.White);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        vm.Session.Status.Should().Be(GameStatus.BlackWon);
+        vm.Session.GameOverReason.Should().Be(GameOverReason.Timeout);
+        vm.StatusText.Should().Contain("Black Won on time");
+    }
+
+    [Fact]
+    public async Task HandleTimeout_WhenComputerTimesOut_DoesNotPrompt_AndEndsGameImmediately()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        // Black (Computer) times out
+        await vm.HandleTimeoutAsync(PieceColor.Black);
+
+        dialogs.ConfirmCallCount.Should().Be(0);
+        vm.Session.Status.Should().Be(GameStatus.WhiteWon);
+        vm.Session.GameOverReason.Should().Be(GameOverReason.Timeout);
+        vm.StatusText.Should().Contain("White Won on time");
+    }
+
+    [Fact]
+    public async Task HandleTimeout_WhenHumanInComputerVsHumanTimesOut_AndUserSaysYes_AllowsGameToContinue()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+        await vm.SetGameMode(GameMode.ComputerVsHuman);
+
+        // Black (Human) times out
+        await vm.HandleTimeoutAsync(PieceColor.Black);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        vm.Session.Status.Should().Be(GameStatus.InProgress);
+        vm.BlackTimeLeft.Should().Be(TimeSpan.Zero);
+        vm.BlackClockText.Should().Be("0:00");
+        vm.IsGameModified.Should().BeTrue();
+        vm.IsStatusModified.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HandleTimeout_InTwoPlayerMode_DoesNotPrompt_AndEndsGameImmediately()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+        // Default mode is HumanVsHuman
+
+        await vm.HandleTimeoutAsync(PieceColor.White);
+
+        dialogs.ConfirmCallCount.Should().Be(0);
+        vm.Session.Status.Should().Be(GameStatus.BlackWon);
+        vm.Session.GameOverReason.Should().Be(GameOverReason.Timeout);
+    }
+
     private class TestSettingsStore : ISettingsStore
     {
         public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);

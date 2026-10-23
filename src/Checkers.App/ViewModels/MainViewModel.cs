@@ -82,6 +82,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isGameModified;
 
+    private bool _hasHumanContinuedOnTime;
+    private bool _isTimeoutPrompting;
+
     public bool IsStatusModified => IsVsComputer && IsGameModified;
 
     partial void OnIsGameModifiedChanged(bool value)
@@ -109,6 +112,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             : GameMode.HumanVsComputer;
 
         IsGameModified = true;
+
+        if (IsHumanVsComputerPlayer(PieceColor.White) && _whiteTimeLeft <= TimeSpan.Zero)
+            _hasHumanContinuedOnTime = true;
+        else if (IsHumanVsComputerPlayer(PieceColor.Black) && _blackTimeLeft <= TimeSpan.Zero)
+            _hasHumanContinuedOnTime = true;
+        else
+            _hasHumanContinuedOnTime = false;
 
         RefreshBoard();
     }
@@ -346,6 +356,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _blackTimeLeft = Settings.GameTime;
         _timeLeftAtPly.Clear();
         _lastTickTimestamp = 0;
+        _hasHumanContinuedOnTime = false;
+        _isTimeoutPrompting = false;
         OnPropertyChanged(nameof(WhiteTimeLeft));
         OnPropertyChanged(nameof(BlackTimeLeft));
         OnPropertyChanged(nameof(WhiteClockText));
@@ -641,6 +653,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 _whiteTimeLeft = Settings.GameTime;
                 _blackTimeLeft = Settings.GameTime;
             }
+
+            if (IsHumanVsComputerPlayer(PieceColor.White) && _whiteTimeLeft > TimeSpan.Zero)
+                _hasHumanContinuedOnTime = false;
+            else if (IsHumanVsComputerPlayer(PieceColor.Black) && _blackTimeLeft > TimeSpan.Zero)
+                _hasHumanContinuedOnTime = false;
+
             _lastTickTimestamp = Session.MoveHistory.Count == 0 ? 0 : Stopwatch.GetTimestamp();
             OnPropertyChanged(nameof(WhiteTimeLeft));
             OnPropertyChanged(nameof(BlackTimeLeft));
@@ -772,6 +790,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _ => true
         };
     }
+
+    private bool IsHumanVsComputerPlayer(PieceColor color) =>
+        GameMode switch
+        {
+            GameMode.HumanVsComputer => color == PieceColor.White,
+            GameMode.ComputerVsHuman => color == PieceColor.Black,
+            _ => false
+        };
 
     private void SelectPiece(Position pos, List<Move> validMoves)
     {
@@ -1135,7 +1161,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void TickClock()
     {
-        if (Settings.Mode != TimeControlMode.TimePerGame ||
+        if (_isTimeoutPrompting ||
+            Settings.Mode != TimeControlMode.TimePerGame ||
             Session.Status != GameStatus.InProgress ||
             Session.MoveHistory.Count == 0)
         {
@@ -1161,22 +1188,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         if (active == PieceColor.White)
         {
-            _whiteTimeLeft = _whiteTimeLeft > elapsed ? _whiteTimeLeft - elapsed : TimeSpan.Zero;
-            if (_whiteTimeLeft <= TimeSpan.Zero)
+            if (IsHumanVsComputerPlayer(PieceColor.White) && _hasHumanContinuedOnTime)
             {
                 _whiteTimeLeft = TimeSpan.Zero;
-                OnTimeout(PieceColor.White);
-                return;
+            }
+            else
+            {
+                _whiteTimeLeft = _whiteTimeLeft > elapsed ? _whiteTimeLeft - elapsed : TimeSpan.Zero;
+                if (_whiteTimeLeft <= TimeSpan.Zero)
+                {
+                    _whiteTimeLeft = TimeSpan.Zero;
+                    _ = HandleTimeoutAsync(PieceColor.White);
+                    return;
+                }
             }
         }
         else
         {
-            _blackTimeLeft = _blackTimeLeft > elapsed ? _blackTimeLeft - elapsed : TimeSpan.Zero;
-            if (_blackTimeLeft <= TimeSpan.Zero)
+            if (IsHumanVsComputerPlayer(PieceColor.Black) && _hasHumanContinuedOnTime)
             {
                 _blackTimeLeft = TimeSpan.Zero;
-                OnTimeout(PieceColor.Black);
-                return;
+            }
+            else
+            {
+                _blackTimeLeft = _blackTimeLeft > elapsed ? _blackTimeLeft - elapsed : TimeSpan.Zero;
+                if (_blackTimeLeft <= TimeSpan.Zero)
+                {
+                    _blackTimeLeft = TimeSpan.Zero;
+                    _ = HandleTimeoutAsync(PieceColor.Black);
+                    return;
+                }
             }
         }
 
@@ -1187,9 +1228,51 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ClockText));
     }
 
-    private void OnTimeout(PieceColor timedOutPlayer)
+    public async Task HandleTimeoutAsync(PieceColor timedOutPlayer)
     {
+        if (Session.Status != GameStatus.InProgress)
+            return;
+
         _lastTickTimestamp = 0;
+
+        if (IsHumanVsComputerPlayer(timedOutPlayer) && !_hasHumanContinuedOnTime)
+        {
+            _isTimeoutPrompting = true;
+            bool continuePlaying = false;
+            try
+            {
+                if (_dialogService != null)
+                {
+                    continuePlaying = await _dialogService.ConfirmAsync(
+                        "Time Expired",
+                        "You ran out of time!\n\nDo you want to continue playing?");
+                }
+            }
+            finally
+            {
+                _isTimeoutPrompting = false;
+            }
+
+            if (continuePlaying)
+            {
+                _hasHumanContinuedOnTime = true;
+                IsGameModified = true;
+
+                if (timedOutPlayer == PieceColor.White)
+                    _whiteTimeLeft = TimeSpan.Zero;
+                else
+                    _blackTimeLeft = TimeSpan.Zero;
+
+                OnPropertyChanged(nameof(WhiteTimeLeft));
+                OnPropertyChanged(nameof(BlackTimeLeft));
+                OnPropertyChanged(nameof(WhiteClockText));
+                OnPropertyChanged(nameof(BlackClockText));
+                OnPropertyChanged(nameof(ClockText));
+                RefreshBoard();
+                return;
+            }
+        }
+
         CancelAi();
         Session.FlagFell(timedOutPlayer);
         RefreshBoard();
