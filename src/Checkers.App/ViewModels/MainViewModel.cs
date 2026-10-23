@@ -68,13 +68,37 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(MoveNowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SwitchSidesCommand))]
     private bool _isAiThinking;
 
     [RelayCommand(CanExecute = nameof(IsAiThinking))]
     public void MoveNow() => _moveNowCts?.Cancel();
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SwitchSidesCommand))]
     private GameMode _gameMode = GameMode.HumanVsHuman;
+
+    public bool CanSwitchSides =>
+        (GameMode is GameMode.HumanVsComputer or GameMode.ComputerVsHuman) &&
+        IsHumanTurn() &&
+        Session.Status == GameStatus.InProgress &&
+        !IsAiThinking;
+
+    [RelayCommand(CanExecute = nameof(CanSwitchSides))]
+    public void SwitchSides()
+    {
+        if (!CanSwitchSides)
+            return;
+
+        CancelAi();
+        ClearSelection();
+
+        GameMode = GameMode == GameMode.HumanVsComputer
+            ? GameMode.ComputerVsHuman
+            : GameMode.HumanVsComputer;
+
+        RefreshBoard();
+    }
 
     [ObservableProperty]
     private GameSettings _settings = GameSettings.Default;
@@ -322,6 +346,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             ClearSelection();
             UpdateStatusText();
+                SwitchSidesCommand.NotifyCanExecuteChanged();
             return;
         }
 
@@ -363,6 +388,7 @@ public sealed partial class MainViewModel : ObservableObject
         // 5. Clicked on empty non-target square -> Deselect
         ClearSelection();
         UpdateStatusText();
+        SwitchSidesCommand.NotifyCanExecuteChanged();
     }
 
     public bool ExecutePlayerMove(Move move)
@@ -824,6 +850,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         UpdateStatusText();
+        SwitchSidesCommand.NotifyCanExecuteChanged();
 
         // Check if an AI turn needs to be triggered
         CheckAndTriggerAiTurn();
@@ -879,6 +906,7 @@ public sealed partial class MainViewModel : ObservableObject
         CanUndo = false;
         CanRedo = false;
         UpdateStatusText();
+        SwitchSidesCommand.NotifyCanExecuteChanged();
 
         int plyBefore = Session.MoveHistory.Count;
         _timeLeftAtPly[plyBefore] = _computerTimeLeft;
@@ -952,6 +980,7 @@ public sealed partial class MainViewModel : ObservableObject
                 CanUndo = Session.CanUndo;
                 CanRedo = Session.CanRedo;
                 UpdateStatusText();
+                SwitchSidesCommand.NotifyCanExecuteChanged();
             }
         }
     }

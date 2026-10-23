@@ -1031,6 +1031,54 @@ public class MainViewModelTests
         vm.IsVsComputer.Should().Be(expected);
     }
 
+    [Fact]
+    public void SwitchSides_EnabledOnlyWhenPlayingComputerAndHumanTurn()
+    {
+        var vm = new MainViewModel();
+
+        // 1. In HumanVsHuman: disabled
+        vm.CanSwitchSides.Should().BeFalse();
+        vm.SwitchSidesCommand.CanExecute(null).Should().BeFalse();
+
+        // 2. In HumanVsComputer at start (White's turn, Human is White): enabled
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.CanSwitchSides.Should().BeTrue();
+        vm.SwitchSidesCommand.CanExecute(null).Should().BeTrue();
+
+        // 3. Switch sides -> becomes ComputerVsHuman, board is flipped, White is now computer
+        vm.SwitchSidesCommand.Execute(null);
+        vm.GameMode.Should().Be(GameMode.ComputerVsHuman);
+        vm.IsBoardFlipped.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SwitchSides_TriggersAiMove_WhenSwitchedToComputerTurn()
+    {
+        var vm = new MainViewModel();
+        var openingMove = vm.Session.LegalMoves.First();
+        vm.AiPlayerFactory = (settings, time) => new TestAiPlayer(openingMove);
+
+        // Start in HumanVsComputer (Human is White)
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.Session.MoveHistory.Should().BeEmpty();
+
+        // Human switches sides -> Computer is now White and immediately plays
+        vm.SwitchSidesCommand.Execute(null);
+
+        for (int i = 0; i < 30; i++)
+        {
+            if (vm.Session.MoveHistory.Count >= 1)
+                break;
+            await Task.Delay(25);
+        }
+
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.Session.MoveHistory[0].Notation.Should().Be(openingMove.Notation);
+        vm.Session.CurrentState.ActivePlayer.Should().Be(PieceColor.Black);
+        vm.IsHumanVsComputer.Should().BeFalse();
+        vm.IsComputerVsHuman.Should().BeTrue();
+    }
+
     private class TestSettingsStore : ISettingsStore
     {
         public AppPreferences Preferences { get; set; } = new(GameSettings.Default, ShowAnalysis: true, SoundEnabled: true);

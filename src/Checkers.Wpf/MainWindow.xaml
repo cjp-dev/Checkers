@@ -50,12 +50,12 @@
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
             <MenuItem Header="_Game">
-                <MenuItem Header="vs _Computer (You play Black)"
+                <MenuItem Header="vs Computer (_White)"
                           IsCheckable="True"
                           IsChecked="{Binding IsComputerVsHuman, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
                           CommandParameter="{x:Static models:GameMode.ComputerVsHuman}" />
-                <MenuItem Header="vs Computer (You play _White)"
+                <MenuItem Header="vs Computer (_Black)"
                           IsCheckable="True"
                           IsChecked="{Binding IsHumanVsComputer, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
@@ -65,6 +65,8 @@
                           IsChecked="{Binding IsHumanVsHuman, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
                           CommandParameter="{x:Static models:GameMode.HumanVsHuman}" />
+                <Separator />
+                <MenuItem Header="_Switch sides" Command="{Binding SwitchSidesCommand}" />
                 <Separator />
                 <MenuItem Header="S_ettings..." Command="{Binding EditSettingsCommand}" />
             </MenuItem>
