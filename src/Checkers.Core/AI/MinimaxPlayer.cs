@@ -165,10 +165,10 @@ public sealed class MinimaxPlayer : IPlayer
             {
                 Move = singleMove.Notation,
                 Depth = "1 ply (Forced)",
-                Value = "Forced",
+                Score = "Forced",
                 BestMove = singleMove.Notation,
                 Nodes = "1",
-                Evaluations = "0",
+                Speed = "-",
                 Time = "0:00.0"
             };
             progress?.Report(LastAnalysis);
@@ -188,10 +188,10 @@ public sealed class MinimaxPlayer : IPlayer
                 {
                     Move = bookMove.Notation,
                     Depth = $"Book ({activeBook.Depth} plies)",
-                    Value = FormatValue(bookScore),
+                    Score = FormatValue(bookScore),
                     BestMove = bookMove.Notation,
                     Nodes = "0 (Book)",
-                    Evaluations = "0",
+                    Speed = "-",
                     Time = "0:00.0",
                     FromBook = true
                 };
@@ -321,10 +321,10 @@ public sealed class MinimaxPlayer : IPlayer
                     {
                         Move = entry.Move.Notation,
                         Depth = $"{d} plies...",
-                        Value = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
+                        Score = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
                         BestMove = bestEntryThisDepth?.Move.Notation ?? bestMoveOverall?.Notation ?? entry.Move.Notation,
                         Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-                        Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                        Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
                         Time = sw.Elapsed.ToString(@"m\:ss\.f")
                     };
                     progress.Report(heartbeatAnalysis);
@@ -359,10 +359,10 @@ public sealed class MinimaxPlayer : IPlayer
                 {
                     Move = bestMoveOverall.Notation,
                     Depth = $"{completedDepth} plies",
-                    Value = FormatValue(bestScoreOverall),
+                    Score = FormatValue(bestScoreOverall),
                     BestMove = bestMoveOverall.Notation,
                     Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-                    Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                    Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
                     Time = sw.Elapsed.ToString(@"m\:ss\.f")
                 };
                 LastAnalysis = iterationAnalysis;
@@ -404,10 +404,10 @@ public sealed class MinimaxPlayer : IPlayer
         {
             Move = bestMoveOverall.Notation,
             Depth = $"{completedDepth} plies",
-            Value = FormatValue(bestScoreOverall),
+            Score = FormatValue(bestScoreOverall),
             BestMove = bestMoveOverall.Notation,
             Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-            Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+            Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
             Time = sw.Elapsed.ToString(@"m\:ss\.f")
         };
 
@@ -601,10 +601,10 @@ public sealed class MinimaxPlayer : IPlayer
         {
             Move = best.Move.Notation,
             Depth = $"{completedDepth} plies",
-            Value = FormatValue(best.Score),
+            Score = FormatValue(best.Score),
             BestMove = best.Move.Notation,
             Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-            Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+            Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
             Time = sw.Elapsed.ToString(@"m\:ss\.f")
         };
 
@@ -647,10 +647,10 @@ public sealed class MinimaxPlayer : IPlayer
                 {
                     Move = currentRootMove?.Notation ?? bestRootMoveOverall?.Notation ?? "-",
                     Depth = $"{currentIterDepth} plies...",
-                    Value = FormatValue(bestScoreOverall),
+                    Score = FormatValue(bestScoreOverall),
                     BestMove = bestRootMoveOverall?.Notation ?? "-",
                     Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-                    Evaluations = LeafEvaluations.ToString("N0", CultureInfo.InvariantCulture),
+                    Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
                     Time = sw.Elapsed.ToString(@"m\:ss\.f")
                 });
             }
@@ -1158,6 +1158,14 @@ public sealed class MinimaxPlayer : IPlayer
             }
             captures[j + 1] = current;
         }
+    }
+
+    private static string FormatSpeed(long nodes, long elapsedMs)
+    {
+        if (elapsedMs <= 0 || nodes <= 0)
+            return "-";
+        long nps = (nodes * 1000L) / elapsedMs;
+        return $"{nps.ToString("N0", CultureInfo.InvariantCulture)} nps";
     }
 
     private static string FormatValue(int score) => score switch

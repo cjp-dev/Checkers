@@ -229,8 +229,8 @@
             ]),
             new("Game",
             [
-                new("vs Computer (White)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
-                new("vs Computer (Black)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
+                new("vs Computer (White)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
+                new("vs Computer (Black)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
                 new("vs Human (Two players)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
                 new("Switch sides", Vm.SwitchSidesCommand, SeparatorBefore: true),
                 new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: true),
@@ -242,7 +242,8 @@
             ]),
             new("Help",
             [
-                new("Rules & Documentation", new RelayCommand(OpenDocs)),
+                new("User guide", new RelayCommand(OpenUserGuide), "F1"),
+                new("Rules & Documentation", new RelayCommand(OpenDocs), "Shift+F1"),
                 new("About Checkers...", Vm.AboutCommand),
             ]),
         ];
@@ -310,13 +311,30 @@
         "y" => RunAsync(Vm.RedoCommand),
         "a" => RunAsync(Vm.ToggleAnalysisCommand),
         "m" => RunAsync(Vm.MoveNowCommand),
+        "f1" => RunUserGuide(),
+        "shift+f1" => RunDocs(),
         _ => Task.CompletedTask,
     };
 
     private void HandleSquareClick(SquareViewModel square) => Vm.SquareClicked(square);
 
+    private void OpenUserGuide() =>
+        ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute("14-gui-and-settings"), "_blank", "noopener");
+
     private void OpenDocs() =>
         ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute(""), "_blank", "noopener");
+
+    private Task RunUserGuide()
+    {
+        OpenUserGuide();
+        return Task.CompletedTask;
+    }
+
+    private Task RunDocs()
+    {
+        OpenDocs();
+        return Task.CompletedTask;
+    }
 
     private void OnChanged(object? sender, EventArgs e)
     {

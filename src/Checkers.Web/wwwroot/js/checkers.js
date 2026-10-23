@@ -10,11 +10,23 @@ window.checkers = (() => {
     return {
         registerShortcuts(dotnet) {
             keydown = e => {
+                if (e.key === 'F1') {
+                    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+                        return;
+                    }
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        dotnet.invokeMethodAsync('OnShortcut', 'shift+f1');
+                    } else if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+                        dotnet.invokeMethodAsync('OnShortcut', 'f1');
+                    }
+                    return;
+                }
                 if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.length !== 1) {
                     return;
                 }
                 const key = e.key.toLowerCase();
-                if (!shortcutKeys.includes(key) || e.target instanceof HTMLInputElement) {
+                if (!shortcutKeys.includes(key) || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
                     return;
                 }
                 e.preventDefault();

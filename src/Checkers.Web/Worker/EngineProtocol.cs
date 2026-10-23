@@ -28,10 +28,10 @@ internal sealed record MoveRequest(
 internal sealed record ProgressDto(
     string Move,
     string Depth,
-    string Value,
+    string Score,
     string BestMove,
     string Nodes,
-    string Evaluations,
+    string Speed,
     string Time,
     bool FromBook);
 
@@ -99,7 +99,7 @@ internal static class EngineProtocol
     }
 
     public static string WriteProgress(SearchAnalysis info) => JsonSerializer.Serialize(
-        new ProgressDto(info.Move, info.Depth, info.Value, info.BestMove, info.Nodes, info.Evaluations, info.Time, info.FromBook),
+        new ProgressDto(info.Move, info.Depth, info.Score, info.BestMove, info.Nodes, info.Speed, info.Time, info.FromBook),
         EngineProtocolJson.Default.ProgressDto);
 
     public static SearchAnalysis ReadProgress(string json)
@@ -109,10 +109,10 @@ internal static class EngineProtocol
         {
             Move = dto.Move,
             Depth = dto.Depth,
-            Value = dto.Value,
+            Score = dto.Score,
             BestMove = dto.BestMove,
             Nodes = dto.Nodes,
-            Evaluations = dto.Evaluations,
+            Speed = dto.Speed,
             Time = dto.Time,
             FromBook = dto.FromBook
         };
@@ -121,7 +121,7 @@ internal static class EngineProtocol
     public static string WriteResponse(Move move, SearchAnalysis? last) => JsonSerializer.Serialize(
         new MoveResponse(
             move.Notation,
-            last is null ? null : new ProgressDto(last.Move, last.Depth, last.Value, last.BestMove, last.Nodes, last.Evaluations, last.Time, last.FromBook)),
+            last is null ? null : new ProgressDto(last.Move, last.Depth, last.Score, last.BestMove, last.Nodes, last.Speed, last.Time, last.FromBook)),
         EngineProtocolJson.Default.MoveResponse);
 
     public static (Move Move, SearchAnalysis? LastAnalysis) ReadResponse(string json, IReadOnlyList<Move> legalMoves)
@@ -133,10 +133,10 @@ internal static class EngineProtocol
             {
                 Move = dto.Move,
                 Depth = dto.Depth,
-                Value = dto.Value,
+                Score = dto.Score,
                 BestMove = dto.BestMove,
                 Nodes = dto.Nodes,
-                Evaluations = dto.Evaluations,
+                Speed = dto.Speed,
                 Time = dto.Time,
                 FromBook = dto.FromBook
             }

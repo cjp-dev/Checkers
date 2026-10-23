@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Checkers.Wpf"
         xmlns:models="clr-namespace:Checkers.App.Models;assembly=Checkers.App"
         xmlns:views="clr-namespace:Checkers.Wpf.Views"
         xmlns:vm="clr-namespace:Checkers.App.ViewModels;assembly=Checkers.App"
@@ -52,14 +53,14 @@
             <MenuItem Header="_Game">
                 <MenuItem Header="vs Computer (_White)"
                           IsCheckable="True"
-                          IsChecked="{Binding IsComputerVsHuman, Mode=OneWay}"
-                          Command="{Binding SetGameModeCommand}"
-                          CommandParameter="{x:Static models:GameMode.ComputerVsHuman}" />
-                <MenuItem Header="vs Computer (_Black)"
-                          IsCheckable="True"
                           IsChecked="{Binding IsHumanVsComputer, Mode=OneWay}"
                           Command="{Binding SetGameModeCommand}"
                           CommandParameter="{x:Static models:GameMode.HumanVsComputer}" />
+                <MenuItem Header="vs Computer (_Black)"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsComputerVsHuman, Mode=OneWay}"
+                          Command="{Binding SetGameModeCommand}"
+                          CommandParameter="{x:Static models:GameMode.ComputerVsHuman}" />
                 <MenuItem Header="vs _Human (Two players)"
                           IsCheckable="True"
                           IsChecked="{Binding IsHumanVsHuman, Mode=OneWay}"
@@ -81,6 +82,8 @@
                 <MenuItem Header="_Sound" IsCheckable="True" IsChecked="{Binding IsSoundOn}" Command="{Binding ToggleSoundCommand}" />
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="_User guide" Command="{x:Static local:MainWindow.UserGuideCommand}" InputGestureText="F1" />
+                <MenuItem Header="_Rules &amp; Documentation" Command="{x:Static local:MainWindow.DocumentationCommand}" InputGestureText="Shift+F1" />
                 <MenuItem Header="_About Checkers..." Command="{Binding AboutCommand}" />
             </MenuItem>
         </Menu>
@@ -209,8 +212,8 @@
                             <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Depth:" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Depth}" TextWrapping="Wrap" />
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Value:" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Value}" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Score:" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Score}" />
 
                             <TextBlock Grid.Row="3" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Best move:" />
                             <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding BestMove}" />
@@ -218,8 +221,8 @@
                             <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Nodes:" />
                             <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Nodes}" />
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Evaluations:" />
-                            <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Evaluations}" />
+                            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Speed:" />
+                            <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Speed}" />
 
                             <TextBlock Grid.Row="6" Grid.Column="0" Style="{StaticResource AnalysisLabel}" Text="Time:" />
                             <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource AnalysisField}" Text="{Binding Time}" />

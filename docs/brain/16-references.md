@@ -1,4 +1,4 @@
-# 15 – References
+# 16 – References
 
 [Back to the index](README.md)
 
@@ -71,3 +71,8 @@ Official rulesets, foundational artificial intelligence research, bitboard engin
   * Source-generated MVVM observables and relay commands in `Checkers.App` ([Chapter 13](13-app-integration.md)).
 * **Markdig, KaTeX & Mermaid.js:**
   * Browser-hosted Markdown, LaTeX mathematics, and diagram rendering pipeline in `Checkers.Web` ([Chapter 13](13-app-integration.md)).
+
+---
+
+Previous: [15 Glossary](15-glossary.md)
+

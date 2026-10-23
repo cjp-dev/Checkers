@@ -1,4 +1,4 @@
-# 14 – Glossary
+# 15 – Glossary
 
 [Back to the index](README.md)
 
@@ -55,3 +55,8 @@ Common Checkers, Draughts, Bitboard, and AI search terms used across these docum
 | **Transposition Table** | Power-of-two array of 16-byte `TranspositionEntry` structs grouped into 4-way 64-byte buckets, caching evaluated subtrees and `StaticEval` across branches and turns. | [08](08-transposition-table.md) |
 | **TZCNT / LZCNT** | Hardware bit-scan instructions (`BitOperations.TrailingZeroCount` and `LeadingZeroCount`) used to locate set bits and the first blocker along Flying King diagonal rays in $O(1)$ time. | [11](11-bitboards.md#4-international-flying-kings-tzcnt--lzcnt--phase-1-ray-fast-rejection) |
 | **Zobrist Hashing** | Incremental 64-bit XOR hashing scheme mapping board states to pseudo-random 64-bit keys (`ulong`). | [02](02-board-and-coordinates.md#64-bit-zobrist-hashing), [08](08-transposition-table.md) |
+
+---
+
+Previous: [14 GUI and settings](14-gui-and-settings.md) · Next: [16 References](16-references.md)
+

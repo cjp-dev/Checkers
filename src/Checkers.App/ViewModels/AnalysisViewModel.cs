@@ -14,7 +14,7 @@ public sealed partial class AnalysisViewModel : ObservableObject
     private string _depth = "-";
 
     [ObservableProperty]
-    private string _value = "-";
+    private string _score = "-";
 
     [ObservableProperty]
     private string _bestMove = "-";
@@ -23,19 +23,23 @@ public sealed partial class AnalysisViewModel : ObservableObject
     private string _nodes = "-";
 
     [ObservableProperty]
-    private string _evaluations = "-";
+    private string _speed = "-";
 
     [ObservableProperty]
     private string _time = "-";
+
+    // Backward-compatibility aliases
+    public string Value => Score;
+    public string Evaluations => Speed;
 
     public void Update(SearchAnalysis analysis)
     {
         Move = analysis.Move;
         Depth = analysis.Depth;
-        Value = analysis.Value;
+        Score = analysis.Score;
         BestMove = analysis.BestMove;
         Nodes = analysis.Nodes;
-        Evaluations = analysis.Evaluations;
+        Speed = analysis.Speed;
         Time = analysis.Time;
         Updated?.Invoke();
     }
@@ -44,10 +48,10 @@ public sealed partial class AnalysisViewModel : ObservableObject
     {
         Move = "-";
         Depth = "-";
-        Value = "-";
+        Score = "-";
         BestMove = "-";
         Nodes = "-";
-        Evaluations = "-";
+        Speed = "-";
         Time = "-";
         Updated?.Invoke();
     }

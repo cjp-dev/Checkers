@@ -405,10 +405,10 @@ public class MainViewModelTests
         // Initially placeholder values
         vm.Analysis.Move.Should().Be("-");
         vm.Analysis.Depth.Should().Be("-");
-        vm.Analysis.Value.Should().Be("-");
+        vm.Analysis.Score.Should().Be("-");
         vm.Analysis.BestMove.Should().Be("-");
         vm.Analysis.Nodes.Should().Be("-");
-        vm.Analysis.Evaluations.Should().Be("-");
+        vm.Analysis.Speed.Should().Be("-");
         vm.Analysis.Time.Should().Be("-");
 
         // Update with metrics
@@ -416,20 +416,20 @@ public class MainViewModelTests
         {
             Move = "32-28",
             Depth = "3 plies",
-            Value = "+120",
+            Score = "+120",
             BestMove = "32-28",
             Nodes = "1,450",
-            Evaluations = "820",
+            Speed = "820 nps",
             Time = "0:00.1"
         };
         vm.Analysis.Update(analysis);
 
         vm.Analysis.Move.Should().Be("32-28");
         vm.Analysis.Depth.Should().Be("3 plies");
-        vm.Analysis.Value.Should().Be("+120");
+        vm.Analysis.Score.Should().Be("+120");
         vm.Analysis.BestMove.Should().Be("32-28");
         vm.Analysis.Nodes.Should().Be("1,450");
-        vm.Analysis.Evaluations.Should().Be("820");
+        vm.Analysis.Speed.Should().Be("820 nps");
         vm.Analysis.Time.Should().Be("0:00.1");
 
         // New game resets analysis
@@ -437,10 +437,10 @@ public class MainViewModelTests
 
         vm.Analysis.Move.Should().Be("-");
         vm.Analysis.Depth.Should().Be("-");
-        vm.Analysis.Value.Should().Be("-");
+        vm.Analysis.Score.Should().Be("-");
         vm.Analysis.BestMove.Should().Be("-");
         vm.Analysis.Nodes.Should().Be("-");
-        vm.Analysis.Evaluations.Should().Be("-");
+        vm.Analysis.Speed.Should().Be("-");
         vm.Analysis.Time.Should().Be("-");
     }
 
@@ -635,10 +635,10 @@ public class MainViewModelTests
         {
             Move = "12-16",
             Depth = "4 plies",
-            Value = "+120",
+            Score = "+120",
             BestMove = "12-16",
             Nodes = "1,850",
-            Evaluations = "920",
+            Speed = "920 nps",
             Time = "0:00.3"
         };
 
@@ -667,9 +667,9 @@ public class MainViewModelTests
 
         movePlayed.Should().BeTrue();
         vm.Analysis.Depth.Should().Be("4 plies");
-        vm.Analysis.Value.Should().Be("+120");
+        vm.Analysis.Score.Should().Be("+120");
         vm.Analysis.Nodes.Should().Be("1,850");
-        vm.Analysis.Evaluations.Should().Be("920");
+        vm.Analysis.Speed.Should().Be("920 nps");
     }
 
     [Fact]

@@ -65,8 +65,9 @@ The documentation is organized in a logical progression from architectural overv
 | 11 | [Bitboards](11-bitboards.md) | **Optimization** | 64-bit bitboard representation (`4 × ulong`), $O(1)$ `HasAnyCapture`, ray fast-rejection guards, `POPCNT` evaluation, copy-make search |
 | 12 | [Engine improvements during development](12-engine-improvements.md) | **Optimization** | Complete chronological milestones (Bitboard refactor & Phases 1–7) with 40-position deep, timed, self-play, and opening book benchmarks |
 | 13 | [App integration](13-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly AOT macrotask yielding, live analysis pipeline |
-| 14 | [Glossary](14-glossary.md) | **Reference** | Definitions and cross-references for all Checkers, Draughts, Bitboard, and AI search terms |
-| 15 | [References](15-references.md) | **Reference** | Official WCDF/FMJD rulesets, foundational AI search literature, and .NET 10 technical references |
+| 14 | [GUI and settings](14-gui-and-settings.md) | **Architecture** | Modern light UI layout, menu bar & responsive mobile drawer, dual-card scoreboard & clocks, modified status indicator, settings dialog, and shortcuts |
+| 15 | [Glossary](15-glossary.md) | **Reference** | Definitions and cross-references for all Checkers, Draughts, Bitboard, and AI search terms |
+| 16 | [References](16-references.md) | **Reference** | Official WCDF/FMJD rulesets, foundational AI search literature, and .NET 10 technical references |
 
 ---
 
@@ -87,12 +88,13 @@ flowchart LR
     C11 --> C12["12 Engine Improvements"]
     C04 --> C13["13 App Integration"]
     C10 --> C13
-    C12 --> C14["14 Glossary"]
-    C13 --> C14
-    C14 --> C15["15 References"]
+    C13 --> C14["14 GUI &amp; Settings"]
+    C12 --> C15["15 Glossary"]
+    C14 --> C15
+    C15 --> C16["16 References"]
 ```
 
 - **Engine Fundamentals & Rules:** Read chapters [01](01-overview.md), [02](02-board-and-coordinates.md), [03](03-rules-and-move-generation.md), and [04](04-game-record.md).
 - **AI Search, Opening Book, Bitboards & Development Benchmarks:** Read chapters [05](05-evaluation.md), [06](06-move-ordering.md), [07](07-search.md), [08](08-transposition-table.md), [09](09-time-control.md), [10](10-opening-book.md), [11](11-bitboards.md), and [12](12-engine-improvements.md).
-- **Game Application & UI Integration:** Read chapters [01](01-overview.md), [04](04-game-record.md), and [13](13-app-integration.md).
-- **Terminology & Academic Literature:** Check chapters [14](14-glossary.md) and [15](15-references.md).
+- **Game Application & UI Integration:** Read chapters [01](01-overview.md), [04](04-game-record.md), [13](13-app-integration.md), and [14](14-gui-and-settings.md).
+- **Terminology & Academic Literature:** Check chapters [15](15-glossary.md) and [16](16-references.md).

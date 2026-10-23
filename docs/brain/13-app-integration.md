@@ -65,7 +65,7 @@ flowchart TD
 
 ### `AnalysisViewModel`
 [`AnalysisViewModel.cs`](../../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:
-* Observable properties: `Move`, `Depth` (including `Book (12 plies)` on opening book hits), `Value`, `BestMove`, `Nodes` (`0 (Book)` on book hits), `Evaluations`, `Time`.
+* Observable properties: `Move`, `Depth` (including `Book (12 plies)` on opening book hits), `Score`, `BestMove`, `Nodes` (`0 (Book)` on book hits), `Speed`, `Time`.
 * **`Updated` Event:** Raises `public event Action? Updated;` whenever a new `SearchAnalysis` snapshot arrives so Blazor components can trigger `InvokeAsync(StateHasChanged)`.
 
 ### `SettingsViewModel`
@@ -130,3 +130,8 @@ In `Checkers.Web`, the contents of `docs/brain/` (including Markdown chapters an
 1. **Chapter Discovery:** [`BrainDocs.cs`](../../src/Checkers.Web/Services/BrainDocs.cs) parses `README.md` and extracts all links matching `^\d\d-[a-z0-9-]+\.md$` to build the ordered sidebar Table of Contents and Previous/Next chapter navigation.
 2. **Markdown to HTML:** Markdig (`UseAutoIdentifiers(AutoIdentifierOptions.GitHub)` + `UseAdvancedExtensions()`) compiles Markdown tables, code blocks, math spans (`$...$`, `$$...$$`), and `mermaid` fenced blocks into semantic HTML and rewrites relative image and chapter URLs.
 3. **Client-Side Math & Diagrams:** [`docs.js`](../../src/Checkers.Web/wwwroot/js/docs.js) lazy-loads **KaTeX** to typeset LaTeX equations and **Mermaid.js** to render architectural flowcharts, sequence diagrams, and state machines.
+
+---
+
+Previous: [12 Engine improvements during development](12-engine-improvements.md) · Next: [14 GUI and settings](14-gui-and-settings.md)
+

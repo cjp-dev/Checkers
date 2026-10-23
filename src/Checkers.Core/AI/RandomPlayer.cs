@@ -35,10 +35,10 @@ public sealed class RandomPlayer : IPlayer
         {
             Move = move.Notation,
             Depth = "1 ply",
-            Value = "0",
+            Score = "0",
             BestMove = move.Notation,
             Nodes = legalMoves.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
-            Evaluations = "0",
+            Speed = "-",
             Time = "0:00.0"
         };
 
