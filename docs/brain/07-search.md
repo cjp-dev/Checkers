@@ -200,10 +200,10 @@ While thinking, `MinimaxPlayer` streams real-time `SearchAnalysis` snapshots thr
 |---|---|---|
 | **Move** | `23-19` / `22-18` | Candidate root move currently being explored (or completed best / book move) |
 | **Depth** | `21 plies` / `Book (12 plies)` | Highest completed depth, in-progress depth with ellipsis, or `Book (12 plies)` |
-| **Value** | `+35` / `+Win in 23 plies` | Heuristic score in centipawns, `Forced`, or exact distance-to-win/loss |
+| **Score** | `+35` / `+Win in 23 plies` | Heuristic score in centipawns, `Forced`, or exact distance-to-win/loss |
 | **Best move** | `24-20` | Principal Variation root move from the latest finished iteration |
 | **Nodes** | `34,374,464` / `0 (Book)` | Total interior and quiescence nodes visited (`NodesEvaluated`), or `0 (Book)` on book hit |
-| **Evaluations** | `8,612,044` / `0` | Total static leaf evaluations executed (`LeafEvaluations`) |
+| **Speed** | `8,184,396 nps` / `-` | Search throughput in nodes per second (`(NodesEvaluated * 1000) / elapsedMs`) |
 | **Time** | `0:04.2` / `0:00.0` | Elapsed wall-clock time formatted as `m:ss.f` |
 | **FromBook** | `true` / `false` | Indicates whether the move was played instantaneously from the embedded `OpeningBook` |
 

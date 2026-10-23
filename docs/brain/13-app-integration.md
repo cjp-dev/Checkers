@@ -58,10 +58,10 @@ flowchart TD
 ### `MainViewModel`
 [`MainViewModel.cs`](../../src/Checkers.App/ViewModels/MainViewModel.cs) is the central coordinator for interactive gameplay:
 * **Board State Synchronization:** Maintains an $8 \times 8$ array and observable `BoardSquares` collection of `SquareViewModel` instances bound to XAML/Razor templates.
-* **Game Modes:** Supports `HumanVsHuman`, `HumanVsComputer`, and `ComputerVsComputer`.
+* **Game Modes & Sides:** Supports **vs Computer (White)** (`HumanVsComputer` — human plays White), **vs Computer (Black)** (`ComputerVsHuman` — human plays Black with automatic board flip), **vs Human (Two players)** (`HumanVsHuman`), and `ComputerVsComputer`. Manages mid-game side switching (`SwitchSidesCommand`) and fair-play tracking (`IsStatusModified`).
 * **Selection, Drag-and-Drop & Mandatory Capture Highlighting:** Intercepts square clicks and drag-and-drop gestures, computes legal destination squares, highlights pieces with mandatory captures, and executes legal moves.
 * **Persistent Transposition Table & Game History Lifecycle:** Retains a single `TranspositionTable` instance across moves within a match (calling `NewSearch()` to increment the 8-bit generation age), passes `Session.StateHistory` Zobrist hashes into `GetMoveAsync` for `DrawTable` repetition detection, and clears/resizes the table when starting a new game or changing table capacity in Settings.
-* **Undo/Redo & Chess Clocks:** Coordinates linear Undo/Redo stacks and refunds elapsed thinking time (`_timeLeftAtPly`) when moves are taken back in `TimePerGame` mode ([Chapter 09](09-time-control.md)).
+* **Undo/Redo & Clocks:** Coordinates linear Undo/Redo stacks, marks matches as modified when taking back moves vs. the computer, and refunds elapsed chess clock time (`_timeLeftAtPly`) to both players in `TimePerGame` mode ([Chapter 09](09-time-control.md)).
 
 ### `AnalysisViewModel`
 [`AnalysisViewModel.cs`](../../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:

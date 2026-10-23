@@ -172,7 +172,7 @@ graph TD
     Settings["Settings Dialog"]
     Settings --> Section1["1. Checkers Rules &amp; Variant<br/>International (Flying Kings) vs. English (1-Step Kings)"]
     Settings --> Section2["2. How Long May the Computer Think?<br/>Fixed Depth • Time per Move • Time per Game"]
-    Settings --> Section3["3. Transposition Table Size<br/>1,048,576 to 16,777,216 Entries (64 MB to 1,024 MB)"]
+    Settings --> Section3["3. Transposition Table Size<br/>1,048,576 to 16,777,216 Entries (16 MB to 256 MB)"]
     Settings --> Section4["4. Opening Book Activation<br/>Toggle Embedded 12-Ply Drop-Out Expansion Book"]
 ```
 
@@ -191,7 +191,7 @@ Configures how the engine manages its search depth and clock allocation:
 
 ### 3. Transposition Table Capacity
 Configures the size of the 4-way set-associative 64-byte cache-line Transposition Table:
-* **Range:** $2^{20}$ ($1{,}048{,}576$ entries, $64\text{ MB}$) to $2^{24}$ ($16{,}777{,}216$ entries, $1{,}024\text{ MB}$).
+* **Range:** $2^{20}$ ($1{,}048{,}576$ entries, $16\text{ MB}$) to $2^{24}$ ($16{,}777{,}216$ entries, $256\text{ MB}$).
 * **Hardware Cache Line Alignment:** Each entry occupies exactly 16 bytes, and four entries form a 64-byte bucket matching the host CPU's hardware L1/L2 cache line, pre-fetched via `Sse.Prefetch0`.
 
 ### 4. Opening Book Activation

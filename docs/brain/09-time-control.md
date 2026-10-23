@@ -95,12 +95,19 @@ During each root pass $d$, `GetMoveAsync` tracks both the highest score $S_d^{(1
 
 ---
 
-## Chess clock management & Undo refunds
+## Chess clock management, Timeouts & Undo refunds
 
-In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainViewModel.cs) manages the computer's chess clock across the game lifecycle:
-1. **Snapshot Before Search:** Before each move at ply $k$, the remaining computer clock is recorded in `_timeLeftAtPly[k]`.
-2. **Elapsed Deduction:** While the computer searches, a UI timer updates the live countdown banner (`[Clock: 4:32]`) and sidebar clock card. Upon move completion, elapsed thinking time is subtracted from `_computerTimeRemaining` (opening book hits take `0 ms`, preserving 100% of the clock for the middlegame).
-3. **Exact Undo Refund:** If the human player presses **Undo** (`Ctrl+Z`), `MainViewModel` restores `_computerTimeRemaining` to the exact value saved in `_timeLeftAtPly` for that ply, preventing Undo from draining the computer's clock.
+In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainViewModel.cs) manages independent digital chess clocks for both players across the match lifecycle:
+1. **Clock Display & Initiation:** Dual countdown clocks (`M:SS`) appear in the player score cards adjacent to each player's name. Both players start with the full configured bank of time (e.g., `5:00`). Clocks begin ticking down when the first move of the match is played.
+2. **Real-Time Turn Ticking:** The active player's clock counts down in real time every $250\text{ ms}$ during their turn (both while the human player ponders a move and while the computer is calculating). The upper-right corner of the Status card displays the match limit (e.g., `5 min / game`) in neutral text color when playing against the computer (hidden in two-player mode).
+3. **Snapshot Before Turn:** At each ply $k$, the exact remaining times for both players are recorded in `_timeLeftAtPly[k] = (WhiteTime, BlackTime)`.
+4. **Timeout Handling:**
+   - **Computer Timeout:** If the computer's clock reaches `0:00`, the match terminates immediately with a win on time for the human player (`White/Black won on time`).
+   - **Human Timeout vs. Computer:** If the human player's clock reaches `0:00`, a modal dialog asks: *"You ran out of time! Do you want to continue playing?"*
+     - If the player chooses **No**, the game terminates immediately with a loss on time.
+     - If the player chooses **Yes**, play continues with the human clock held at `0:00`. The game is flagged as modified (`IsGameModified = true`), turning the `STATUS` header crimson red (`#E74C3C`).
+   - **Human vs. Human:** In two-player mode, reaching `0:00` immediately ends the game with a loss on time for the active player.
+5. **Exact Undo Refund:** If the player presses **Undo** (`Ctrl+Z`), `MainViewModel` restores both `_whiteTimeLeft` and `_blackTimeLeft` to the exact values saved in `_timeLeftAtPly` for that ply, preventing Undo from draining either player's clock while flagging the match as modified vs. computer.
 
 ---
 
