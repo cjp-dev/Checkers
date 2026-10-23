@@ -13,42 +13,88 @@
     <!-- Top Menu Bar -->
     <nav class="menubar" aria-label="Menu">
         <div class="menubar-inner">
-            @foreach (MenuDefinition menu in _menus)
-            {
-                <div class="menu">
-                    <button class="menu-title @(menu == _openMenu ? "open" : null)"
-                            aria-haspopup="menu"
-                            aria-expanded="@(menu == _openMenu ? "true" : "false")"
-                            @onclick="() => ToggleMenu(menu)"
-                            @onmouseenter="() => HoverMenu(menu)">
-                        @menu.Title
-                    </button>
-                    @if (menu == _openMenu)
-                    {
-                        <div class="menu-items" role="menu">
-                            @foreach (MenuEntry entry in menu.Entries)
-                            {
-                                bool? isChecked = entry.IsChecked?.Invoke();
-                                string role = isChecked is null ? "menuitem" : entry.Radio ? "menuitemradio" : "menuitemcheckbox";
-                                <button role="@role"
-                                        aria-checked="@(isChecked is { } c ? (c ? "true" : "false") : null)"
-                                        class="@(entry.SeparatorBefore ? "separator-before" : null)"
-                                        disabled="@(!entry.Command.CanExecute(null))"
-                                        @onclick="() => RunAsync(entry.Command)">
-                                    <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
-                                    <span>@entry.Text</span>
-                                    <span class="shortcut">@entry.Shortcut</span>
-                                </button>
-                            }
-                        </div>
-                    }
-                </div>
-            }
+            <!-- Mobile Header (Visible on screens <= 768px) -->
+            <div class="mobile-nav-bar">
+                <span class="app-brand">Checkers</span>
+                <button class="hamburger-btn"
+                        aria-label="Open navigation menu"
+                        aria-expanded="@(_mobileDrawerOpen ? "true" : "false")"
+                        @onclick="ToggleMobileDrawer">
+                    <span class="hamburger-icon">☰</span>
+                </button>
+            </div>
+
+            <!-- Desktop Menu Bar (Visible on screens > 768px) -->
+            <div class="desktop-menu-bar">
+                @foreach (MenuDefinition menu in _menus)
+                {
+                    <div class="menu">
+                        <button class="menu-title @(menu == _openMenu ? "open" : null)"
+                                aria-haspopup="menu"
+                                aria-expanded="@(menu == _openMenu ? "true" : "false")"
+                                @onclick="() => ToggleMenu(menu)"
+                                @onmouseenter="() => HoverMenu(menu)">
+                            @menu.Title
+                        </button>
+                        @if (menu == _openMenu)
+                        {
+                            <div class="menu-items" role="menu">
+                                @foreach (MenuEntry entry in menu.Entries)
+                                {
+                                    bool? isChecked = entry.IsChecked?.Invoke();
+                                    string role = isChecked is null ? "menuitem" : entry.Radio ? "menuitemradio" : "menuitemcheckbox";
+                                    <button role="@role"
+                                            aria-checked="@(isChecked is { } c ? (c ? "true" : "false") : null)"
+                                            class="@(entry.SeparatorBefore ? "separator-before" : null)"
+                                            disabled="@(!entry.Command.CanExecute(null))"
+                                            @onclick="() => RunAsync(entry.Command)">
+                                        <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
+                                        <span>@entry.Text</span>
+                                        <span class="shortcut">@entry.Shortcut</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </div>
     </nav>
     @if (_openMenu is not null)
     {
         <div class="menu-backdrop" @onclick="() => _openMenu = null"></div>
+    }
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="mobile-drawer @(_mobileDrawerOpen ? "open" : null)" role="dialog" aria-modal="true" aria-label="Game Menu">
+        <div class="mobile-drawer-header">
+            <span class="mobile-drawer-title">Menu</span>
+            <button class="mobile-drawer-close" aria-label="Close menu" @onclick="CloseMobileDrawer">✕</button>
+        </div>
+        <div class="mobile-drawer-body">
+            @foreach (MenuDefinition menu in _menus)
+            {
+                <div class="mobile-menu-section">
+                    <div class="mobile-section-header">@menu.Title</div>
+                    <div class="mobile-section-items">
+                        @foreach (MenuEntry entry in menu.Entries)
+                        {
+                            bool? isChecked = entry.IsChecked?.Invoke();
+                            <button class="mobile-menu-item @(entry.SeparatorBefore ? "separator-before" : null)"
+                                    disabled="@(!entry.Command.CanExecute(null))"
+                                    @onclick="() => RunAsync(entry.Command)">
+                                <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
+                                <span class="label">@entry.Text</span>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+    @if (_mobileDrawerOpen)
+    {
+        <div class="mobile-drawer-backdrop" @onclick="CloseMobileDrawer"></div>
     }
 
     <!-- Main Game Area -->
@@ -166,6 +212,7 @@
     private MenuDefinition[] _menus = [];
     private ICommand[] _commands = [];
     private MenuDefinition? _openMenu;
+    private bool _mobileDrawerOpen;
     private DotNetObjectReference<Home>? _self;
     private bool _renderPending;
 
@@ -289,6 +336,10 @@
 
     private void ToggleMenu(MenuDefinition menu) => _openMenu = _openMenu == menu ? null : menu;
 
+    private void ToggleMobileDrawer() => _mobileDrawerOpen = !_mobileDrawerOpen;
+
+    private void CloseMobileDrawer() => _mobileDrawerOpen = false;
+
     private void HoverMenu(MenuDefinition menu)
     {
         if (_openMenu is not null)
@@ -300,6 +351,7 @@
     private async Task RunAsync(ICommand command)
     {
         _openMenu = null;
+        _mobileDrawerOpen = false;
         if (!command.CanExecute(null))
             return;
 
