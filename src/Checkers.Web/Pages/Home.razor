@@ -229,9 +229,9 @@
             ]),
             new("Game",
             [
-                new("vs Computer (White)", new RelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
-                new("vs Computer (Black)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
-                new("vs Human (Two players)", new RelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
+                new("vs Computer (White)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
+                new("vs Computer (Black)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsComputer)), IsChecked: () => Vm.IsHumanVsComputer, Radio: true),
+                new("vs Human (Two players)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
                 new("Switch sides", Vm.SwitchSidesCommand, SeparatorBefore: true),
                 new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: true),
             ]),

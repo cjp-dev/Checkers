@@ -27,9 +27,18 @@ public class MainViewModelTests
         public List<string> Errors { get; } = [];
         public GameSettings? SettingsToReturn { get; set; }
         public bool ConfirmResult { get; set; } = true;
+        public int ConfirmCallCount { get; set; }
+        public string? LastConfirmTitle { get; set; }
+        public string? LastConfirmMessage { get; set; }
         public void ShowInfo(string title, string message) { }
         public bool ShowConfirmation(string title, string message) => ConfirmResult;
-        public Task<bool> ConfirmAsync(string title, string message) => Task.FromResult(ConfirmResult);
+        public Task<bool> ConfirmAsync(string title, string message)
+        {
+            ConfirmCallCount++;
+            LastConfirmTitle = title;
+            LastConfirmMessage = message;
+            return Task.FromResult(ConfirmResult);
+        }
         public void ShowAbout() { }
         public void ShowError(string message) => Errors.Add(message);
         public Task<GameSettings?> EditSettingsAsync(GameSettings current) => Task.FromResult(SettingsToReturn);
@@ -1102,7 +1111,7 @@ public class MainViewModelTests
     public void FlagFell_EndsGameWithTimeoutLoss()
     {
         var vm = new MainViewModel();
-        vm.SetGameMode(GameMode.HumanVsComputer);
+        _ = vm.SetGameMode(GameMode.HumanVsComputer);
         vm.Session.Status.Should().Be(GameStatus.InProgress);
 
         vm.Session.FlagFell(PieceColor.White);
@@ -1110,6 +1119,89 @@ public class MainViewModelTests
         vm.Session.Status.Should().Be(GameStatus.BlackWon);
         vm.Session.GameOverReason.Should().Be(GameOverReason.Timeout);
         vm.StatusText.Should().Contain("Black Won on time");
+    }
+
+    [Fact]
+    public async Task SetGameMode_VsComputer_InMiddleOfGame_PromptsConfirmation_AndAbortsIfCanceled()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = false };
+        var vm = new MainViewModel(dialogService: dialogs);
+
+        // Start game and make a move
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        dialogs.ConfirmCallCount.Should().Be(0);
+
+        // Player clicks "vs Computer (White)" in the middle of the game
+        await vm.SetGameMode(GameMode.ComputerVsHuman);
+
+        // Warning dialog was shown with option to cancel
+        dialogs.ConfirmCallCount.Should().Be(1);
+        dialogs.LastConfirmTitle.Should().Be("Start New Game");
+        dialogs.LastConfirmMessage.Should().Contain("game is currently in progress");
+
+        // Since user canceled (ConfirmResult = false), game is still in progress with move history intact
+        vm.Session.MoveHistory.Should().HaveCount(1);
+        vm.GameMode.Should().Be(GameMode.HumanVsComputer);
+    }
+
+    [Fact]
+    public async Task SetGameMode_VsComputer_InMiddleOfGame_StartsNewGameIfConfirmed()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+
+        // Start game and make a move
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        // Player clicks "vs Computer (White)" in middle of game and confirms
+        await vm.SetGameMode(GameMode.ComputerVsHuman);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        vm.GameMode.Should().Be(GameMode.ComputerVsHuman);
+        // New game was started, history cleared
+        vm.Session.MoveHistory.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SetGameMode_VsComputer_WhenAlreadyInSameMode_StartsNewGame()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+
+        // Start game in HumanVsComputer and make a move
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        // Player clicks "vs Computer (Black)" again to start new game
+        await vm.SetGameMode(GameMode.HumanVsComputer);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        vm.GameMode.Should().Be(GameMode.HumanVsComputer);
+        vm.Session.MoveHistory.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SetGameMode_VsComputer_AtStartOfGame_StartsNewGameWithoutPrompt()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+
+        // At move 0 (not in the middle of a game)
+        vm.Session.MoveHistory.Should().BeEmpty();
+
+        await vm.SetGameMode(GameMode.ComputerVsHuman);
+
+        dialogs.ConfirmCallCount.Should().Be(0);
+        vm.GameMode.Should().Be(GameMode.ComputerVsHuman);
+        vm.Session.MoveHistory.Should().BeEmpty();
     }
 
     private class TestSettingsStore : ISettingsStore

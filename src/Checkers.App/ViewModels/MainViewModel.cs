@@ -650,13 +650,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    public void SetGameMode(GameMode mode)
+    public async Task SetGameMode(GameMode mode)
     {
-        if (GameMode != mode)
+        if (mode is GameMode.ComputerVsHuman or GameMode.HumanVsComputer)
         {
+            if (Session.Status == GameStatus.InProgress && Session.MoveHistory.Count > 0)
+            {
+                if (_dialogService != null)
+                {
+                    bool confirm = await _dialogService.ConfirmAsync(
+                        "Start New Game",
+                        "A game is currently in progress. Starting a new game will end the current game.\n\nDo you want to start a new game?");
+
+                    if (!confirm)
+                        return;
+                }
+            }
+
             CancelAi();
+            ClearSelection();
+            Analysis.Reset();
+            ResetClock();
+            _engineHost.ClearTranspositionTable();
+            FileName = string.Empty;
             GameMode = mode;
+            Session.StartNewGame();
             RefreshBoard();
+        }
+        else
+        {
+            if (GameMode != mode)
+            {
+                CancelAi();
+                GameMode = mode;
+                RefreshBoard();
+            }
         }
     }
 
