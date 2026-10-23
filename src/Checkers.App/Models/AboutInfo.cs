@@ -13,11 +13,13 @@ public static class AboutInfo
 
     public static IReadOnlyList<string> Paragraphs { get; } =
     [
-        "Checkers is an 8 × 8 board game played with 12 pieces per side under International Flying Kings rules. " +
+        "Checkers (Draughts) is an 8 × 8 board game played with 12 pieces per side with selectable rule variants — " +
+        "International Draughts (Flying Kings) and English Checkers (1-step Kings). " +
         "You can play against the computer or against a friend, and watch the computer think live in the real-time analysis panel.",
-        "Its brain searches ahead using Negamax Alpha-Beta pruning, 64-bit Zobrist Transposition Tables, Quiescence search, " +
-        "Iterative Deepening, and dynamic chess clock time management. It evaluates pieces, king power, center control, and advanced advancement heuristics.",
-        "Built purely in C# 13 and .NET 10 with Clean Architecture. The exact same engine runs natively on Windows (WPF) and " +
-        "in modern web browsers via Blazor WebAssembly AOT.",
+        "Its tournament-grade brain searches ahead using 64-bit bitboards, an embedded 12-ply opening book, " +
+        "Principal Variation Search (PVS) with Late Move Reductions, 4-way cache-line Transposition Tables, " +
+        "Quiescence search, and dynamic chess clock management.",
+        "Built purely in C# and .NET 10 with Clean Architecture and PDN game persistence. " +
+        "The exact same engine runs natively on Windows (WPF) and in modern web browsers via Blazor WebAssembly AOT.",
     ];
 }
