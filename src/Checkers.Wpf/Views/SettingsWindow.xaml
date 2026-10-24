@@ -58,24 +58,27 @@
                        Text="{Binding MinutesPerGame, StringFormat={}{0} minutes}" />
         </Grid>
 
-        <!-- Transposition Table Section -->
-        <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold" Text="Transposition Table Size" />
-        <Grid Margin="4,0,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="130" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Margin="0,4,12,4" VerticalAlignment="Center" Text="Table capacity" />
-            <Slider Grid.Column="1" VerticalAlignment="Center"
-                    Minimum="{Binding MinTranspositionTablePower}"
-                    Maximum="{Binding MaxTranspositionTablePower}"
-                    IsSnapToTickEnabled="True" TickFrequency="1"
-                    Value="{Binding TranspositionTablePower}"
-                    AutomationProperties.Name="Transposition table size" />
-            <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
-                       Text="{Binding TranspositionTableEntriesText}" />
-        </Grid>
+        <!-- Opening Book & Transposition Table Section -->
+        <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold" Text="Checkers Opening Book &amp; Transposition Table" />
+        <StackPanel Margin="4,0,0,0">
+            <CheckBox Margin="0,0,0,10" Content="{Binding OpeningBookDescription}" IsChecked="{Binding UseOpeningBook}" />
+            <Grid Margin="0,0,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="130" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Margin="0,4,12,4" VerticalAlignment="Center" Text="Table capacity" />
+                <Slider Grid.Column="1" VerticalAlignment="Center"
+                        Minimum="{Binding MinTranspositionTablePower}"
+                        Maximum="{Binding MaxTranspositionTablePower}"
+                        IsSnapToTickEnabled="True" TickFrequency="1"
+                        Value="{Binding TranspositionTablePower}"
+                        AutomationProperties.Name="Transposition table size" />
+                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Text="{Binding TranspositionTableEntriesText}" />
+            </Grid>
+        </StackPanel>
 
         <!-- Buttons -->
         <StackPanel Margin="0,20,0,0" Orientation="Horizontal" HorizontalAlignment="Right">

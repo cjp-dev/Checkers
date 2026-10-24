@@ -1,6 +1,7 @@
 using Checkers.App.Models;
 using Checkers.App.ViewModels;
 using Checkers.Core.AI;
+using Checkers.Core.Models;
 using FluentAssertions;
 
 namespace Checkers.App.Tests;
@@ -89,5 +90,42 @@ public class SettingsViewModelTests
 
         var bookDisabled = new GameSettings(TimeControlMode.TimePerMove, 8, 5, 5, UseOpeningBook: false);
         bookDisabled.ToLimits(TimeSpan.FromMinutes(5)).UseOpeningBook.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpeningBookDescription_UpdatesDynamicallyWithVariant()
+    {
+        var vm = new SettingsViewModel(GameSettings.Default);
+        vm.Variant.Should().Be(CheckersVariant.International);
+        vm.OpeningBookDescription.Should().Be("Checkers Opening Book (26,367 positions)");
+
+        string? notifiedProperty = null;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SettingsViewModel.OpeningBookDescription))
+            {
+                notifiedProperty = e.PropertyName;
+            }
+        };
+
+        vm.IsEnglish = true;
+        vm.OpeningBookDescription.Should().Be("Checkers Opening Book (32,369 positions)");
+        notifiedProperty.Should().Be(nameof(SettingsViewModel.OpeningBookDescription));
+
+        vm.IsInternational = true;
+        vm.OpeningBookDescription.Should().Be("Checkers Opening Book (26,367 positions)");
+    }
+
+    [Fact]
+    public void UseOpeningBook_TogglesCorrectly_AndPersistsInToSettings()
+    {
+        var vm = new SettingsViewModel(GameSettings.Default);
+        vm.UseOpeningBook.Should().BeTrue();
+
+        vm.UseOpeningBook = false;
+        vm.ToSettings().UseOpeningBook.Should().BeFalse();
+
+        vm.UseOpeningBook = true;
+        vm.ToSettings().UseOpeningBook.Should().BeTrue();
     }
 }

@@ -13,7 +13,7 @@ namespace Checkers.App.ViewModels;
 public sealed partial class SettingsViewModel : ObservableObject
 {
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInternational), nameof(IsEnglish))]
+    [NotifyPropertyChangedFor(nameof(IsInternational), nameof(IsEnglish), nameof(OpeningBookDescription))]
     private CheckersVariant _variant;
 
     [ObservableProperty]
@@ -80,6 +80,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         get => Variant == CheckersVariant.English;
         set { if (value) Variant = CheckersVariant.English; }
     }
+
+    public string OpeningBookDescription => Variant switch
+    {
+        CheckersVariant.English => "Checkers Opening Book (32,369 positions)",
+        _ => "Checkers Opening Book (26,367 positions)"
+    };
 
     public bool IsFixedDepth
     {

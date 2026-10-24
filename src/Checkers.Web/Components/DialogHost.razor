@@ -60,11 +60,21 @@
                 </fieldset>
 
                 <fieldset class="settings">
-                    <legend>Transposition Table Size</legend>
-                    <label>Table capacity</label>
-                    <input type="range" min="@settings.MinTranspositionTablePower" max="@settings.MaxTranspositionTablePower" step="1" aria-label="Transposition table size"
-                           @bind="settings.TranspositionTablePower" @bind:event="oninput" />
-                    <span>@settings.TranspositionTableEntriesText</span>
+                    <legend>Checkers Opening Book &amp; Transposition Table</legend>
+                    <label style="font-weight: normal; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" @bind="settings.UseOpeningBook" />
+                        <span>@settings.OpeningBookDescription</span>
+                    </label>
+                    <div style="margin-top: 0.75rem;">
+                        <label style="margin-top: 0; display: block; margin-bottom: 0.25rem;">Transposition Table Capacity:</label>
+                        <select class="dialog-text" style="margin: 0.25rem 0;" @bind="settings.TranspositionTableEntries">
+                            <option value="1048576">1,048,576 entries (16 MB) - Default</option>
+                            <option value="2097152">2,097,152 entries (32 MB)</option>
+                            <option value="4194304">4,194,304 entries (64 MB)</option>
+                            <option value="8388608">8,388,608 entries (128 MB)</option>
+                            <option value="16777216">16,777,216 entries (256 MB)</option>
+                        </select>
+                    </div>
                 </fieldset>
             }
             <div class="dialog-buttons">
