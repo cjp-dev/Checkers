@@ -8,7 +8,7 @@ In the initial implementation of `Checkers.Core`, `BoardState` stored pieces in 
 
 To maximize search throughput while preserving **100% behavioral and node-for-node search equivalence** (the same strict node-equality verification principle used by [`verify_identical.py`](https://github.com/Stermere/Checkers-Engine/blob/main/src/python/verify_identical.py) in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine)), `Checkers.Core` is built on a pure **64-bit Bitboard Engine** (`Checkers.Core.Bitboards`), backing `BoardState`, `RuleEngine`, `EvaluationFunction`, and `MinimaxPlayer` directly by 64-bit bitboards:
 - **[`BitPosition`](../../src/Checkers.Core/Bitboards/BitPosition.cs) (`struct`, 48 bytes):** Represents the entire board using four `ulong` bitboards (`WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`, corresponding to `p1, p2, p1k, p2k` in [`board_eval.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_eval.c) / [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c)), an incrementally maintained 64-bit Zobrist `Hash`, `HalfMoveClock`, and `SideToMove`. `BoardState` wraps `BitPosition` directly with zero array allocation.
-- **[`BitMove`](../../src/Checkers.Core/Bitboards/BitMove.cs) (`readonly record struct`, 16 bytes):** Value-type move representation storing `ulong Captured` (all jumped squares as a bitmask), `byte From`, `byte To`, `bool IsPromotion`, and a 16-bit packed identifier `ushort PackedMove = (ushort)((From << 8) | To)` with zero heap allocations.
+- **[`BitMove`](../../src/Checkers.Core/Bitboards/BitMove.cs) (`readonly struct`, 16 bytes):** Value-type move representation storing `ulong Captured` (all jumped squares as a bitmask), `byte From`, `byte To`, `bool IsPromotion`, and a 16-bit packed identifier `ushort PackedMove = (ushort)((From << 8) | To)` with zero heap allocations.
 - **[`BitboardMoveGenerator`](../../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs) & [`RuleEngine`](../../src/Checkers.Core/Engine/RuleEngine.cs):** Generates legal moves into stack/per-ply `Span<BitMove>` buffers using parallel 64-bit shift-and-mask operations for Men and English 1-Step Kings, hardware `BitOperations.TrailingZeroCount` / `LeadingZeroCount` diagonal ray scans with fast-rejection guards for International Flying Kings, and set-wise $O(1)$ capture/mobility checks (`HasAnyCapture`, inspired by `has_any_jump` in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c)).
 - **[`EvaluationFunction`](../../src/Checkers.Core/AI/EvaluationFunction.cs):** Computes the static evaluation using hardware `BitOperations.PopCount` (`POPCNT` instruction) and precomputed row/center/PST masks instead of 64-square loops.
 - **[`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs):** Allocation-free Negamax Alpha-Beta search using value-type copy-make (`BitPosition next = pos.Apply(in move)`), preallocated per-ply `BitMove[][]` buffers, single move generation per node, and in-place insertion sort.
@@ -43,10 +43,10 @@ To prevent horizontal wrap-around when shifting bits diagonally across files A (
 | Constant / Table | Hex Value / Type | Purpose |
 |---|---|---|
 | `DarkSquares` | `0x55AA55AA55AA55AAUL` | All 32 playable dark squares `(Row + Col) % 2 == 1` |
-| `NotColA` | `0xFEFEFEFEFEFEFEFEUL` | Excludes Column 0 (prevents left-shift wrap-around) |
-| `NotColH` | `0x7F7F7F7F7F7F7F7FUL` | Excludes Column 7 (prevents right-shift wrap-around) |
-| `NotColAB` | `0xFCFCFCFCFCFCFCFCUL` | Excludes Columns 0 & 1 (2-square left jump guard) |
-| `NotColGH` | `0x3F3F3F3F3F3F3F3FUL` | Excludes Columns 6 & 7 (2-square right jump guard) |
+| `BitboardMasks.NotColA` | `0xFEFEFEFEFEFEFEFEUL` | Excludes Column 0 (prevents left-shift wrap-around) |
+| `BitboardMasks.NotColH` | `0x7F7F7F7F7F7F7F7FUL` | Excludes Column 7 (prevents right-shift wrap-around) |
+| `BitboardMasks.NotColAB` | `0xFCFCFCFCFCFCFCFCUL` | Excludes Columns 0 & 1 (2-square left jump guard) |
+| `BitboardMasks.NotColGH` | `0x3F3F3F3F3F3F3F3FUL` | Excludes Columns 6 & 7 (2-square right jump guard) |
 | `Row0` | `0x00000000000000FFUL` | White promotion rank (`Row == 0`) |
 | `Row7` | `0xFF00000000000000UL` | Black promotion rank (`Row == 7`) |
 | `CenterMask` | `0x0000142800000000UL` | Core dark squares `14, 15, 18, 19` (Rows 3–4, Cols 2–5: `+12` center control bonus) |
@@ -57,10 +57,10 @@ To prevent horizontal wrap-around when shifting bits diagonally across files A (
 ### Diagonal Bit Shifts
 
 Moving one step diagonally corresponds to a fixed bit shift combined with a file guard mask:
-- **Up-Left (`-1 row, -1 col`, `-9`):** `(bb & NotColA) >> 9`
-- **Up-Right (`-1 row, +1 col`, `-7`):** `(bb & NotColH) >> 7`
-- **Down-Left (`+1 row, -1 col`, `+7`):** `(bb & NotColA) << 7`
-- **Down-Right (`+1 row, +1 col`, `+9`):** `(bb & NotColH) << 9`
+- **Up-Left (`-1 row, -1 col`, `-9`):** `(bb & BitboardMasks.NotColA) >> 9`
+- **Up-Right (`-1 row, +1 col`, `-7`):** `(bb & BitboardMasks.NotColH) >> 7`
+- **Down-Left (`+1 row, -1 col`, `+7`):** `(bb & BitboardMasks.NotColA) << 7`
+- **Down-Right (`+1 row, +1 col`, `+9`):** `(bb & BitboardMasks.NotColH) << 9`
 
 ---
 
@@ -75,14 +75,16 @@ A key mathematical insight connects the two supported rule variants:
 Consequently, `BitboardMoveGenerator.HasAnyLegalMove(in BitPosition pos, CheckersVariant variant)` executes in **$O(1)$ constant time** using parallel bitwise shifts across all friendly pieces simultaneously—with zero loops and zero allocations:
 
 ```csharp
-ulong upLeftQuiet = ((upMovers & NotColA) >> 9) & empty;
-ulong upRightQuiet = ((upMovers & NotColH) >> 7) & empty;
-if ((upLeftQuiet | upRightQuiet) != 0)
+// Quiet 1-step moves for White men (directions 0 and 1: -9, -7)
+if (((ownMen & BitboardMasks.NotColA) >> 9 & empty) != 0UL ||
+    ((ownMen & BitboardMasks.NotColH) >> 7 & empty) != 0UL)
+{
     return true;
+}
 ```
 
 **Redundant `HasAnyLegalMove` Elimination (Phase 1):**
-Inside `MinimaxPlayer.NegamaxBitboard`, `HasAnyLegalMove` is only called when `pos.HalfMoveClock >= 80` (to verify that a blocked loss takes precedence over the 40-move draw rule before returning `0`). On normal interior nodes (`depth > 0`), `BitboardMoveGenerator.Generate` is already called and returns `moveCount == 0` when the active player has no legal moves, saving millions of redundant mobility checks. Similarly, on the initial `depth == 0` entry into `Quiescence`, `NegamaxBitboard` has already verified terminal status, so `HasAnyLegalMove` is only checked at `qPly > 0`.
+Inside `MinimaxPlayer.NegaMax`, `HasAnyLegalMove` is only called when `pos.HalfMoveClock >= 80` (to verify that a blocked loss takes precedence over the 40-move draw rule before returning `0`). On normal interior nodes (`depth > 0`), `BitboardMoveGenerator.Generate` is already called and returns `moveCount == 0` when the active player has no legal moves, saving millions of redundant mobility checks. Similarly, on the initial `depth == 0` entry into `Quiescence`, `NegaMax` has already verified terminal status, so `HasAnyLegalMove` is only checked at `qPly > 0`.
 
 ### 2. Set-Wise $O(1)$ Capture Detection (`HasAnyCapture`)
 
@@ -93,16 +95,16 @@ In Checkers, determining whether *any* legal capture exists on the board is crit
 
 Let $M_{\text{up}}, M_{\text{down}} \in \mathbb{U}_{64}$ be the friendly pieces capable of jumping upward and downward respectively, $E$ be the enemy pieces, and $\emptyset = \text{DarkSquares} \setminus (W \cup B)$ be the empty dark squares. `BitboardMoveGenerator.HasAnyCapture` tests all pieces in parallel across the four jump vectors:
 
-$$J_{\text{UL}} = \Bigl(\bigl((M_{\text{up}} \land \text{NotColAB}) \gg 9\bigr) \land E\Bigr) \gg 9 \land \emptyset, \qquad J_{\text{UR}} = \Bigl(\bigl((M_{\text{up}} \land \text{NotColGH}) \gg 7\bigr) \land E\Bigr) \gg 7 \land \emptyset$$
+$$J_{\text{UL}} = \Bigl(\bigl((M_{\text{up}} \land \text{BitboardMasks.NotColAB}) \gg 9\bigr) \land E\Bigr) \gg 9 \land \emptyset, \qquad J_{\text{UR}} = \Bigl(\bigl((M_{\text{up}} \land \text{BitboardMasks.NotColGH}) \gg 7\bigr) \land E\Bigr) \gg 7 \land \emptyset$$
 
-$$J_{\text{DL}} = \Bigl(\bigl((M_{\text{down}} \land \text{NotColAB}) \ll 7\bigr) \land E\Bigr) \ll 7 \land \emptyset, \qquad J_{\text{DR}} = \Bigl(\bigl((M_{\text{down}} \land \text{NotColGH}) \ll 9\bigr) \land E\Bigr) \ll 9 \land \emptyset$$
+$$J_{\text{DL}} = \Bigl(\bigl((M_{\text{down}} \land \text{BitboardMasks.NotColAB}) \ll 7\bigr) \land E\Bigr) \ll 7 \land \emptyset, \qquad J_{\text{DR}} = \Bigl(\bigl((M_{\text{down}} \land \text{BitboardMasks.NotColGH}) \ll 9\bigr) \land E\Bigr) \ll 9 \land \emptyset$$
 
 If $(J_{\text{UL}} \mid J_{\text{UR}} \mid J_{\text{DL}} \mid J_{\text{DR}}) \neq 0$, a 1-hop jump exists and `HasAnyCapture` returns `true` in **4 bitwise expressions**. Only when International Flying Kings are on the board (`ownKings != 0UL`) and no 1-hop jump was found does it check long-range king rays via `CanKingCaptureFrom`.
 
 ### 3. Men and English 1-Step Kings Move Generation
 
-- **Quiet Moves:** Parallel shift-and-mask (`(movers & NotColA) >> 9 & empty`) identifies all pieces capable of sliding. Individual set bits are iterated via `BitOperations.TrailingZeroCount(mask)` and cleared via `mask &= mask - 1`.
-- **Jump Captures:** Parallel 2-step shift-and-mask (`(((movers & NotColAB) >> 9) & enemy) >> 9 & empty`) detects whether any capture exists before recursive multi-jump expansion. Multi-jump recursion updates the local `own`, `enemy`, and `capturedMask` bitboards in CPU registers, automatically preventing jumping the same piece twice (`(enemy & (1UL << midSq)) != 0`).
+- **Quiet Moves:** Parallel shift-and-mask (`((movers & BitboardMasks.NotColA) >> 9) & empty`) identifies all pieces capable of sliding. Individual set bits are iterated via `BitOperations.TrailingZeroCount(mask)` and cleared via `mask &= mask - 1`.
+- **Jump Captures:** Parallel 2-step shift-and-mask (`(((movers & BitboardMasks.NotColAB) >> 9) & enemy) >> 9 & empty`) detects whether any capture exists before recursive multi-jump expansion. Multi-jump recursion updates the local `own`, `enemy`, and `capturedMask` bitboards in CPU registers, automatically preventing jumping the same piece twice (`(enemy & (1UL << midSq)) != 0`).
 
 ### 4. International Flying Kings (`TZCNT` / `LZCNT` + Phase 1 Ray Fast-Rejection)
 
@@ -152,7 +154,7 @@ flowchart TD
 flowchart LR
     Root["BoardState (Root)"] --> Convert["state.BitPosition (O(1))"]
     Convert --> ID["Iterative Deepening (d = 1..MaxDepth)"]
-    ID --> Negamax["NegamaxBitboard(in BitPosition, d, α, β, ply)"]
+    ID --> Negamax["NegaMax(in BitPosition, d, α, β, ply)"]
     Negamax --> Gen["BitboardMoveGenerator.Generate(in pos, _moveBuffers[ply])"]
     Gen --> Order["OrderBitMoves (TT, Captures, Promo, Killers, History)"]
     Order --> CopyMake["BitPosition next = pos.Apply(in move)<br/>(48B stack copy + XOR Zobrist + Sse.Prefetch0)"]

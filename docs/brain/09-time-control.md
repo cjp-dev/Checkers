@@ -8,7 +8,7 @@ How long the computer player is permitted to think is configured via the **Game 
 
 The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) bounded by two time thresholds:
 1. **Soft Limit ($T_{\text{soft}}$):** Checked *between* depth iterations ($d \rightarrow d + 1$). Prevents starting a new ply iteration when less than $\frac{1}{3}$ of the move budget remains.
-2. **Hard Limit ($T_{\text{hard}}$):** Checked every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`) *inside* `NegamaxBitboard` and `Quiescence`. Aborts an in-progress iteration immediately if the budget expires, returning `bestMoveOverall` from the last completed depth $d - 1$.
+2. **Hard Limit ($T_{\text{hard}}$):** Checked every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`) *inside* `NegaMax` and `Quiescence`. Aborts an in-progress iteration immediately if the budget expires, returning `bestMoveOverall` from the last completed depth $d - 1$.
 
 ---
 

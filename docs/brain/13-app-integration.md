@@ -102,7 +102,7 @@ sequenceDiagram
     UI->>VM: Human completes move → Trigger AI turn
     VM->>AI: GetMoveAsync(state, legalMoves, progress, ct, stateHashHistory)
     loop Iterative Deepening (d = 1 .. MaxDepth)
-        AI->>AI: NegamaxBitboard search (d plies)
+        AI->>AI: NegaMax search (d plies)
         AI->>VM: progress.Report(SearchAnalysis)
         AI->>UI: await Task.Delay(1, ct) [Yield macrotask]
         UI->>VM: BrowserSynchronizationContext dispatches Progress callback

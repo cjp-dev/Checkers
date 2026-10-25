@@ -19,8 +19,8 @@ The domain library `Checkers.Core` has zero UI dependencies, produces determinis
 | `Checkers.Wpf` | WPF Application (`net10.0-windows`) | Desktop presentation client: 60 FPS board rendering, click-to-move, drag-and-drop, sound effects, Settings dialog, and live search telemetry pane. |
 | `Checkers.Web` | Blazor WebAssembly (`net10.0`) | Web presentation client: Ahead-Of-Time (AOT) compiled WebAssembly app with responsive board UI, cooperative AI search yielding, and integrated Markdig/KaTeX/Mermaid `/docs` viewer. |
 | `Checkers.Benchmark` | Console CLI (`net10.0`) | Automated 40-position and 5-position empirical benchmark runner, 10M-evaluation microbenchmark (`eval-speed`), 200-game bot-vs-bot self-play match runner (`eval-match`), and opening book construction/verification CLI (`book generate`, `book expand-doe`, `book verify`). |
-| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 123 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, `DrawTable` repetitions, Phase 6 evaluation terms, PVS/LMR search, 12-ply DOE opening books, and PDN persistence. |
-| `Checkers.App.Tests` | xUnit (`net10.0`) | 40 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, and UI command workflows. |
+| `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 124 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, `DrawTable` repetitions, Phase 6 evaluation terms, PVS/LMR search, 12-ply DOE opening books, and PDN persistence. |
+| `Checkers.App.Tests` | xUnit (`net10.0`) | 70 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, and UI command workflows. |
 
 ```mermaid
 flowchart TD
@@ -39,8 +39,8 @@ flowchart TD
     end
 
     subgraph Verification ["Automated Test Suites"]
-        CoreTests["Checkers.Core.Tests (123 tests)"]
-        AppTests["Checkers.App.Tests (40 tests)"]
+        CoreTests["Checkers.Core.Tests (124 tests)"]
+        AppTests["Checkers.App.Tests (70 tests)"]
     end
 
     WPF --> App

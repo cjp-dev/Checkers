@@ -151,7 +151,7 @@ Zobrist hashing maps any board configuration and side-to-move to a deterministic
 
 ### Key Generation and Incremental XOR Math
 
-At static initialization, [Zobrist.cs](../../src/Checkers.Core/Engine/Zobrist.cs) populates a table of 64-bit pseudo-random numbers using a fixed seed (`0x5A0B_7157_C0DE_2026`):
+At static initialization, [Zobrist.cs](../../src/Checkers.Core/Engine/Zobrist.cs) populates a table of 64-bit pseudo-random numbers using a fixed seed (`1013904223`):
 * `PieceTable[64, 4]`: One 64-bit key $K_{\text{piece}}(\text{sq}, p)$ for each of the 64 squares and 4 piece types ($p \in \{0:\text{WhiteMan},\, 1:\text{WhiteKing},\, 2:\text{BlackMan},\, 3:\text{BlackKing}\}$).
 * `BlackToMoveKey` ($K_{\text{turn}}$): XORed into the hash whenever `ActivePlayer == PieceColor.Black`.
 

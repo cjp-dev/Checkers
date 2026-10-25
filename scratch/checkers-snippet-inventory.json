@@ -1,0 +1,636 @@
+{
+  "generatedAt": "2026-10-25T11:42:37.661Z",
+  "totalFiles": 18,
+  "totalCodeBlocks": 47,
+  "totalDiscrepancies": 0,
+  "fileStats": [
+    {
+      "file": "docs/brain/01-overview.md",
+      "fileName": "01-overview.md",
+      "lineCount": 144,
+      "blockCount": 2
+    },
+    {
+      "file": "docs/brain/02-board-and-coordinates.md",
+      "fileName": "02-board-and-coordinates.md",
+      "lineCount": 165,
+      "blockCount": 1
+    },
+    {
+      "file": "docs/brain/03-rules-and-move-generation.md",
+      "fileName": "03-rules-and-move-generation.md",
+      "lineCount": 133,
+      "blockCount": 2
+    },
+    {
+      "file": "docs/brain/04-game-record.md",
+      "fileName": "04-game-record.md",
+      "lineCount": 125,
+      "blockCount": 4
+    },
+    {
+      "file": "docs/brain/05-evaluation.md",
+      "fileName": "05-evaluation.md",
+      "lineCount": 167,
+      "blockCount": 1
+    },
+    {
+      "file": "docs/brain/06-move-ordering.md",
+      "fileName": "06-move-ordering.md",
+      "lineCount": 186,
+      "blockCount": 3
+    },
+    {
+      "file": "docs/brain/07-search.md",
+      "fileName": "07-search.md",
+      "lineCount": 225,
+      "blockCount": 1
+    },
+    {
+      "file": "docs/brain/08-transposition-table.md",
+      "fileName": "08-transposition-table.md",
+      "lineCount": 178,
+      "blockCount": 3
+    },
+    {
+      "file": "docs/brain/09-time-control.md",
+      "fileName": "09-time-control.md",
+      "lineCount": 128,
+      "blockCount": 1
+    },
+    {
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "lineCount": 259,
+      "blockCount": 5
+    },
+    {
+      "file": "docs/brain/11-bitboards.md",
+      "fileName": "11-bitboards.md",
+      "lineCount": 186,
+      "blockCount": 4
+    },
+    {
+      "file": "docs/brain/12-engine-improvements.md",
+      "fileName": "12-engine-improvements.md",
+      "lineCount": 518,
+      "blockCount": 2
+    },
+    {
+      "file": "docs/brain/13-app-integration.md",
+      "fileName": "13-app-integration.md",
+      "lineCount": 138,
+      "blockCount": 2
+    },
+    {
+      "file": "docs/brain/14-gui-and-settings.md",
+      "fileName": "14-gui-and-settings.md",
+      "lineCount": 290,
+      "blockCount": 4
+    },
+    {
+      "file": "docs/brain/15-glossary.md",
+      "fileName": "15-glossary.md",
+      "lineCount": 66,
+      "blockCount": 0
+    },
+    {
+      "file": "docs/brain/16-references.md",
+      "fileName": "16-references.md",
+      "lineCount": 79,
+      "blockCount": 0
+    },
+    {
+      "file": "docs/brain/README.md",
+      "fileName": "README.md",
+      "lineCount": 101,
+      "blockCount": 2
+    },
+    {
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "lineCount": 394,
+      "blockCount": 10
+    }
+  ],
+  "codeBlocks": [
+    {
+      "id": "01-overview.md#L25-L55",
+      "file": "docs/brain/01-overview.md",
+      "fileName": "01-overview.md",
+      "startLine": 25,
+      "endLine": 55,
+      "language": "mermaid",
+      "lineCount": 31,
+      "preview": "flowchart TD     subgraph Presentation [\"Presentation Layer\"]         WPF[\"Checkers.Wpf<br/>(Windows",
+      "content": "flowchart TD\n    subgraph Presentation [\"Presentation Layer\"]\n        WPF[\"Checkers.Wpf<br/>(Windows Desktop)\"]\n        Web[\"Checkers.Web<br/>(Blazor WebAssembly + /docs)\"]\n        CLI[\"Checkers.Benchmark<br/>(Empirical &amp; Book CLI Suite)\"]\n    end\n\n    subgraph Application [\"Application Layer\"]\n        App[\"Checkers.App<br/>(Shared MVVM ViewModels &amp; Services)\"]\n    end\n\n    subgraph Domain [\"Domain &amp; AI Engine\"]\n        Core[\"Checkers.Core<br/>(64-Bit Bitboards, Rules, PVS/LMR AI, 12-Ply Book, 4-Way TT, PDN)\"]\n    end\n\n    subgraph Verification [\"Automated Test Suites\"]\n        CoreTests[\"Checkers.Core.Tests (124 tests)\"]\n        AppTests[\"Checkers.App.Tests (70 tests)\"]\n    end\n\n    WPF --> App\n    Web --> App\n    App --> Core\n    WPF --> Core\n    Web --> Core\n    CLI --> Core\n    CoreTests --> Core\n    AppTests --> App\n    AppTests --> Core"
+    },
+    {
+      "id": "01-overview.md#L106-L127",
+      "file": "docs/brain/01-overview.md",
+      "fileName": "01-overview.md",
+      "startLine": 106,
+      "endLine": 127,
+      "language": "mermaid",
+      "lineCount": 22,
+      "preview": "sequenceDiagram     autonumber     actor Player as Human / AI",
+      "content": "sequenceDiagram\n    autonumber\n    actor Player as Human / AI\n    participant VM as MainViewModel\n    participant Session as GameSession\n    participant Engine as RuleEngine\n    participant State as BoardState / BitPosition\n\n    Player->>VM: Selects Move (e.g., 11-15 or 29x18x4)\n    VM->>Session: TryMakeMove(move)\n    Session->>Engine: IsLegalMove(CurrentState, move)\n    Engine-->>Session: Valid (true)\n    Session->>Engine: ApplyMove(CurrentState, move)\n    Engine->>State: BitPosition.Apply(in bitMove)<br/>(Toggle bits, clear captured, crown, XOR Zobrist hash)\n    State-->>Engine: New BoardState\n    Engine-->>Session: New BoardState\n    Session->>Engine: EvaluateGameStatus(NewState, stateHashHistory)\n    Engine-->>Session: Status (InProgress / Win / Draw)\n    Session->>VM: Fire MoveExecuted &amp; GameOver events\n    VM->>Player: Update 8x8 SquareViewModels, play sound, trigger AI if next turn"
+    },
+    {
+      "id": "02-board-and-coordinates.md#L74-L117",
+      "file": "docs/brain/02-board-and-coordinates.md",
+      "fileName": "02-board-and-coordinates.md",
+      "startLine": 74,
+      "endLine": 117,
+      "language": "mermaid",
+      "lineCount": 44,
+      "preview": "classDiagram     class Position {         <<readonly record struct>>",
+      "content": "classDiagram\n    class Position {\n        <<readonly record struct>>\n        +int Row\n        +int Col\n        +bool IsValid\n        +bool IsDarkSquare\n        +ToDraughtsIndex() int?\n        +FromDraughtsIndex(int index)$ Position\n    }\n    class Piece {\n        <<readonly record struct>>\n        +PieceColor Color\n        +PieceType Type\n        +bool IsMan\n        +bool IsKing\n        +Crown() Piece\n    }\n    class BitPosition {\n        <<struct (48 bytes)>>\n        +ulong WhiteMen\n        +ulong BlackMen\n        +ulong WhiteKings\n        +ulong BlackKings\n        +ulong Hash\n        +int HalfMoveClock\n        +PieceColor SideToMove\n        +Apply(in BitMove) BitPosition\n    }\n    class BoardState {\n        +BitPosition BitPosition\n        +PieceColor ActivePlayer\n        +int HalfMoveClock\n        +int FullMoveNumber\n        +ulong ZobristHash\n        +int WhitePiecesCount\n        +int BlackPiecesCount\n        +Clone() BoardState\n    }\n    BoardState *-- BitPosition : backed directly by\n    BoardState ..> Position : indexed by\n    BoardState ..> Piece : returns"
+    },
+    {
+      "id": "03-rules-and-move-generation.md#L87-L89",
+      "file": "docs/brain/03-rules-and-move-generation.md",
+      "fileName": "03-rules-and-move-generation.md",
+      "startLine": 87,
+      "endLine": 89,
+      "language": "text",
+      "lineCount": 3,
+      "preview": "[Flying King] ──► [Empty]* ──► [Enemy 1] ──► [Landing A] ──► [Landing B] ──► [Blocker / Edge]",
+      "content": "[Flying King] ──► [Empty]* ──► [Enemy 1] ──► [Landing A] ──► [Landing B] ──► [Blocker / Edge]"
+    },
+    {
+      "id": "03-rules-and-move-generation.md#L112-L120",
+      "file": "docs/brain/03-rules-and-move-generation.md",
+      "fileName": "03-rules-and-move-generation.md",
+      "startLine": 112,
+      "endLine": 120,
+      "language": "mermaid",
+      "lineCount": 9,
+      "preview": "flowchart TD     Start[\"Generate Moves for ActivePlayer\"] --> CheckCap{\"Does any piece have<br/>a le",
+      "content": "flowchart TD\n    Start[\"Generate Moves for ActivePlayer\"] --> CheckCap{\"Does any piece have<br/>a legal capture?\"}\n    CheckCap -- \"Yes (Captures Mandatory)\" --> DropQuiet[\"Discard all quiet moves\"]\n    DropQuiet --> ExpandChains[\"Expand all complete multi-jump chains<br/>(Men + Kings)\"]\n    ExpandChains --> FreeChoice[\"Free Choice:<br/>Return all completed capture chains<br/>(Player may pick any branch)\"]\n    CheckCap -- \"No\" --> GenQuiet[\"Generate all quiet slides<br/>(Men + Kings)\"]\n    GenQuiet --> ReturnQuiet[\"Return all legal quiet moves\"]"
+    },
+    {
+      "id": "04-game-record.md#L19-L30",
+      "file": "docs/brain/04-game-record.md",
+      "fileName": "04-game-record.md",
+      "startLine": 19,
+      "endLine": 30,
+      "language": "csharp",
+      "lineCount": 12,
+      "preview": "public sealed record Move {     public required Position From { get; init; }",
+      "content": "public sealed record Move\n{\n    public required Position From { get; init; }\n    public required Position To { get; init; }\n    public required IReadOnlyList<Position> Path { get; init; }\n    public required IReadOnlyList<Position> CapturedPositions { get; init; }\n    public bool IsPromotion { get; init; }\n    public bool IsCapture => CapturedPositions.Count > 0;\n    public string Notation { get; init; } = string.Empty;\n}"
+    },
+    {
+      "id": "04-game-record.md#L44-L52",
+      "file": "docs/brain/04-game-record.md",
+      "fileName": "04-game-record.md",
+      "startLine": 44,
+      "endLine": 52,
+      "language": "mermaid",
+      "lineCount": 9,
+      "preview": "stateDiagram-v2     [*] --> InProgress : StartNewGame() /CreateInitial()     InProgress --> InProgre",
+      "content": "stateDiagram-v2\n    [*] --> InProgress : StartNewGame() /CreateInitial()\n    InProgress --> InProgress : TryMakeMove(move)<br/>Push to _stateHistory & _moveHistory<br/>Clear _redoStack\n    InProgress --> InProgress : Undo()<br/>Pop latest state & move → Push to _redoStack\n    InProgress --> InProgress : Redo()<br/>Pop from _redoStack → Restore state & move\n    InProgress --> GameOver : EvaluateGameStatus() != InProgress<br/>Fire GameOver event\n    GameOver --> InProgress : Undo() / StartNewGame()"
+    },
+    {
+      "id": "04-game-record.md#L99-L109",
+      "file": "docs/brain/04-game-record.md",
+      "fileName": "04-game-record.md",
+      "startLine": 99,
+      "endLine": 109,
+      "language": "pdn",
+      "lineCount": 11,
+      "preview": "[Event \"Checkers Match\"] [Variant \"International\"] [GameMode \"HumanVsComputer\"]",
+      "content": "[Event \"Checkers Match\"]\n[Variant \"International\"]\n[GameMode \"HumanVsComputer\"]\n[TimeControlMode \"TimePerGame\"]\n[Depth \"8\"]\n[SecondsPerMove \"5\"]\n[MinutesPerGame \"5\"]\n\n1. 21-17 11-15 2. 23-19 8-11 3. 17-14 9x18 4. 22x15 11x18"
+    },
+    {
+      "id": "04-game-record.md#L113-L122",
+      "file": "docs/brain/04-game-record.md",
+      "fileName": "04-game-record.md",
+      "startLine": 113,
+      "endLine": 122,
+      "language": "mermaid",
+      "lineCount": 10,
+      "preview": "flowchart LR     File[\"PDN Text (.pdn / .checkers)\"] --> Tags[\"Parse [Key &quot;Value&quot;] Headers",
+      "content": "flowchart LR\n    File[\"PDN Text (.pdn / .checkers)\"] --> Tags[\"Parse [Key &quot;Value&quot;] Headers<br/>(Default Variant = International)\"]\n    Tags --> Session[\"Create GameSession +<br/>RuleEngine(Variant)\"]\n    Session --> Strip[\"Strip {comments}, ;comments,<br/>move numbers & result tokens\"]\n    Strip --> Replay[\"For each move token:<br/>Match against GetLegalMoves()<br/>& call TryMakeMove()\"]\n    Replay --> Valid{\"All moves legal?\"}\n    Valid -- \"Yes\" --> Done[\"Return reconstructed GameRecord<br/>(Full Undo history intact)\"]\n    Valid -- \"No\" --> Err[\"Throw FormatException<br/>with illegal move token\"]"
+    },
+    {
+      "id": "05-evaluation.md#L27-L57",
+      "file": "docs/brain/05-evaluation.md",
+      "fileName": "05-evaluation.md",
+      "startLine": 27,
+      "endLine": 57,
+      "language": "mermaid",
+      "lineCount": 31,
+      "preview": "flowchart TD     Pos[\"BitPosition (in pos)<br/>WM, WK, BM, BK (4 × ulong)\"] --> Branch{\"CheckersVari",
+      "content": "flowchart TD\n    Pos[\"BitPosition (in pos)<br/>WM, WK, BM, BK (4 × ulong)\"] --> Branch{\"CheckersVariant?\"}\n\n    subgraph English[\"EvaluateEnglish(in pos) — 1:1 board_eval.c Port (2× Centipawn Scale)\"]\n        E1[\"1. Material: Man = 100 cp, King = 140 cp\"]\n        E2[\"2. Man PST (WhiteManPst1/2/3Mask):<br/>Back rank (7,2/4/6)=+6, Outposts (2,3)=+6, (2,5)=+4, Center=+2\"]\n        E3[\"3. Endgame Man Advancement (totalPieces &lt;= 12):<br/>+2 cp × ranks advanced\"]\n        E4[\"4. Runaway Checkers (ConeWhite / ConeBlack):<br/>+(40 + 6 × advance) when enemyKings == 0 &amp; cone clear\"]\n        E5[\"5. King Tail Pins (+10 cp) + English King PST (+8/+10 cp)<br/>+ Single-Corner Trap Penalty (−40 cp on (0,7)/(7,0))\"]\n        E6[\"6. Simplification Bonus (whiteCount &gt; blackCount):<br/>+20 cp (&gt;6 pcs) up to +400 cp (&lt;=2 pcs)\"]\n        E7[\"7. Classical Structural Patterns:<br/>Right Lock (+40), Bridge (+30), Triangle (+20), Oreo (+20), Dog (+10)\"]\n        E1 --> E2 --> E3 --> E4 --> E5 --> E6 --> E7\n    end\n\n    subgraph International[\"EvaluateInternational(in pos) — Flying Kings Adaptation\"]\n        I1[\"1. Material: Man = 100 cp, Flying King = 300 cp\"]\n        I2[\"2. Continuous Man Advancement:<br/>+5 cp/rank (opening/mid) → +6 cp/rank (totalPieces &lt;= 12)\"]\n        I3[\"3. Positional Masks:<br/>Center (+12), Full Back Rank (+15), Man PST Nuances (+2/+4/+6)\"]\n        I4[\"4. Runaway Checkers (ConeWhite / ConeBlack):<br/>+(40 + 6 × advance) when enemyKings == 0 &amp; cone clear\"]\n        I5[\"5. King Tail Pins (+10 cp) + Flying King Long-Diagonal PST (+12 cp)<br/>+ Inner Ring (+6 cp) − Short-Corner Penalty (−20 cp)\"]\n        I6[\"6. Material-Gated Simplification Bonus (materialDiff &gt;= 80 cp):<br/>Scales from +18 cp up to +400 cp as opponent pieces decrease\"]\n        I7[\"7. Back-Rank Structural Formations:<br/>Bridge (+18), Triangle (+12), Oreo (+12)\"]\n        I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7\n    end\n\n    Branch -->|\"English\"| English\n    Branch -->|\"International\"| International\n    English --> Net[\"Net = WhiteScore − BlackScore<br/>Return +Net (White) or −Net (Black)\"]\n    International --> Net"
+    },
+    {
+      "id": "06-move-ordering.md#L23-L30",
+      "file": "docs/brain/06-move-ordering.md",
+      "fileName": "06-move-ordering.md",
+      "startLine": 23,
+      "endLine": 30,
+      "language": "mermaid",
+      "lineCount": 8,
+      "preview": "flowchart TD     Gen[\"BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMov",
+      "content": "flowchart TD\n    Gen[\"BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves\"] --> ScorePass[\"Single-Pass Pre-Scoring into stackalloc int[count]:<br/>TT (10M) > Captures (1M + 10k·c + 1k·p) > Promo (500k) > Killer 1 (90k) > Killer 2 (80k) > History (0..70k)\"]\n    ScorePass --> Sort[\"In-Place Insertion Sort<br/>by scores[i] descending (skips score == 0 in O(1))\"]\n    Sort --> Ready[\"Ordered Span&lt;BitMove&gt; ready for<br/>PVS Null-Window &amp; LMR Search\"]\n    Quiesce[\"Quiescence Search (depth == 0)\"] --> QGen[\"GenerateCaptures(in pos, captures)\"]\n    QGen --> QSort[\"OrderCaptureMoves(captures)<br/>(Sorts captures directly by capture count &amp; promotion)\"]"
+    },
+    {
+      "id": "06-move-ordering.md#L83-L86",
+      "file": "docs/brain/06-move-ordering.md",
+      "fileName": "06-move-ordering.md",
+      "startLine": 83,
+      "endLine": 86,
+      "language": "csharp",
+      "lineCount": 4,
+      "preview": "currentOrder.Remove(bestEntryThisDepth.Value); currentOrder.Insert(0, bestEntryThisDepth.Value);",
+      "content": "currentOrder.Remove(bestEntryThisDepth.Value);\ncurrentOrder.Insert(0, bestEntryThisDepth.Value);"
+    },
+    {
+      "id": "06-move-ordering.md#L99-L172",
+      "file": "docs/brain/06-move-ordering.md",
+      "fileName": "06-move-ordering.md",
+      "startLine": 99,
+      "endLine": 172,
+      "language": "csharp",
+      "lineCount": 74,
+      "preview": "private void OrderBitMoves(     Span<BitMove> moves,     ushort ttPackedMove,",
+      "content": "private void OrderBitMoves(\n    Span<BitMove> moves,\n    ushort ttPackedMove,\n    bool hasTtMove,\n    int ply,\n    PieceColor sideToMove)\n{\n    int count = moves.Length;\n    if (count <= 1)\n        return;\n\n    Span<int> scores = stackalloc int[count];\n    ushort killer1 = 0;\n    ushort killer2 = 0;\n    if ((uint)ply < MaxPly)\n    {\n        int killerIdx = ply << 1;\n        killer1 = _killers[killerIdx];\n        killer2 = _killers[killerIdx + 1];\n    }\n    int sideOffset = (int)sideToMove << 12;\n\n    for (int i = 0; i < count; i++)\n    {\n        ref readonly BitMove m = ref moves[i];\n        ushort packed = m.PackedMove;\n        int score;\n        if (hasTtMove && packed == ttPackedMove)\n        {\n            score = 10_000_000;\n        }\n        else if (m.IsCapture)\n        {\n            score = 1_000_000 + (m.CaptureCount * 10_000) + (m.IsPromotion ? 1_000 : 0);\n        }\n        else if (m.IsPromotion)\n        {\n            score = 500_000;\n        }\n        else if (packed == killer1)\n        {\n            score = 90_000;\n        }\n        else if (packed == killer2)\n        {\n            score = 80_000;\n        }\n        else\n        {\n            score = _history[sideOffset | (m.From << 6) | m.To];\n        }\n        scores[i] = score;\n    }\n\n    for (int i = 1; i < count; i++)\n    {\n        int currentScore = scores[i];\n        if (currentScore == 0)\n            continue;\n\n        BitMove currentMove = moves[i];\n        int j = i - 1;\n        while (j >= 0 && scores[j] < currentScore)\n        {\n            moves[j + 1] = moves[j];\n            scores[j + 1] = scores[j];\n            j--;\n        }\n        moves[j + 1] = currentMove;\n        scores[j + 1] = currentScore;\n    }\n}"
+    },
+    {
+      "id": "07-search.md#L26-L58",
+      "file": "docs/brain/07-search.md",
+      "fileName": "07-search.md",
+      "startLine": 26,
+      "endLine": 58,
+      "language": "mermaid",
+      "lineCount": 33,
+      "preview": "flowchart TD     Entry[\"NegaMax(pos, depth d, α, β, ply)\"] --> Term{\"Terminal / Draw check:<br/>0 ow",
+      "content": "flowchart TD\n    Entry[\"NegaMax(pos, depth d, α, β, ply)\"] --> Term{\"Terminal / Draw check:<br/>0 own pieces, 80-halfmove rule,<br/>or DrawTable.IsRepetition (ply > 0)?\"}\n    Term -- \"Loss\" --> RetLoss[\"Return −30,000 + ply\"]\n    Term -- \"Draw / Repetition\" --> RetDraw[\"Return 0\"]\n    Term -- \"InProgress\" --> TTProbe[\"Probe 4-Way Bucket TT (pos.Hash)<br/>Extract ttScore, ttPackedMove, cachedStaticEval\"]\n    TTProbe --> TTCut{\"TT Cutoff at<br/>entry.Depth >= d?\"}\n    TTCut -- \"Yes\" --> RetTT[\"Return ttScore\"]\n    TTCut -- \"No\" --> Depth0{\"Is d == 0?\"}\n    Depth0 -- \"Yes\" --> Quiesce[\"Run Quiescence(pos, α, β, cachedStaticEval)<br/>(O(1) HasAnyCapture + capture-only extension)\"]\n    Depth0 -- \"No\" --> GenOrder[\"Generate moves into _moveBuffers[ply],<br/>OrderBitMoves(TT, Captures, Promo, Killers, History),<br/>&amp; DrawTable.Record(ply, pos.Hash)\"]\n    GenOrder --> RFP{\"Stage B — RFP:<br/>Non-PV, Quiet, d <= 6,<br/>eval₀ − 40·d >= β?\"}\n    RFP -- \"Yes\" --> RetRFP[\"Return eval₀ (Static Cutoff)\"]\n    RFP -- \"No\" --> Loop[\"For each move i = 0 .. moveCount − 1:<br/>nextPos = pos.Apply(in moves[i])<br/>_tt.Prefetch(nextPos.Hash)\"]\n    Loop --> FP{\"Stage B — FP:<br/>Non-PV, Quiet, d <= 3, i > 0,<br/>eval₀ + 60·d <= α?\"}\n    FP -- \"Yes (Prune)\" --> NextMove[\"Continue to i + 1\"]\n    FP -- \"No\" --> PVCheck{\"Move i == 0<br/>or β > α + 1 (PV)?\"}\n    PVCheck -- \"i == 0\" --> FullWin[\"Full-window search:<br/>score = −NegaMax(nextPos, d−1, −β, −α, ply+1)\"]\n    PVCheck -- \"i > 0\" --> LMRCheck{\"Stage B — LMR:<br/>Quiet, d >= 3, ply >= 2, i >= 3?\"}\n    LMRCheck -- \"Yes\" --> LMRSearch[\"Reduced Null-Window:<br/>score = −NegaMax(nextPos, d−1−R, −α−1, −α, ply+1)<br/>If score > α → Verify at full d−1 on [−α−1, −α]\"]\n    LMRCheck -- \"No\" --> NullWin[\"Stage A — PVS Null-Window:<br/>score = −NegaMax(nextPos, d−1, −α−1, −α, ply+1)\"]\n    LMRSearch --> ReSearch{\"Did null window fail high?<br/>(α < score < β)\"}\n    NullWin --> ReSearch\n    ReSearch -- \"Yes\" --> FullWin\n    ReSearch -- \"No\" --> UpdateAlpha[\"α = max(α, score)\"]\n    FullWin --> UpdateAlpha\n    UpdateAlpha --> Cutoff{\"Is α >= β?\"}\n    Cutoff -- \"Yes (Beta Cutoff)\" --> KillerHist[\"If quiet move: update _killers[ply]<br/>&amp; _history[side, from, to] += d²\"]\n    KillerHist --> StoreTT[\"Store LowerBound/Exact/UpperBound + StaticEval in TT<br/>&amp; Return maxScore\"]\n    Cutoff -- \"No\" --> NextMove\n    NextMove -- \"More moves\" --> Loop\n    NextMove -- \"Done\" --> StoreTT"
+    },
+    {
+      "id": "08-transposition-table.md#L22-L28",
+      "file": "docs/brain/08-transposition-table.md",
+      "fileName": "08-transposition-table.md",
+      "startLine": 22,
+      "endLine": 28,
+      "language": "text",
+      "lineCount": 7,
+      "preview": "┌────────────────────┬───────────┬────────────┬───────────┬───────┬──────┬───────┬───────────┐ │    ",
+      "content": "┌────────────────────┬───────────┬────────────┬───────────┬───────┬──────┬───────┬───────────┐\n│     Key32 (4 B)    │ Score(2B) │StaticEv(2B)│BestMove2B │ Depth │ Age  │ Flags │ Pad (3 B) │\n│     uint (0..3)    │short(4..5)│short (6..7)│ushort(8.9)│ (10)  │ (11) │ (12)  │  (13..15) │\n└────────────────────┴───────────┴────────────┴───────────┴───────┴──────┴───────┴───────────┘\n 0                  3 4         5 6          7 8         9   10      11     12    13       15"
+    },
+    {
+      "id": "08-transposition-table.md#L67-L80",
+      "file": "docs/brain/08-transposition-table.md",
+      "fileName": "08-transposition-table.md",
+      "startLine": 67,
+      "endLine": 80,
+      "language": "mermaid",
+      "lineCount": 14,
+      "preview": "flowchart TD     Probe[\"TryProbe(key, depth, α, β, ply)\"] --> Base[\"baseIndex = (int)(key &amp; _buc",
+      "content": "flowchart TD\n    Probe[\"TryProbe(key, depth, α, β, ply)\"] --> Base[\"baseIndex = (int)(key &amp; _bucketMask) &lt;&lt; 2<br/>key32 = (uint)(key &gt;&gt; 32)\"]\n    Base --> Scan[\"Scan 4 Ways in Single 64B Cache Line:<br/>w = 0, 1, 2, 3 at _entries[baseIndex + w]\"]\n    Scan --> Match{\"entry.IsOccupied &amp;&amp;<br/>entry.Key32 == key32?\"}\n    Match -- \"No (All 4 ways miss)\" --> Miss[\"Return false\"]\n    Match -- \"Yes (Hit in Way w)\" --> Extract[\"Extract BestMove (if HasMove)<br/>&amp; StaticEval (if HasStaticEval)\"]\n    Extract --> CheckDepth{\"entry.Depth >= depth?\"}\n    CheckDepth -- \"No (Too shallow / Eval-only)\" --> OrderOnly[\"Return true with hasCutoff = false<br/>(Seed move ordering + reuse StaticEval)\"]\n    CheckDepth -- \"Yes (Sufficient depth)\" --> Norm[\"Denormalize mate score for current ply\"]\n    Norm --> CheckBound{\"Does Bound satisfy [α, β]?<br/>• Exact<br/>• LowerBound &amp; score >= β<br/>• UpperBound &amp; score <= α\"}\n    CheckBound -- \"Yes\" --> Cutoff[\"Increment Cutoffs<br/>Return true with hasCutoff = true\"]\n    CheckBound -- \"No\" --> OrderOnly"
+    },
+    {
+      "id": "08-transposition-table.md#L110-L122",
+      "file": "docs/brain/08-transposition-table.md",
+      "fileName": "08-transposition-table.md",
+      "startLine": 110,
+      "endLine": 122,
+      "language": "csharp",
+      "lineCount": 13,
+      "preview": "[MethodImpl(MethodImplOptions.AggressiveInlining)] public unsafe void Prefetch(ulong key) {",
+      "content": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\npublic unsafe void Prefetch(ulong key)\n{\n    if (Sse.IsSupported)\n    {\n        ref TranspositionEntry bucket0 = ref Unsafe.Add(\n            ref MemoryMarshal.GetArrayDataReference(_entries),\n            (int)(key & _bucketMask) << 2);\n        Sse.Prefetch0(Unsafe.AsPointer(ref bucket0));\n    }\n}"
+    },
+    {
+      "id": "09-time-control.md#L47-L70",
+      "file": "docs/brain/09-time-control.md",
+      "fileName": "09-time-control.md",
+      "startLine": 47,
+      "endLine": 70,
+      "language": "mermaid",
+      "lineCount": 24,
+      "preview": "flowchart TD     Start[\"Start Turn\"] --> Forced{\"Only 1 legal<br/>root move?\"}     Forced -- \"Yes\" -",
+      "content": "flowchart TD\n    Start[\"Start Turn\"] --> Forced{\"Only 1 legal<br/>root move?\"}\n    Forced -- \"Yes\" --> RetForced[\"Immediate Return (1 ply Forced)<br/>LastSearchTerminatedEarly = true\"]\n    Forced -- \"No\" --> BookCheck{\"UseOpeningBook &amp;<br/>Book Hit (12 plies)?\"}\n    BookCheck -- \"Yes\" --> RetBook[\"Immediate Return (0 ms, 0 Nodes)<br/>FromBook = true\"]\n    BookCheck -- \"No\" --> D1[\"Stopwatch.StartNew()<br/>Complete Depth 1 (Always finishes)\"]\n    D1 --> CheckSoft{\"Elapsed >= T_soft<br/>(2/3 of budget)?\"}\n    CheckSoft -- \"Yes (Stop early)\" --> Return[\"Return bestMoveOverall<br/>&amp; bestScoreOverall\"]\n    CheckSoft -- \"No (Time remains)\" --> NextD[\"Start Depth d + 1<br/>(currentOrder[0] = previous best move)\"]\n    NextD --> RootLoop[\"Search Root Move i = 0 .. N-1\"]\n    RootLoop --> NodeCheck{\"Every 4,096 nodes:<br/>Elapsed >= T_hard?\"}\n    NodeCheck -- \"No (Move i finished)\" --> AdoptMove[\"If score > bestScoreThisDepth:<br/>Immediately publish to bestMoveOverall (Phase 5.1)<br/>&amp; track secondBestScoreThisDepth\"]\n    AdoptMove --> MoreMoves{\"More root moves<br/>at depth d+1?\"}\n    MoreMoves -- \"Yes\" --> RootLoop\n    MoreMoves -- \"No (Completed d+1)\" --> DomCheck{\"Phase 5.2: Mate found OR<br/>Timed mode, d+1 >= 8 &amp;<br/>margin >= 150 cp for 2 plies?\"}\n    DomCheck -- \"Yes (Dominant / Mate)\" --> Return\n    DomCheck -- \"No\" --> CheckSoft\n    NodeCheck -- \"Yes (Hard Timeout)\" --> PartialCheck{\"Did move i == 0<br/>already finish at d+1?\"}\n    PartialCheck -- \"Yes (Phase 5.1)\" --> Salvage[\"Keep bestMoveOverall proven at d+1<br/>LastSearchAdoptedPartialIteration = true\"]\n    PartialCheck -- \"No (Aborted on i == 0)\" --> Fallback[\"Keep bestMoveOverall from depth d\"]\n    Salvage --> Return\n    Fallback --> Return"
+    },
+    {
+      "id": "10-opening-book.md#L19-L26",
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "startLine": 19,
+      "endLine": 26,
+      "language": "mermaid",
+      "lineCount": 8,
+      "preview": "flowchart LR     S1[\"<b>Stage 1: Top-Down Width-3 DAG (lv 0..8)</b><br/>• Goal: Store only the 3 bes",
+      "content": "flowchart LR\n    S1[\"<b>Stage 1: Top-Down Width-3 DAG (lv 0..8)</b><br/>• Goal: Store only the 3 best moves per node<br/>• 60s Single-Search Multi-PV (k=3)<br/>• Result: 2,100 (EN) / 2,228 (IN) nodes\"]\n    S2[\"<b>Stage 2: Full-Width Early Plies (lv 0..3)</b><br/>• Goal: Store ALL legal moves in first 4 plies<br/>• Unlocks all 7 root openings &amp; human replies<br/>• Result: 3,091 (EN) / 3,218 (IN) nodes\"]\n    S3[\"<b>Stage 3: Drop-Out Expansion to lv 12</b><br/>• Goal: State-of-the-art depth-first DOE to 12 plies<br/>• Tapered delta (15/10/6 cp) drops weak branches<br/>• Result: 32,369 (EN) / 26,367 (IN) nodes\"]\n\n    S1 --> S2 --> S3"
+    },
+    {
+      "id": "10-opening-book.md#L58-L79",
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "startLine": 58,
+      "endLine": 79,
+      "language": "mermaid",
+      "lineCount": 22,
+      "preview": "flowchart TD     subgraph Gen[\"Offline CLI Generation (BookCommands.cs &amp; BookBuilder.cs)\"]      ",
+      "content": "flowchart TD\n    subgraph Gen[\"Offline CLI Generation (BookCommands.cs &amp; BookBuilder.cs)\"]\n        P1[\"Phase A: Full-Width Early Plies (lv 0..3)<br/>Evaluates &amp; stores ALL legal moves (273 internal nodes)<br/>Produces 805 unique lv 4 positions\"]\n        P2[\"Phase B: Drop-Out Expansion (lv 4..11 → lv 12)<br/>Depth-tapered delta (15 / 10 / 6 cp) + Virtual Visits<br/>60s Multi-PV (k=3) on 8 Workers + .partial Checkpoints\"]\n        BU[\"Bottom-Up Negamax BackUp (lv 12 → lv 0)<br/>Effective Horizon: ply 11 + ~27 = ~38 plies<br/>Verified by BookBuilder.CheckBackUp (0 errors)\"]\n        P1 --> P2 --> BU\n    end\n\n    subgraph Storage[\"Embedded Book Resources (Checkers.Core.dll)\"]\n        BF[\"BookFile.cs<br/>Text Format: &lt;ZobristHex16&gt; &lt;Ply&gt; &lt;Score&gt; [Move1:Score1 Move2:Score2 ...]\"]\n        EN[\"OpeningBook.English.txt<br/>(32,369 positions, 12 plies, 1.01 MB)\"]\n        IN[\"OpeningBook.International.txt<br/>(26,367 positions, 12 plies, 855 KB)\"]\n        BU --> BF --> EN & IN\n    end\n\n    subgraph Runtime[\"Runtime Lookup (OpeningBook.cs &amp; MinimaxPlayer.cs)\"]\n        OB[\"OpeningBook.GetDefault(variant)<br/>O(1) Dictionary&lt;ulong, BookNode&gt; Lookup by BoardState.ZobristHash\"]\n        Margin[\"Randomized Top-Move Selection<br/>Picks uniformly among book moves within BookRandomMarginCp (10 cp) of best\"]\n        EN & IN --> OB --> Margin\n    end"
+    },
+    {
+      "id": "10-opening-book.md#L172-L178",
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "startLine": 172,
+      "endLine": 178,
+      "language": "text",
+      "lineCount": 7,
+      "preview": "# Checkers Opening Book (English) — depth 12 plies (lv 0..11 evaluated), width 3, 32369 unique posit",
+      "content": "# Checkers Opening Book (English) — depth 12 plies (lv 0..11 evaluated), width 3, 32369 unique positions (14320 internal, 18049 leaves)\n# Format: <ZobristHex> <Ply> <Score> [Move1:Score1 Move2:Score2 Move3:Score3]\n29E98DC071E54022 0 +2 22-18:+2 22-17:-4 24-19:-4 23-18:-8 23-19:-8 21-17:-16 24-20:-16\n015C85F6BBBF4F27 1 +8 11-15:+8 9-13:+6 10-15:+2 11-16:-2 9-14:-4 12-16:-8 10-14:-18\n45FB48D367B7B66A 1 +4 11-15:+4 9-13:0 11-16:-6 10-15:-8 10-14:-10 9-14:-12 12-16:-16"
+    },
+    {
+      "id": "10-opening-book.md#L197-L199",
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "startLine": 197,
+      "endLine": 199,
+      "language": "powershell",
+      "lineCount": 3,
+      "preview": "dotnet run -c Release --project tools/Checkers.Benchmark -- book <subcommand> [options]",
+      "content": "dotnet run -c Release --project tools/Checkers.Benchmark -- book <subcommand> [options]"
+    },
+    {
+      "id": "10-opening-book.md#L244-L259",
+      "file": "docs/brain/10-opening-book.md",
+      "fileName": "10-opening-book.md",
+      "startLine": 244,
+      "endLine": 259,
+      "language": "powershell",
+      "lineCount": 16,
+      "preview": "# 1. Stage 1 baseline: Uniform top-down width-3 generation to lv 8 (max-level 7) dotnet run -c Relea",
+      "content": "# 1. Stage 1 baseline: Uniform top-down width-3 generation to lv 8 (max-level 7)\ndotnet run -c Release --project tools/Checkers.Benchmark -- book generate --variant All --max-level 7 --width 3 --node-time-s 60 --workers 8\n\n# 2. Stage 2 (Phase A only): Widen lv 0..3 to store ALL legal moves while preserving existing lv 4..8 subtrees\ndotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 4 --width 3 --node-time-s 60 --workers 8\n\n# 3. Stage 3 (Catch-Up): Timed 12-hour interval (360 min/variant) to catch up newly widened active openings to lv 8\ndotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 8 --width 3 --max-time-min 360 --node-time-s 60 --workers 8\n\n# 4. Stage 3 (Full 12-Ply DOE): Expand all competitive lines up to 12 plies (lv 12)\ndotnet run -c Release --project tools/Checkers.Benchmark -- book expand-doe --variant All --full-width-plies 4 --max-ply 12 --width 3 --node-time-s 60 --workers 8\n\n# 5. Verify Negamax back-up consistency and print level-by-level statistics for both books\ndotnet run -c Release --project tools/Checkers.Benchmark -- book verify"
+    },
+    {
+      "id": "11-bitboards.md#L28-L37",
+      "file": "docs/brain/11-bitboards.md",
+      "fileName": "11-bitboards.md",
+      "startLine": 28,
+      "endLine": 37,
+      "language": "text",
+      "lineCount": 10,
+      "preview": "Row 0 (Black Back Rank):   0   [1]   2   [3]   4   [5]   6   [7] Row 1:                    [8]   9  ",
+      "content": "Row 0 (Black Back Rank):   0   [1]   2   [3]   4   [5]   6   [7]\nRow 1:                    [8]   9  [10]  11  [12]  13  [14]  15\nRow 2:                    16  [17]  18  [19]  20  [21]  22  [23]\nRow 3:                   [24]  25  [26]  27  [28]  29  [30]  31\nRow 4:                    32  [33]  34  [35]  36  [37]  38  [39]\nRow 5:                   [40]  41  [42]  43  [44]  45  [46]  47\nRow 6:                    48  [49]  50  [51]  52  [53]  54  [55]\nRow 7 (White Back Rank): [56]  57  [58]  59  [60]  61  [62]  63"
+    },
+    {
+      "id": "11-bitboards.md#L77-L84",
+      "file": "docs/brain/11-bitboards.md",
+      "fileName": "11-bitboards.md",
+      "startLine": 77,
+      "endLine": 84,
+      "language": "csharp",
+      "lineCount": 8,
+      "preview": "// Quiet 1-step moves for White men (directions 0 and 1: -9, -7) if (((ownMen & BitboardMasks.NotCol",
+      "content": "// Quiet 1-step moves for White men (directions 0 and 1: -9, -7)\nif (((ownMen & BitboardMasks.NotColA) >> 9 & empty) != 0UL ||\n    ((ownMen & BitboardMasks.NotColH) >> 7 & empty) != 0UL)\n{\n    return true;\n}"
+    },
+    {
+      "id": "11-bitboards.md#L113-L123",
+      "file": "docs/brain/11-bitboards.md",
+      "fileName": "11-bitboards.md",
+      "startLine": 113,
+      "endLine": 123,
+      "language": "mermaid",
+      "lineCount": 11,
+      "preview": "flowchart TD     RayStart[\"For each diagonal dir in 0..3:<br/>ulong ray = Rays[dir, sq]\"] --> Guard1",
+      "content": "flowchart TD\n    RayStart[\"For each diagonal dir in 0..3:<br/>ulong ray = Rays[dir, sq]\"] --> Guard1{\"Fast-Rejection Guard 1 (Captures):<br/>(ray &amp; unjumpedEnemy) == 0UL?\"}\n    Guard1 -- \"Yes (No enemy on ray)\" --> Skip[\"Skip ray immediately (O(1))\"]\n    Guard1 -- \"No (Enemy present)\" --> Blockers[\"ulong blockers = ray &amp; occupied<br/>firstBlocker = dir < 2 ? 63 − LZCNT(blockers) : TZCNT(blockers)\"]\n    Blockers --> IsEnemy{\"Is firstBlocker an<br/>unjumped enemy piece?\"}\n    IsEnemy -- \"No (Friendly piece)\" --> Skip\n    IsEnemy -- \"Yes\" --> Guard2{\"Fast-Rejection Guard 2:<br/>nextSq = StepTarget[dir, firstBlocker]<br/>nextSq < 0 or occupied[nextSq]?\"}\n    Guard2 -- \"Yes (Blocked behind enemy)\" --> Skip\n    Guard2 -- \"No (At least 1 landing square open)\" --> LandMask[\"Compute landingMask before secondBlocker<br/>&amp; recurse for mandatory continuation\"]"
+    },
+    {
+      "id": "11-bitboards.md#L153-L162",
+      "file": "docs/brain/11-bitboards.md",
+      "fileName": "11-bitboards.md",
+      "startLine": 153,
+      "endLine": 162,
+      "language": "mermaid",
+      "lineCount": 10,
+      "preview": "flowchart LR     Root[\"BoardState (Root)\"] --> Convert[\"state.BitPosition (O(1))\"]     Convert --> I",
+      "content": "flowchart LR\n    Root[\"BoardState (Root)\"] --> Convert[\"state.BitPosition (O(1))\"]\n    Convert --> ID[\"Iterative Deepening (d = 1..MaxDepth)\"]\n    ID --> Negamax[\"NegaMax(in BitPosition, d, α, β, ply)\"]\n    Negamax --> Gen[\"BitboardMoveGenerator.Generate(in pos, _moveBuffers[ply])\"]\n    Gen --> Order[\"OrderBitMoves (TT, Captures, Promo, Killers, History)\"]\n    Order --> CopyMake[\"BitPosition next = pos.Apply(in move)<br/>(48B stack copy + XOR Zobrist + Sse.Prefetch0)\"]\n    CopyMake --> Negamax"
+    },
+    {
+      "id": "12-engine-improvements.md#L25-L36",
+      "file": "docs/brain/12-engine-improvements.md",
+      "fileName": "12-engine-improvements.md",
+      "startLine": 25,
+      "endLine": 36,
+      "language": "mermaid",
+      "lineCount": 12,
+      "preview": "flowchart LR     M0[\"Baseline Prototype<br/>Piece?[8,8] Array Engine<br/>0.65M NPS • 148.8s (40 Deep",
+      "content": "flowchart LR\n    M0[\"Baseline Prototype<br/>Piece?[8,8] Array Engine<br/>0.65M NPS • 148.8s (40 Deep)\"] --> M1[\"Milestone 1: Bitboards<br/>4×ulong + Copy-Make + POPCNT<br/>35.6M NPS • 50x–65x Faster\"]\n    M1 --> M2[\"Milestone 2: Zobrist TT<br/>1M–16M Power-of-Two Cache<br/>−88.5% Nodes • 8.2x Pruning\"]\n    M2 --> P1[\"Milestone 3 (Phase 1): Speed<br/>O(1) HasAnyCapture + Ray Guards<br/>+6.2%..10.9% TT Throughput\"]\n    P1 --> P2[\"Milestone 4 (Phase 2): 4-Way TT<br/>64B Cache Buckets + Sse.Prefetch0<br/>−99.9%..100% Collisions\"]\n    P2 --> P3[\"Milestone 5 (Phase 3): Stage A<br/>Exact PVS + Killers + History<br/>−64.9% Nodes (No-TT) / −28.5% (TT)\"]\n    P3 --> P4[\"Milestone 6 (Phase 4): Stage B<br/>Verified LMR + RFP + FP<br/>−93.7% Nodes • 21–25 Plies in 5s\"]\n    P4 --> P5[\"Milestone 7 (Phase 5): Root &amp; Time<br/>Partial Iteration Adoption<br/>+ Dominant Move Early Exit\"]\n    P5 --> P6[\"Milestone 8 (Phase 6): Static Eval<br/>board_eval.c + Flying Kings Adaptation<br/>+143.1 Elo (Eng) • +45.4 Elo (Intl)\"]\n    P6 --> P7[\"Milestone 9 (Phase 7): Opening Book<br/>Full-Width lv 0..3 + DOE to lv 12<br/>32,369 Eng • 26,367 Intl Nodes\"]"
+    },
+    {
+      "id": "12-engine-improvements.md#L500-L516",
+      "file": "docs/brain/12-engine-improvements.md",
+      "fileName": "12-engine-improvements.md",
+      "startLine": 500,
+      "endLine": 516,
+      "language": "powershell",
+      "lineCount": 17,
+      "preview": "# Run the Phase 0..5 progression benchmark (40-position deep suite + 5-position 5.0s timed suite) do",
+      "content": "# Run the Phase 0..5 progression benchmark (40-position deep suite + 5-position 5.0s timed suite)\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- phase-bench\n\n# Run the Phase 6 Evaluation Speed Benchmark (10M raw evals + 40-pos fixed depth + 5-pos timed)\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- eval-speed\n\n# Run the Phase 6 200-Game Bot-vs-Bot Self-Play Match (50 ballots × 2 sides per variant, 1000 ms/move, 4 workers)\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- eval-match --variant All --time-ms 1000 --workers 4 --ballots 50\n\n# Verify or expand the Phase 7 12-Ply Drop-Out Expansion Opening Books\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- book verify --variant All\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- book expand-doe --variant English --max-ply 12 --full-width-plies 4 --search-depth 16 --max-delta 30\n\n# Run the 40-position standard and deep TT suites\ndotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --deep"
+    },
+    {
+      "id": "13-app-integration.md#L17-L52",
+      "file": "docs/brain/13-app-integration.md",
+      "fileName": "13-app-integration.md",
+      "startLine": 17,
+      "endLine": 52,
+      "language": "mermaid",
+      "lineCount": 36,
+      "preview": "flowchart TD     subgraph Presentation [\"Presentation Layer\"]         WPF[\"Checkers.Wpf<br/>(WPF Des",
+      "content": "flowchart TD\n    subgraph Presentation [\"Presentation Layer\"]\n        WPF[\"Checkers.Wpf<br/>(WPF Desktop Client)\"]\n        Web[\"Checkers.Web<br/>(Blazor WebAssembly + /docs)\"]\n    end\n\n    subgraph Application [\"Application Layer (Checkers.App)\"]\n        MainVM[\"MainViewModel\"]\n        AnalysisVM[\"AnalysisViewModel\"]\n        SettingsVM[\"SettingsViewModel\"]\n        SquareVM[\"SquareViewModel (8×8)\"]\n        Services[\"Platform Abstractions:<br/>• ISoundService<br/>• IDialogService<br/>• IGameFileService\"]\n    end\n\n    subgraph Domain [\"Domain &amp; AI Engine (Checkers.Core)\"]\n        Session[\"GameSession\"]\n        RuleEngine[\"RuleEngine &amp; BitboardMoveGenerator\"]\n        AI[\"MinimaxPlayer, EvaluationFunction &amp; OpeningBook\"]\n        Zobrist[\"Zobrist Hashing, DrawTable &amp; TranspositionTable\"]\n        PDN[\"GameRecordFormat (PDN)\"]\n    end\n\n    WPF --> MainVM\n    Web --> MainVM\n    MainVM --> AnalysisVM\n    MainVM --> SettingsVM\n    MainVM --> SquareVM\n    MainVM --> Services\n    MainVM --> Session\n    Session --> RuleEngine\n    MainVM --> AI\n    AI --> RuleEngine\n    AI --> Zobrist\n    MainVM --> PDN"
+    },
+    {
+      "id": "13-app-integration.md#L95-L115",
+      "file": "docs/brain/13-app-integration.md",
+      "fileName": "13-app-integration.md",
+      "startLine": 95,
+      "endLine": 115,
+      "language": "mermaid",
+      "lineCount": 21,
+      "preview": "sequenceDiagram     autonumber     participant UI as Browser Event Loop / Home.razor",
+      "content": "sequenceDiagram\n    autonumber\n    participant UI as Browser Event Loop / Home.razor\n    participant VM as MainViewModel / AnalysisViewModel\n    participant AI as MinimaxPlayer (WASM Single Thread)\n\n    UI->>VM: Human completes move → Trigger AI turn\n    VM->>AI: GetMoveAsync(state, legalMoves, progress, ct, stateHashHistory)\n    loop Iterative Deepening (d = 1 .. MaxDepth)\n        AI->>AI: NegaMax search (d plies)\n        AI->>VM: progress.Report(SearchAnalysis)\n        AI->>UI: await Task.Delay(1, ct) [Yield macrotask]\n        UI->>VM: BrowserSynchronizationContext dispatches Progress callback\n        VM->>UI: Analysis.Updated fires → InvokeAsync(StateHasChanged)\n        UI->>UI: Browser repaints DOM &amp; thinking progress bar (60 FPS)\n        UI-->>AI: Resume C# continuation for depth d + 1\n    end\n    AI-->>VM: Return bestMoveOverall\n    VM->>UI: Apply move &amp; update board"
+    },
+    {
+      "id": "14-gui-and-settings.md#L17-L31",
+      "file": "docs/brain/14-gui-and-settings.md",
+      "fileName": "14-gui-and-settings.md",
+      "startLine": 17,
+      "endLine": 31,
+      "language": "mermaid",
+      "lineCount": 15,
+      "preview": "graph TD     subgraph UI Layout         MenuBar[\"Menu Bar<br/>File • Game • Options • Help (Desktop)",
+      "content": "graph TD\n    subgraph UI Layout\n        MenuBar[\"Menu Bar<br/>File • Game • Options • Help (Desktop)<br/>Brand Header + Hamburger Drawer (Mobile ≤768px)\"]\n        Scoreboard[\"Status &amp; Dual-Card Scoreboard<br/>Status / Game Modified • Variant Badge • Clock Badge • Player Score Cards\"]\n        Board[\"Interactive 8×8 Checkers Board<br/>Dark-Square Parity (32 Playable) • Draughts 1–32 Coordinates • King Crown Badges • Move Indicators\"]\n        Analysis[\"Real-Time AI Analysis Panel<br/>Move • Depth • Score • Best Move • Nodes • Speed • Time\"]\n        History[\"Move History Panel<br/>Move List • Draughts Algebraic Notation (e.g. 11-15, 29x18x4)\"]\n    end\n\n    MenuBar --> Scoreboard\n    Scoreboard --> Board\n    Scoreboard --> Analysis\n    Scoreboard --> History"
+    },
+    {
+      "id": "14-gui-and-settings.md#L105-L118",
+      "file": "docs/brain/14-gui-and-settings.md",
+      "fileName": "14-gui-and-settings.md",
+      "startLine": 105,
+      "endLine": 118,
+      "language": "text",
+      "lineCount": 14,
+      "preview": "┌──────────────────────────────────────────────────────────────┐ │ STATUS            [Flying Kings] ",
+      "content": "┌──────────────────────────────────────────────────────────────┐\n│ STATUS            [Flying Kings]                 5 min / game│\n├──────────────────────────────────────────────────────────────┤\n│ White's Turn — Click a piece to move it                      │\n│ ┌───────────────────────────┐  ┌───────────────────────────┐ │\n│ │ ○ White              5:00 │  │ ● Black              4:58 │ │\n│ │         Human             │  │        Computer           │ │\n│ │          12               │  │           12              │ │\n│ │       Kings: 0            │  │        Kings: 0           │ │\n│ └───────────────────────────┘  └───────────────────────────┘ │\n│ [  Undo  ]           [  Redo  ]            [  Move Now  ]    │\n└──────────────────────────────────────────────────────────────┘"
+    },
+    {
+      "id": "14-gui-and-settings.md#L170-L176",
+      "file": "docs/brain/14-gui-and-settings.md",
+      "fileName": "14-gui-and-settings.md",
+      "startLine": 170,
+      "endLine": 176,
+      "language": "mermaid",
+      "lineCount": 7,
+      "preview": "graph TD     Settings[\"Settings Dialog\"]     Settings --> Section1[\"1. Checkers Rules &amp; Variant<",
+      "content": "graph TD\n    Settings[\"Settings Dialog\"]\n    Settings --> Section1[\"1. Checkers Rules &amp; Variant<br/>International (Flying Kings) vs. English (1-Step Kings)\"]\n    Settings --> Section2[\"2. How Long May the Computer Think?<br/>Fixed Depth • Time per Move • Time per Game\"]\n    Settings --> Section3[\"3. Checkers Opening Book &amp; Transposition Table<br/>Toggle 12-Ply Opening Book • Table Capacity (16 MB to 256 MB)\"]"
+    },
+    {
+      "id": "14-gui-and-settings.md#L208-L220",
+      "file": "docs/brain/14-gui-and-settings.md",
+      "fileName": "14-gui-and-settings.md",
+      "startLine": 208,
+      "endLine": 220,
+      "language": "text",
+      "lineCount": 13,
+      "preview": "┌─────────────────────────────────┐ │ ANALYSIS                        │ ├───────────────────┬───────",
+      "content": "┌─────────────────────────────────┐\n│ ANALYSIS                        │\n├───────────────────┬─────────────┤\n│ Move:             │ 6           │\n│ Depth:            │ 9 plies     │\n│ Score:            │ +34         │\n│ Best move:        │ 18          │\n│ Nodes:            │ 666,790     │\n│ Speed:            │ 345,666 nps │\n│ Time:             │ 0:01.9      │\n└───────────────────┴─────────────┘"
+    },
+    {
+      "id": "README.md#L22-L45",
+      "file": "docs/brain/README.md",
+      "fileName": "README.md",
+      "startLine": 22,
+      "endLine": 45,
+      "language": "mermaid",
+      "lineCount": 24,
+      "preview": "flowchart TD     Start[\"Current BoardState &amp; ActivePlayer<br/>(64-Bit BitPosition + Zobrist Hash",
+      "content": "flowchart TD\n    Start[\"Current BoardState &amp; ActivePlayer<br/>(64-Bit BitPosition + Zobrist Hash)\"] --> ScanCaptures[\"Scan player bitboards for jumps\"]\n    ScanCaptures --> HasCaptures{\"Any captures available?\"}\n    \n    HasCaptures -- \"Yes\" --> MandatoryRule[\"Enforce Mandatory Capture:<br/>Discard all quiet moves\"]\n    MandatoryRule --> GenCaptures[\"Generate full capture chains:<br/>• Men: forward 2-step jumps<br/>• Flying Kings: diagonal ray flight + jump + continuation rule<br/>• English Kings: 1-hop jumps in 4 directions<br/>• Mid-jump crown-row promotion ends turn\"]\n    GenCaptures --> FreeChoice[\"Free Choice:<br/>Return all completed capture paths\"]\n    \n    HasCaptures -- \"No\" --> ScanQuiet[\"Generate quiet moves:<br/>• Men: 1 square forward diagonally<br/>• Flying Kings: diagonal ray slide across empty squares<br/>• English Kings: 1 square in 4 directions\"]\n    ScanQuiet --> ReturnQuiet[\"Return all valid quiet moves\"]\n    \n    FreeChoice --> ApplyMove[\"Apply selected move (Human, 12-Ply Opening Book, or PVS/LMR Negamax AI)\"]\n    ReturnQuiet --> ApplyMove\n    \n    ApplyMove --> Mutate[\"Update BitPosition &amp; BoardState:<br/>1. Toggle source &amp; destination bits<br/>2. Clear captured bits via ~move.Captured<br/>3. Crown to King if Row 0 (White) or Row 7 (Black)<br/>4. Update HalfMoveClock &amp; switch ActivePlayer<br/>5. XOR-update 64-bit Zobrist hash\"]\n    \n    Mutate --> CheckEnd{\"Evaluate terminal status\"}\n    CheckEnd -- \"Opponent has 0 pieces\" --> WinElim[\"OpponentPiecesEliminated: Win!\"]\n    CheckEnd -- \"Opponent has 0 legal moves\" --> WinBlock[\"OpponentNoLegalMoves: Win!\"]\n    CheckEnd -- \"HalfMoveClock >= 80\" --> Draw40[\"FortyMoveRule: Draw\"]\n    CheckEnd -- \"ZobristHash repeated 3 times\" --> DrawRep[\"ThreefoldRepetition: Draw\"]\n    CheckEnd -- \"Game continues\" --> NextTurn[\"InProgress: Next Player's Turn\"]"
+    },
+    {
+      "id": "README.md#L76-L95",
+      "file": "docs/brain/README.md",
+      "fileName": "README.md",
+      "startLine": 76,
+      "endLine": 95,
+      "language": "mermaid",
+      "lineCount": 20,
+      "preview": "flowchart LR     C01[\"01 Overview\"] --> C02[\"02 Board &amp; Coords\"]     C02 --> C03[\"03 Rules &amp;",
+      "content": "flowchart LR\n    C01[\"01 Overview\"] --> C02[\"02 Board &amp; Coords\"]\n    C02 --> C03[\"03 Rules &amp; Moves\"]\n    C03 --> C04[\"04 Game Record\"]\n    C03 --> C05[\"05 Evaluation\"]\n    C05 --> C06[\"06 Move Ordering\"]\n    C06 --> C07[\"07 Search\"]\n    C07 --> C08[\"08 Transposition Table\"]\n    C08 --> C09[\"09 Time Control\"]\n    C09 --> C10[\"10 Opening Book\"]\n    C08 --> C11[\"11 Bitboards\"]\n    C11 --> C12[\"12 Engine Improvements\"]\n    C04 --> C13[\"13 App Integration\"]\n    C10 --> C13\n    C13 --> C14[\"14 GUI &amp; Settings\"]\n    C12 --> C15[\"15 Glossary\"]\n    C14 --> C15\n    C15 --> C16[\"16 References\"]"
+    },
+    {
+      "id": "general-game-gui-specification.md#L28-L46",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 28,
+      "endLine": 46,
+      "language": "mermaid",
+      "lineCount": 19,
+      "preview": "graph TD     App[\"Game Application Window / Page\"]     App --> Header[\"Top Header / Menu System<br/>",
+      "content": "graph TD\n    App[\"Game Application Window / Page\"]\n    App --> Header[\"Top Header / Menu System<br/>Desktop: Horizontal Menu Bar (File • Game • Options • Help)<br/>Mobile (≤768px): Brand Title + Hamburger Drawer (☰)\"]\n    App --> MainContent[\"Responsive Content Container\"]\n\n    subgraph DesktopLayout [\"Two-Column Layout (> 768px)\"]\n        MainContent --> BoardCol[\"Primary Board Column<br/>Interactive Board • Coordinates • Active Selection • Threat Indicators\"]\n        MainContent --> SideCol[\"Sidebar Information Column\"]\n        SideCol --> ScoreCard[\"Dual-Card Scoreboard<br/>Status Header • Variant Badge • Time Setting • Clocks • Player Cards\"]\n        SideCol --> Actions[\"Quick Action Controls<br/>Undo • Redo • Move Now\"]\n        SideCol --> AnalysisCard[\"Real-Time AI Analysis Card<br/>Move • Depth • Score • Best Move • Nodes • Speed • Time\"]\n        SideCol --> HistoryCard[\"Move History Card<br/>Two-Column Plies • Algebraic Notation • Auto-Scroll\"]\n    end\n\n    subgraph MobileLayout [\"Fluid Stacked Layout (≤ 768px)\"]\n        MobileStack[\"Board → Scoreboard → Actions → Analysis → Move History\"]\n    end"
+    },
+    {
+      "id": "general-game-gui-specification.md#L51-L78",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 51,
+      "endLine": 78,
+      "language": "text",
+      "lineCount": 28,
+      "preview": "┌───────────────────────────────────────────────────────────────────────────────────────────────────",
+      "content": "┌────────────────────────────────────────────────────────────────────────────────────────────────────┐\n│ File   Game   Options   Help                                                       [Desktop Menu]  │\n├────────────────────────────────────────┬───────────────────────────────────────────────────────────┤\n│                                        │ STATUS                [Variant Badge]         5 min / game│\n│                                        ├───────────────────────────────────────────────────────────┤\n│                                        │ White's Turn — Click a piece to move it                   │\n│                                        │ ┌───────────────────────────┐ ┌─────────────────────────┐ │\n│                                        │ │ ○ White              4:58 │ │ ● Black            5:00 │ │\n│                                        │ │         Human             │ │        Computer         │ │\n│                                        │ │          12               │ │           12            │ │\n│                                        │ │       Kings: 0            │ │        Kings: 0         │ │\n│                                        │ └───────────────────────────┘ └─────────────────────────┘ │\n│                                        │ [   Undo   ]        [   Redo   ]        [ Move Now (Ctrl+M)]│\n│                                        ├───────────────────────────────────────────────────────────┤\n│                                        │ ANALYSIS                                                  │\n│         INTERACTIVE GAME BOARD         │ Move:      6                     Nodes: 666,790           │\n│                                        │ Depth:     9 plies               Speed: 345,666 nps       │\n│        (e.g., 8x8 Checkers /           │ Score:     +34                   Time:  0:01.9            │\n│         15x15 Gomoku / 8x8 Chess)      │ Best move: 18                                             │\n│                                        ├───────────────────────────────────────────────────────────┤\n│                                        │ MOVE HISTORY                                              │\n│                                        │ #   White           Black                                 │\n│                                        │ 1.  11-15           24-20                                 │\n│                                        │ 2.  8-11            28-24                                 │\n│                                        │ 3.  9-14            22-17 (active)                        │\n└────────────────────────────────────────┴───────────────────────────────────────────────────────────┘"
+    },
+    {
+      "id": "general-game-gui-specification.md#L81-L105",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 81,
+      "endLine": 105,
+      "language": "text",
+      "lineCount": 25,
+      "preview": "┌────────────────────────────────────────┐ │ ☰  Checkers .NET                       │  <-- Header wi",
+      "content": "┌────────────────────────────────────────┐\n│ ☰  Checkers .NET                       │  <-- Header with Brand Title & Hamburger Button\n├────────────────────────────────────────┤\n│                                        │\n│         INTERACTIVE GAME BOARD         │  <-- Full-width responsive square board\n│                                        │\n├────────────────────────────────────────┤\n│ STATUS       [Variant]     5 min / game│\n│ White's Turn                           │\n│ ┌──────────────────┐┌────────────────┐ │\n│ │ ○ White     4:58 ││ ● Black   5:00 │ │\n│ │ Human         12 ││ Computer    12 │ │\n│ └──────────────────┘└────────────────┘ │\n│ [  Undo  ]   [  Redo  ]   [ Move Now ] │\n├────────────────────────────────────────┤\n│ ANALYSIS                               │\n│ Depth: 9 plies       Nodes: 666,790    │\n│ Score: +34           Speed: 345,666 nps│\n│ Best:  18            Time:  0:01.9     │\n├────────────────────────────────────────┤\n│ MOVE HISTORY                           │\n│ 1. 11-15  24-20 | 2. 8-11  28-24       │\n└────────────────────────────────────────┘"
+    },
+    {
+      "id": "general-game-gui-specification.md#L134-L143",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 134,
+      "endLine": 143,
+      "language": "text",
+      "lineCount": 10,
+      "preview": "File                     Game                          Options              Help ├── New Game (Ctrl+",
+      "content": "File                     Game                          Options              Help\n├── New Game (Ctrl+N)    ├── vs Computer (White)       ├── Analysis (Ctrl+A)├── User guide (F1)\n├── Open...  (Ctrl+O)    ├── vs Computer (Black)       ├── Sound            ├── Rules & Documentation (Shift+F1)\n├── Save     (Ctrl+S)    ├── vs Human (Two players)    ├── Undo (Ctrl+Z)    └── About [Game]...\n├── Save As...           ├─────────────────────────    └── Redo (Ctrl+Y)\n└── Exit [Desktop only]  ├── Switch sides              └── [Custom Options]\n                         ├─────────────────────────\n                         └── Settings... (F2)"
+    },
+    {
+      "id": "general-game-gui-specification.md#L181-L202",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 181,
+      "endLine": 202,
+      "language": "mermaid",
+      "lineCount": 22,
+      "preview": "sequenceDiagram     autonumber     actor User as Mobile User (Touch)",
+      "content": "sequenceDiagram\n    autonumber\n    actor User as Mobile User (Touch)\n    participant Header as Mobile Header (☰)\n    participant Drawer as Slide-Out Nav Drawer\n    participant VM as MainViewModel\n    participant Dialog as DialogHost\n\n    User->>Header: Tap Hamburger (☰)\n    Header->>Drawer: Open drawer with backdrop overlay\n    Note over Drawer: Sections: File • Game • Options • Help<br/>Touch targets ≥ 44px\n    User->>Drawer: Tap \"vs Computer (Black)\"\n    Drawer->>VM: Check if game in progress\n    alt Game In Progress\n        VM->>Dialog: Show NewGameConfirmDialog\n        Dialog-->>User: \"Abandon current match?\"\n        User->>Dialog: Confirms \"OK\"\n    end\n    VM->>VM: Set GameMode, flip board, reset match\n    Drawer->>Drawer: Close drawer & backdrop"
+    },
+    {
+      "id": "general-game-gui-specification.md#L212-L225",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 212,
+      "endLine": 225,
+      "language": "text",
+      "lineCount": 14,
+      "preview": "┌────────────────────────────────────────────────────────────────────────┐ │ STATUS              [Va",
+      "content": "┌────────────────────────────────────────────────────────────────────────┐\n│ STATUS              [Variant Badge]                       5 min / game │  <-- Header Row\n├────────────────────────────────────────────────────────────────────────┤\n│ White's Turn — Click a piece to move it                                │  <-- Turn Banner\n│ ┌─────────────────────────────┐   ┌──────────────────────────────────┐ │\n│ │ ○ White                4:58 │   │ ● Black                     5:00 │ │  <-- Card Layer 1\n│ │          Human              │   │             Computer             │ │  <-- Card Layer 2\n│ │           12                │   │                12                │ │  <-- Card Layer 3\n│ │        Kings: 0             │   │             Kings: 0             │ │  <-- Card Layer 4\n│ └─────────────────────────────┘   └──────────────────────────────────┘ │\n│ [   Undo   ]             [   Redo   ]             [ Move Now (Ctrl+M)] │  <-- Quick Actions\n└────────────────────────────────────────────────────────────────────────┘"
+    },
+    {
+      "id": "general-game-gui-specification.md#L241-L253",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 241,
+      "endLine": 253,
+      "language": "mermaid",
+      "lineCount": 13,
+      "preview": "stateDiagram-v2     [*] --> Unmodified: Start New Game vs Computer     Unmodified: STATUS text is Sl",
+      "content": "stateDiagram-v2\n    [*] --> Unmodified: Start New Game vs Computer\n    Unmodified: STATUS text is Slate Gray (#7F8C8D)\n    Modified: STATUS text is Crimson Red (#E74C3C)\n\n    Unmodified --> Modified: Undo Move Used\n    Unmodified --> Modified: Switch Sides Used\n    Unmodified --> Modified: Settings Changed Mid-Game\n    Unmodified --> Modified: Continue After Timeout (Human)\n\n    Modified --> Unmodified: New Game Started (Ctrl+N)"
+    },
+    {
+      "id": "general-game-gui-specification.md#L265-L272",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 265,
+      "endLine": 272,
+      "language": "text",
+      "lineCount": 8,
+      "preview": "┌───────────────────────────────────────────────┐ │ [Glyph] [Player Name]                 [Clock] │ ",
+      "content": "┌───────────────────────────────────────────────┐\n│ [Glyph] [Player Name]                 [Clock] │  <-- Layer 1: Identity & Time\n│                    [Role]                     │  <-- Layer 2: Player Role Subtitle\n│                   [Metric 1]                  │  <-- Layer 3: Primary Game Metric\n│                   [Metric 2]                  │  <-- Layer 4: Secondary Game Metric\n└───────────────────────────────────────────────┘"
+    },
+    {
+      "id": "general-game-gui-specification.md#L293-L298",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 293,
+      "endLine": 298,
+      "language": "mermaid",
+      "lineCount": 6,
+      "preview": "flowchart TD     Timeout[\"Human Player Clock Reaches 0:00\"] --> Dialog{\"Modal Dialog:<br/>'You ran o",
+      "content": "flowchart TD\n    Timeout[\"Human Player Clock Reaches 0:00\"] --> Dialog{\"Modal Dialog:<br/>'You ran out of time!<br/>Do you want to continue playing?'\"}\n    Dialog -- \"No\" --> Defeat[\"Game Over: Loss on Time<br/>Match Terminated\"]\n    Dialog -- \"Yes\" --> Continue[\"Continue Match<br/>• Clock frozen at 0:00<br/>• IsGameModified = true<br/>• STATUS turns Crimson Red (#E74C3C)\"]"
+    },
+    {
+      "id": "general-game-gui-specification.md#L345-L351",
+      "file": "docs/general-game-gui-specification.md",
+      "fileName": "general-game-gui-specification.md",
+      "startLine": 345,
+      "endLine": 351,
+      "language": "mermaid",
+      "lineCount": 7,
+      "preview": "graph TD     SettingsDialog[\"Modal Settings Dialog\"]     SettingsDialog --> Sec1[\"1. Rules &amp; Gam",
+      "content": "graph TD\n    SettingsDialog[\"Modal Settings Dialog\"]\n    SettingsDialog --> Sec1[\"1. Rules &amp; Game Variant<br/>Primary variant radio selection\"]\n    SettingsDialog --> Sec2[\"2. Computer Thinking Limits<br/>Fixed Depth • Time per Move • Time per Game\"]\n    SettingsDialog --> Sec3[\"3. Opening Book &amp; Transposition Table<br/>Opening Book Toggle (Dynamic Count) • Table Capacity (<select> or slider)\"]"
+    }
+  ],
+  "discrepancies": []
+}

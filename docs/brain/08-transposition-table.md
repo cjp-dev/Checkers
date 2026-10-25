@@ -35,8 +35,8 @@ Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Ma
 | `8–9` | `BestMove` | `ushort` | Packed bitboard move `(ushort)((fromSq << 8) \| toSq)` (`0..63`), or `0` if none |
 | `10` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded (`-1` if eval-only) |
 | `11` | `Age` | `byte` | 8-bit search generation counter (`0..255`), incremented once per root turn |
-| `12` | `Flags` | `byte` | Bits `0–1`: `TranspositionBound` ($0..3$); Bit `2` (`0x04`): `HasStaticEval` |
-| `13–15` | `_pad0`, `_pad1` | `byte + ushort` | Explicit alignment padding to exact 16-byte struct stride |
+| `12` | `Flags` | `byte` | Bits `0–1`: `TranspositionBound` ($0..2$ via `BoundMask = 0x03`); Bit `2` (`0x04`): `OccupiedBit` (`IsOccupied`); Bit `3` (`0x08`): `HasMoveBit` (`HasMove`); Bit `4` (`0x10`): `HasStaticEvalBit` (`HasStaticEval`) |
+| `13–15` | `_pad1`, `_pad2`, `_pad3` | `3 × byte` | Explicit alignment padding to exact 16-byte struct stride |
 
 ### 50–54 Bit Combined Zobrist Verification
 Because a table of $N = 2^k$ entries ($k \in \{20, \dots, 24\}$) contains $N_{\text{buckets}} = 2^{k-2}$ buckets, the bucket index `key & _bucketMask` implicitly verifies the lower $k - 2 \in \{18, \dots, 22\}$ bits of the 64-bit Zobrist hash, while `Key32 = (uint)(key >> 32)` explicitly verifies all upper 32 bits:
@@ -53,9 +53,12 @@ Because Alpha-Beta searches within a window $[\alpha, \beta]$, not every node fi
 
 | Bound Flag | Storage Condition | Meaning & Cutoff Condition on Probe (`entry.Depth >= depth`) |
 |---|---|---|
-| **`Exact`** (`1`) | $\alpha < \text{score} < \beta$ | Every child move was searched without a $\beta$-cutoff, and at least one move improved $\alpha$. **Always returns `score` immediately.** |
-| **`LowerBound`** (`2`) | $\text{score} \ge \beta$ | A fail-high $\beta$-cutoff occurred; the true minimax score is *at least* `score`. **Triggers cutoff if $\text{score} \ge \beta$.** |
-| **`UpperBound`** (`3`) | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** |
+| **`Exact`** (`0`) | $\alpha < \text{score} < \beta$ | Every child move was searched without a $\beta$-cutoff, and at least one move improved $\alpha$. **Always returns `score` immediately.** *(Ancestral C macro: `PV_NODE 1`)* |
+| **`LowerBound`** (`1`) | $\text{score} \ge \beta$ | A fail-high $\beta$-cutoff occurred; the true minimax score is *at least* `score`. **Triggers cutoff if $\text{score} \ge \beta$.** *(Ancestral C macro: `LOWER_BOUND 2`)* |
+| **`UpperBound`** (`2`) | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** *(Ancestral C macro: `UPPER_BOUND 3`)* |
+
+> [!NOTE]
+> **Lineage Adaptation — 0-Indexed Enum vs. Ancestral C Macros:** In Collin Kees's C engine ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c#L12-L14)), search bounds were defined as 1-indexed preprocessor macros (`#define PV_NODE 1`, `#define LOWER_BOUND 2`, `#define UPPER_BOUND 3`). In .NET 10, [`TranspositionBound`](../../src/Checkers.Core/AI/TranspositionTable.cs) is a 0-indexed byte enum (`Exact = 0, LowerBound = 1, UpperBound = 2`) masked with `BoundMask = 0x03`, with bits 2, 3, and 4 dedicated to `OccupiedBit = 0x04`, `HasMoveBit = 0x08`, and `HasStaticEvalBit = 0x10`.
 
 ---
 
@@ -65,10 +68,10 @@ Because Alpha-Beta searches within a window $[\alpha, \beta]$, not every node fi
 flowchart TD
     Probe["TryProbe(key, depth, α, β, ply)"] --> Base["baseIndex = (int)(key &amp; _bucketMask) &lt;&lt; 2<br/>key32 = (uint)(key &gt;&gt; 32)"]
     Base --> Scan["Scan 4 Ways in Single 64B Cache Line:<br/>w = 0, 1, 2, 3 at _entries[baseIndex + w]"]
-    Scan --> Match{"entry.Key32 == key32<br/>&amp; Flags != 0?"}
+    Scan --> Match{"entry.IsOccupied &amp;&amp;<br/>entry.Key32 == key32?"}
     Match -- "No (All 4 ways miss)" --> Miss["Return false"]
-    Match -- "Yes (Hit in Way w)" --> Extract["Extract BestMove (ushort)<br/>&amp; StaticEval (if HasEvalBit set)"]
-    Extract --> CheckDepth{"entry.Bound != None<br/>&amp; entry.Depth >= depth?"}
+    Match -- "Yes (Hit in Way w)" --> Extract["Extract BestMove (if HasMove)<br/>&amp; StaticEval (if HasStaticEval)"]
+    Extract --> CheckDepth{"entry.Depth >= depth?"}
     CheckDepth -- "No (Too shallow / Eval-only)" --> OrderOnly["Return true with hasCutoff = false<br/>(Seed move ordering + reuse StaticEval)"]
     CheckDepth -- "Yes (Sufficient depth)" --> Norm["Denormalize mate score for current ply"]
     Norm --> CheckBound{"Does Bound satisfy [α, β]?<br/>• Exact<br/>• LowerBound &amp; score >= β<br/>• UpperBound &amp; score <= α"}
@@ -85,7 +88,7 @@ In a direct-mapped (1-slot) hash table, whenever two active positions map to the
 Following `get_storage_index` and `add_hash_entry` in [`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), when `Store` is called for `key`:
 1. **Pass 1 — Exact Match or Empty Way:** If any of the 4 ways (`w = 0..3`) already holds `Key32 == key32` or is empty (`Flags == 0`), that way is selected immediately (`victimWay = w`).
    - **BestMove Preservation on Fail-Low:** When updating the same position (`existing.Key32 == key32`), if the new store has no best move (`bestMove == 0`, e.g., an `UpperBound` fail-low) or is an eval-only store, the existing `BestMove` and `StaticEval` are preserved!
-   - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth - 2`.
+   - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth` (or `existing.Age != _age`).
 2. **Pass 2 — Priority-Based Victim Eviction:** If all 4 ways in the bucket hold distinct keys (`Key32 != key32`), `Store` evaluates a replacement priority score (`get_storage_index` in `hash_table.c:341`) for each way $w \in \{0, 1, 2, 3\}$ and overwrites the slot with the **lowest priority**:
 
 $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}) \bmod 256\bigr) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$
@@ -101,21 +104,24 @@ $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}
 In the 64-bit bitboard engine, per-node move generation, copy-make, and `POPCNT` evaluation take only **~28–30 nanoseconds**. By comparison, a random Zobrist lookup into a 16 MiB–256 MiB Transposition Table in L3 cache or main DRAM takes **15–40 nanoseconds**.
 
 Inspired by `prefetch_hash_entry` (`_mm_prefetch(addr, _MM_HINT_T0)`) in [`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), `TranspositionTable` hides this memory latency using two techniques:
-1. **Pinned Object Heap Allocation:** `TranspositionTable` allocates `_entries` on the .NET **Pinned Object Heap** (`GC.AllocateArray<TranspositionEntry>(count, pinned: true)`) and caches the fixed base pointer `TranspositionEntry* _entriesPtr = (TranspositionEntry*) Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_entries))`. Because the GC never relocates POH arrays, address calculation requires zero pinning overhead during search.
-2. **Early Hardware Prefetch (`Sse.Prefetch0`):** Inside `MinimaxPlayer.NegamaxBitboard`, immediately after `BitPosition nextPos = pos.Apply(in moves[i])` computes the child's Zobrist hash `nextPos.Hash`—*before* checking futility pruning, setting up LMR reductions, or pushing the recursive stack frame—the engine issues a hardware prefetch instruction:
+1. **Pinned Object Heap Allocation:** `TranspositionTable` allocates `_entries` on the .NET **Pinned Object Heap** (`GC.AllocateArray<TranspositionEntry>(count, pinned: true)`). Because the GC never relocates POH arrays, indexing via `ref MemoryMarshal.GetArrayDataReference(_entries)` avoids GC tracking overhead, pointer indirection fields, or array bounds checking during search.
+2. **Early Hardware Prefetch (`Sse.Prefetch0`):** Inside `MinimaxPlayer.NegaMax`, immediately after `BitPosition nextPos = pos.Apply(in moves[i])` computes the child's Zobrist hash `nextPos.Hash`—*before* checking futility pruning, setting up LMR reductions, or pushing the recursive stack frame—the engine issues a hardware prefetch instruction:
 
 ```csharp
 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-public void Prefetch(ulong key)
+public unsafe void Prefetch(ulong key)
 {
     if (Sse.IsSupported)
     {
-        Sse.Prefetch0(_entriesPtr + ((int)(key & _bucketMask) << 2));
+        ref TranspositionEntry bucket0 = ref Unsafe.Add(
+            ref MemoryMarshal.GetArrayDataReference(_entries),
+            (int)(key & _bucketMask) << 2);
+        Sse.Prefetch0(Unsafe.AsPointer(ref bucket0));
     }
 }
 ```
 
-By the time the recursive `NegamaxBitboard` call finishes its terminal/repetition checks and invokes `TryProbe`, the entire 64-byte 4-way bucket is already warming in the CPU's L1 data cache.
+By the time the recursive `NegaMax` call finishes its terminal/repetition checks and invokes `TryProbe`, the entire 64-byte 4-way bucket is already warming in the CPU's L1 data cache.
 
 ---
 

@@ -69,7 +69,7 @@ public sealed class EvaluationFunction : IEvaluationFunction
     // International (Flying Kings) PST bitmasks
     // 8-square Main Long Diagonal: (0,7)=7, (1,6)=14, (2,5)=21, (3,4)=28, (4,3)=35, (5,2)=42, (6,1)=49, (7,0)=56 (+12 cp)
     private const ulong FlyingKingMainDiagonalMask = 0x0102040810204080UL;
-    // Central & 6-square Double-Diagonal inner squares (+8 cp)
+    // Central & 6-square Double-Diagonal inner squares (+6 cp)
     private const ulong FlyingKingInnerMask = 0x00205020040A0400UL | 0x0008004002001000UL;
     // Cramped 2-square short corners: (0,1)=1, (1,0)=8, (6,7)=55, (7,6)=62 (-20 cp)
     private const ulong FlyingKingShortCornerMask = 0x4080000000000102UL;

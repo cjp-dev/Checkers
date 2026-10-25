@@ -13,7 +13,7 @@ The [`GameSession`](../../src/Checkers.Core/Engine/GameSession.cs) coordinator a
 ## The Move record and Draughts Notation
 
 The domain layer uses two complementary move representations:
-1. **`BitMove` (`readonly record struct`, 16 bytes):** Used inside the high-speed bitboard move generator and Negamax search tree (`ulong Captured`, `byte From`, `byte To`, `bool IsPromotion`).
+1. **`BitMove` (`readonly struct`, 16 bytes):** Used inside the high-speed bitboard move generator and Negamax search tree (`ulong Captured`, `byte From`, `byte To`, `bool IsPromotion`).
 2. **`Move` (`sealed record`):** Used by `GameSession`, UI view models, move history, and PDN serialization, storing the full ordered path of visited squares:
 
 ```csharp

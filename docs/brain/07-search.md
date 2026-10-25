@@ -25,7 +25,7 @@ $$V(s, d, \alpha, \beta, \text{ply}) = \begin{cases} -30{,}000 + \text{ply} & \t
 
 ```mermaid
 flowchart TD
-    Entry["NegamaxBitboard(pos, depth d, α, β, ply)"] --> Term{"Terminal / Draw check:<br/>0 own pieces, 80-halfmove rule,<br/>or DrawTable.IsRepetition (ply > 0)?"}
+    Entry["NegaMax(pos, depth d, α, β, ply)"] --> Term{"Terminal / Draw check:<br/>0 own pieces, 80-halfmove rule,<br/>or DrawTable.IsRepetition (ply > 0)?"}
     Term -- "Loss" --> RetLoss["Return −30,000 + ply"]
     Term -- "Draw / Repetition" --> RetDraw["Return 0"]
     Term -- "InProgress" --> TTProbe["Probe 4-Way Bucket TT (pos.Hash)<br/>Extract ttScore, ttPackedMove, cachedStaticEval"]
@@ -40,10 +40,10 @@ flowchart TD
     Loop --> FP{"Stage B — FP:<br/>Non-PV, Quiet, d <= 3, i > 0,<br/>eval₀ + 60·d <= α?"}
     FP -- "Yes (Prune)" --> NextMove["Continue to i + 1"]
     FP -- "No" --> PVCheck{"Move i == 0<br/>or β > α + 1 (PV)?"}
-    PVCheck -- "i == 0" --> FullWin["Full-window search:<br/>score = −Negamax(nextPos, d−1, −β, −α, ply+1)"]
+    PVCheck -- "i == 0" --> FullWin["Full-window search:<br/>score = −NegaMax(nextPos, d−1, −β, −α, ply+1)"]
     PVCheck -- "i > 0" --> LMRCheck{"Stage B — LMR:<br/>Quiet, d >= 3, ply >= 2, i >= 3?"}
-    LMRCheck -- "Yes" --> LMRSearch["Reduced Null-Window:<br/>score = −Negamax(nextPos, d−1−R, −α−1, −α, ply+1)<br/>If score > α → Verify at full d−1 on [−α−1, −α]"]
-    LMRCheck -- "No" --> NullWin["Stage A — PVS Null-Window:<br/>score = −Negamax(nextPos, d−1, −α−1, −α, ply+1)"]
+    LMRCheck -- "Yes" --> LMRSearch["Reduced Null-Window:<br/>score = −NegaMax(nextPos, d−1−R, −α−1, −α, ply+1)<br/>If score > α → Verify at full d−1 on [−α−1, −α]"]
+    LMRCheck -- "No" --> NullWin["Stage A — PVS Null-Window:<br/>score = −NegaMax(nextPos, d−1, −α−1, −α, ply+1)"]
     LMRSearch --> ReSearch{"Did null window fail high?<br/>(α < score < β)"}
     NullWin --> ReSearch
     ReSearch -- "Yes" --> FullWin
@@ -96,7 +96,7 @@ Because a null-window test in an exact search tree returns $\text{score}_{\text{
 A cached Transposition Table entry stores the static or subtree evaluation of a board configuration without knowing the path of moves that led to it. Without path-aware repetition tracking, an engine that is ahead by $+300$ centipawns can cycle Kings back and forth into a 3-fold repetition draw because the repeated board still evaluates to $+300$ at the horizon; conversely, a losing engine cannot intentionally seek a perpetual repetition to salvage a draw.
 
 Inspired by [`draw_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/draw_table.c) and `GAME_HISTORY` seeding in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c) (which identified that running the repetition check *before* the TT probe is essential to prevent stale TT cutoffs from hiding repetition draws), [`DrawTable`](../../src/Checkers.Core/AI/DrawTable.cs) tracks 64-bit Zobrist hashes along the active search path and from the game's `StateHistory`:
-1. **Checked Before TT Probe (`ply > 0`):** At the start of `NegamaxBitboard`, *before* probing `TranspositionTable`, `_drawTable.IsRepetition(in pos, ply)` checks whether `pos.Hash` repeats an ancestor or completes a game-history repetition. If so, `NegamaxBitboard` immediately returns `0` (Draw) without polluting the TT with a path-dependent score.
+1. **Checked Before TT Probe (`ply > 0`):** At the start of `NegaMax`, *before* probing `TranspositionTable`, `_drawTable.IsRepetition(in pos, ply)` checks whether `pos.Hash` repeats an ancestor or completes a game-history repetition. If so, `NegaMax` immediately returns `0` (Draw) without polluting the TT with a path-dependent score.
 2. **Pre-Root Game History Seeding (`_twoFoldHashes` & `_oneFoldHashes`):**
    - Any position that has already occurred $\ge 2$ times in `stateHashHistory` is seeded into `_twoFoldHashes`. Reaching it even once in the search (`ply >= 1`) completes a 3-fold repetition in the game and immediately returns `0`.
    - Positions that occurred once in the recent reversible game suffix (since the last capture or promotion) are seeded into `_oneFoldHashes` and trigger a draw at `ply >= 2` (after both players have had an opportunity to deviate) if `pos.HalfMoveClock >= ply`.
@@ -120,7 +120,7 @@ At a shallow **non-PV** quiet node (`ply > 0`, `beta <= alpha + 1`, `depth <= 6`
 
 $$\text{eval}_0 - 40 \cdot d \ge \beta \quad \Longrightarrow \quad \text{Return } \text{eval}_0 \text{ immediately (Static }\beta\text{-Cutoff)}$$
 
-**Intuition:** If the active player's static position is already so far above $\beta$ that even losing $40\text{ centipawns}$ per remaining ply still beats $\beta$, making a quiet move will almost certainly fail high. Notice that before returning, `NegamaxBitboard` verifies `!BitboardMoveGenerator.HasAnyCapture(in oppTest, _variant)` in $O(1)$ bitwise time to ensure the active player's pieces are not currently under a mandatory jump threat.
+**Intuition:** If the active player's static position is already so far above $\beta$ that even losing $40\text{ centipawns}$ per remaining ply still beats $\beta$, making a quiet move will almost certainly fail high. Notice that before returning, `NegaMax` verifies `!BitboardMoveGenerator.HasAnyCapture(in oppTest, _variant)` in $O(1)$ bitwise time to ensure the active player's pieces are not currently under a mandatory jump threat.
 
 ### 2. Frontier Futility Pruning (FP)
 
@@ -138,10 +138,10 @@ Using the exact LMR threshold parameters from [`board_search.c`](https://github.
 
 $$R(d, i) = \min\Bigl(d - 2,\; 1 + \mathbb{I}[i \ge 8]\Bigr), \qquad d_{\text{reduced}} = (d - 1) - R(d, i) \ge 1$$
 
-To prevent reduced searches from missing subtle multi-move traps, `NegamaxBitboard` enforces a **Two-Stage Verification Protocol**:
+To prevent reduced searches from missing subtle multi-move traps, `NegaMax` enforces a **Two-Stage Verification Protocol**:
 1. **Stage 1 — Reduced Null-Window Probe:** Search `nextPos` at reduced depth $d_{\text{reduced}}$ with null window $[-\alpha - 1, -\alpha]$. If $\text{score} \le \alpha$, the move fails low as expected and we save $R$ plies of search.
 2. **Stage 2 — Unreduced Null-Window Verification:** If the reduced probe unexpectedly beats $\alpha$ ($\text{score} > \alpha$), the move is **not** trusted immediately; instead, it is re-searched at the full unreduced depth $d - 1$ on the null window $[-\alpha - 1, -\alpha]$.
-3. **Stage 3 — Full-Window PV Re-Search:** Only if the unreduced verification at depth $d - 1$ *also* returns $\text{score} > \alpha$ (and the current node is a PV node with $\beta > \alpha + 1$) does `NegamaxBitboard` perform the full-window re-search $[-\beta, -\alpha]$.
+3. **Stage 3 — Full-Window PV Re-Search:** Only if the unreduced verification at depth $d - 1$ *also* returns $\text{score} > \alpha$ (and the current node is a PV node with $\beta > \alpha + 1$) does `NegaMax` perform the full-window re-search $[-\beta, -\alpha]$.
 
 ---
 

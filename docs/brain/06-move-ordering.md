@@ -22,12 +22,11 @@ At every interior node, [`MinimaxPlayer.cs`](../../src/Checkers.Core/AI/MinimaxP
 
 ```mermaid
 flowchart TD
-    Gen["BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves"] --> CapCheck{"Are moves mandatory captures?<br/>(moves[0].IsCapture)"}
-    CapCheck -- "Yes (Capture Node)" --> CapSort["OrderCaptureMoves(moves)<br/>+ Promote 16-bit TT Move (PackedMove)"]
-    CapCheck -- "No (Quiet Node)" --> ScorePass["Single-Pass Pre-Scoring into stackalloc int[count]:<br/>TT (10M) > Promo (500k) > Killer 1 (90k) > Killer 2 (80k) > History (0..70k)"]
+    Gen["BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves"] --> ScorePass["Single-Pass Pre-Scoring into stackalloc int[count]:<br/>TT (10M) > Captures (1M + 10k·c + 1k·p) > Promo (500k) > Killer 1 (90k) > Killer 2 (80k) > History (0..70k)"]
     ScorePass --> Sort["In-Place Insertion Sort<br/>by scores[i] descending (skips score == 0 in O(1))"]
-    CapSort --> Ready["Ordered Span&lt;BitMove&gt; ready for<br/>PVS Null-Window &amp; LMR Search"]
-    Sort --> Ready
+    Sort --> Ready["Ordered Span&lt;BitMove&gt; ready for<br/>PVS Null-Window &amp; LMR Search"]
+    Quiesce["Quiescence Search (depth == 0)"] --> QGen["GenerateCaptures(in pos, captures)"]
+    QGen --> QSort["OrderCaptureMoves(captures)<br/>(Sorts captures directly by capture count &amp; promotion)"]
 ```
 
 ### Complete Piecewise Scoring Function
@@ -92,12 +91,12 @@ This guarantees that depth $d + 1$ immediately searches the Principal Variation 
 
 ## Zero-allocation pre-scored implementation
 
-Because move ordering executes millions of times per second inside `NegamaxBitboard`, `OrderBitMoves` uses two specialized paths:
-1. **Capture Fast-Path (`moves[0].IsCapture`):** Because captures are mandatory in Checkers ([Chapter 03](03-rules-and-move-generation.md)), if `moves[0].IsCapture` is true, *every* legal move at the node is a capture. `OrderBitMoves` skips killer and history lookups altogether, sorts by `CaptureCount` and `IsPromotion`, and promotes `ttPackedMove` to `moves[0]`.
-2. **Quiet Pre-Scored Path (`Span<int> scores = stackalloc int[count]`):** Each quiet move is scored once into a stack-resident `Span<int>` buffer before running an in-place insertion sort that skips `currentScore == 0` in $O(1)$:
+Because move ordering executes millions of times per second inside `NegaMax`, `OrderBitMoves` scores all generated candidate moves in a single pass into a stack-allocated buffer before running an in-place insertion sort:
+1. **Single-Pass Pre-Scoring (`Span<int> scores = stackalloc int[count]`):** Evaluates candidate moves into the L1 stack frame, assigning scores across all 7 priority tiers: Transposition Table hash move ($10\text{M}$), mandatory captures ($1\text{M} + 10\text{k}\cdot c + 1\text{k}\cdot p$), promotions ($500\text{k}$), primary/secondary killers ($90\text{k} / 80\text{k}$), and history ($0\dots 70\text{k}$).
+2. **In-Place Insertion Sort:** Sorts `moves` descending by `scores[i]`, immediately skipping moves with `currentScore == 0` in $O(1)$ to avoid unnecessary comparisons among unscored quiet moves.
+3. **Dedicated Quiescence Capture Sorting (`OrderCaptureMoves`):** In `Quiescence`, where only tactical captures are generated via `GenerateCaptures`, the helper `OrderCaptureMoves` sorts the capture slice directly by capture count and promotion without stack buffer allocation.
 
 ```csharp
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
 private void OrderBitMoves(
     Span<BitMove> moves,
     ushort ttPackedMove,
@@ -109,40 +108,47 @@ private void OrderBitMoves(
     if (count <= 1)
         return;
 
-    if (moves[0].IsCapture)
-    {
-        OrderCaptureMoves(moves);
-        if (hasTtMove)
-        {
-            for (int i = 1; i < count; i++)
-            {
-                if (moves[i].PackedMove == ttPackedMove)
-                {
-                    BitMove ttMove = moves[i];
-                    for (int j = i; j > 0; j--)
-                        moves[j] = moves[j - 1];
-                    moves[0] = ttMove;
-                    break;
-                }
-            }
-        }
-        return;
-    }
-
     Span<int> scores = stackalloc int[count];
-    ushort killer1 = (uint)ply < MaxPly ? _killers[ply << 1] : (ushort)0;
-    ushort killer2 = (uint)ply < MaxPly ? _killers[(ply << 1) + 1] : (ushort)0;
+    ushort killer1 = 0;
+    ushort killer2 = 0;
+    if ((uint)ply < MaxPly)
+    {
+        int killerIdx = ply << 1;
+        killer1 = _killers[killerIdx];
+        killer2 = _killers[killerIdx + 1];
+    }
     int sideOffset = (int)sideToMove << 12;
 
     for (int i = 0; i < count; i++)
     {
         ref readonly BitMove m = ref moves[i];
         ushort packed = m.PackedMove;
-        scores[i] = (hasTtMove && packed == ttPackedMove) ? 10_000_000
-            : m.IsPromotion ? 500_000
-            : packed == killer1 ? 90_000
-            : packed == killer2 ? 80_000
-            : _history[sideOffset | (m.From << 6) | m.To];
+        int score;
+        if (hasTtMove && packed == ttPackedMove)
+        {
+            score = 10_000_000;
+        }
+        else if (m.IsCapture)
+        {
+            score = 1_000_000 + (m.CaptureCount * 10_000) + (m.IsPromotion ? 1_000 : 0);
+        }
+        else if (m.IsPromotion)
+        {
+            score = 500_000;
+        }
+        else if (packed == killer1)
+        {
+            score = 90_000;
+        }
+        else if (packed == killer2)
+        {
+            score = 80_000;
+        }
+        else
+        {
+            score = _history[sideOffset | (m.From << 6) | m.To];
+        }
+        scores[i] = score;
     }
 
     for (int i = 1; i < count; i++)
