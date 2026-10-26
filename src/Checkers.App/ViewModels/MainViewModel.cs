@@ -948,7 +948,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CanUndo = Session.CanUndo && !IsAiThinking;
         CanRedo = Session.CanRedo && !IsAiThinking;
 
-        MoveCountText = $"Move {state.FullMoveNumber}";
+        // Counts individual moves (both players), the same in all four games.
+        int moveCount = Session.MoveHistory.Count;
+        MoveCountText = moveCount == 1 ? "1 move" : $"{moveCount} moves";
 
         // Update MoveHistoryList
         MoveHistoryList.Clear();

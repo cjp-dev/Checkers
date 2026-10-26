@@ -5,6 +5,7 @@
 @implements IDisposable
 @inject MainViewModel Vm
 @inject BrowserDialogService Dialogs
+@inject AppearanceStore AppearanceStore
 @inject IJSRuntime JS
 
 <PageTitle>@(string.IsNullOrEmpty(Vm.FileName) ? "Checkers (Draughts) – Play Online" : $"Checkers – {System.IO.Path.GetFileName(Vm.FileName)}")</PageTitle>
@@ -103,6 +104,7 @@
         <div class="board-area">
             <Board Squares="Vm.Squares"
                    IsFlipped="Vm.IsBoardFlipped"
+                   Style="_appearance.Board"
                    OnSquareClick="HandleSquareClick" />
         </div>
 
@@ -184,7 +186,7 @@
             <!-- Move History Panel -->
             <section class="panel history-panel" aria-label="Move History">
                 <h2>MOVE HISTORY (@Vm.MoveCountText)</h2>
-                <div class="history-list">
+                <div class="history-list" @ref="_historyList">
                     @if (Vm.MoveHistoryList.Count == 0)
                     {
                         <p class="history-empty">No moves played yet.</p>
@@ -192,12 +194,16 @@
                     else
                     {
                         <ol>
-                            @for (int i = 0; i < Vm.MoveHistoryList.Count; i++)
+                            @for (int i = 0; i < Vm.MoveHistoryList.Count; i += 2)
                             {
-                                var move = Vm.MoveHistoryList[i];
+                                int last = Vm.MoveHistoryList.Count - 1;
                                 <li>
-                                    <span class="move-num">@(i + 1).</span>
-                                    <span class="move-notation">@move.Notation</span>
+                                    <span class="move-num">@(i / 2 + 1).</span>
+                                    <span class="move-ply @(i == last ? "latest" : null)">@Vm.MoveHistoryList[i].Notation</span>
+                                    @if (i + 1 <= last)
+                                    {
+                                        <span class="move-ply @(i + 1 == last ? "latest" : null)">@Vm.MoveHistoryList[i + 1].Notation</span>
+                                    }
                                 </li>
                             }
                         </ol>
@@ -215,9 +221,14 @@
     private bool _mobileDrawerOpen;
     private DotNetObjectReference<Home>? _self;
     private bool _renderPending;
+    private Appearance _appearance = Appearance.Default;
+    private ElementReference _historyList;
+    private int _scrolledHistoryMoves;
 
     protected override void OnInitialized()
     {
+        _appearance = AppearanceStore.Load();
+
         _menus =
         [
             new("File",
@@ -233,12 +244,15 @@
                 new("vs Computer (Black)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.ComputerVsHuman)), IsChecked: () => Vm.IsComputerVsHuman, Radio: true),
                 new("vs Human (Two players)", new AsyncRelayCommand(() => Vm.SetGameMode(GameMode.HumanVsHuman)), IsChecked: () => Vm.IsHumanVsHuman, Radio: true),
                 new("Switch sides", Vm.SwitchSidesCommand, SeparatorBefore: true),
-                new("Settings...", Vm.EditSettingsCommand, SeparatorBefore: true),
+                new("Settings...", Vm.EditSettingsCommand, "F2", SeparatorBefore: true),
             ]),
             new("Options",
             [
                 new("Analysis", Vm.ToggleAnalysisCommand, "Ctrl+A", IsChecked: () => Vm.IsAnalysisVisible),
                 new("Sound", Vm.ToggleSoundCommand, IsChecked: () => Vm.IsSoundOn),
+                BoardEntry("Walnut Board", BoardStyle.Walnut, separatorBefore: true),
+                BoardEntry("Golden Oak Board", BoardStyle.GoldenOak),
+                BoardEntry("Reddish Wood Board", BoardStyle.ReddishWood),
             ]),
             new("Help",
             [
@@ -273,6 +287,13 @@
         {
             _self = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("checkers.registerShortcuts", _self);
+            await JS.InvokeVoidAsync("checkers.initMenuAlignment");
+        }
+
+        if (Vm.MoveHistoryList.Count != _scrolledHistoryMoves)
+        {
+            _scrolledHistoryMoves = Vm.MoveHistoryList.Count;
+            await JS.InvokeVoidAsync("checkers.scrollHistoryToEnd", _historyList);
         }
     }
 
@@ -297,6 +318,7 @@
         if (_self is not null)
         {
             ((IJSInProcessRuntime)JS).InvokeVoid("checkers.unregisterShortcuts");
+            ((IJSInProcessRuntime)JS).InvokeVoid("checkers.cleanupMenuAlignment");
             _self.Dispose();
         }
     }
@@ -313,6 +335,8 @@
         "m" => RunAsync(Vm.MoveNowCommand),
         "f1" => RunUserGuide(),
         "shift+f1" => RunDocs(),
+        "f2" => RunAsync(Vm.EditSettingsCommand),
+        "escape" => CloseMenus(),
         _ => Task.CompletedTask,
     };
 
@@ -351,6 +375,23 @@
     }
 
     private void OnDialogChanged() => InvokeAsync(StateHasChanged);
+
+    private MenuEntry BoardEntry(string text, BoardStyle board, bool separatorBefore = false) =>
+        new(text, ChangeAppearance(a => a with { Board = board }), IsChecked: () => _appearance.Board == board, Radio: true, SeparatorBefore: separatorBefore);
+
+    private RelayCommand ChangeAppearance(Func<Appearance, Appearance> change) => new(() =>
+    {
+        _appearance = change(_appearance);
+        AppearanceStore.Save(_appearance);
+    });
+
+    private Task CloseMenus()
+    {
+        _openMenu = null;
+        _mobileDrawerOpen = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
 
     private void ToggleMenu(MenuDefinition menu) => _openMenu = _openMenu == menu ? null : menu;
 

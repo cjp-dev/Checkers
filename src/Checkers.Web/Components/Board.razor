@@ -1,7 +1,7 @@
 @using Checkers.App.ViewModels
 @using Checkers.Core.Models
 
-<div class="checkerboard-container">
+<div class="checkerboard-container @StyleClass">
     <div class="checkerboard"
          role="grid"
          aria-label="Checkers Board">
@@ -68,6 +68,16 @@
 
     [Parameter]
     public EventCallback<SquareViewModel> OnSquareClick { get; set; }
+
+    [Parameter]
+    public BoardStyle Style { get; set; } = BoardStyle.Walnut;
+
+    private string? StyleClass => Style switch
+    {
+        BoardStyle.GoldenOak => "wood golden-oak",
+        BoardStyle.ReddishWood => "wood reddish-wood",
+        _ => null,
+    };
 
     private async Task HandleKeyDown(KeyboardEventArgs e, SquareViewModel sq)
     {

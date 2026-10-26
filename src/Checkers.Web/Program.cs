@@ -17,6 +17,7 @@ builder.Services.AddSingleton<IDialogService>(services => services.GetRequiredSe
 builder.Services.AddSingleton<IGameFileService, BrowserGameFileService>();
 builder.Services.AddSingleton<ISoundService, BrowserSoundService>();
 builder.Services.AddSingleton<BrainDocs>();
+builder.Services.AddSingleton<AppearanceStore>();
 builder.Services.AddSingleton<ISettingsStore, LocalStorageSettingsStore>();
 builder.Services.AddSingleton<IEngineHost, WebEngineHost>();
 builder.Services.AddSingleton(services => new MainViewModel(
@@ -27,4 +28,9 @@ builder.Services.AddSingleton(services => new MainViewModel(
     services.GetRequiredService<IEngineHost>(),
     services.GetRequiredService<ISettingsStore>()));
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Like the other games, the browser version starts with the human playing White against the computer.
+await host.Services.GetRequiredService<MainViewModel>().SetGameMode(Checkers.App.Models.GameMode.HumanVsComputer);
+
+await host.RunAsync();

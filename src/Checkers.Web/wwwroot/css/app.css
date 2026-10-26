@@ -31,9 +31,6 @@ body {
 
 .menubar-inner {
     display: flex;
-    max-width: 1650px;
-    margin: 0 auto;
-    padding: 0 1.5rem;
     width: 100%;
 }
 
@@ -131,8 +128,11 @@ body {
     display: none;
 }
 
+/* Lined up with the board's left edge by initMenuAlignment */
 .desktop-menu-bar {
     display: flex;
+    padding-left: var(--menu-left, 1.5rem);
+    width: 100%;
 }
 
 .mobile-drawer {
@@ -233,8 +233,8 @@ body {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
         border-radius: 4px;
         touch-action: manipulation;
     }
@@ -333,6 +333,7 @@ body {
     margin: 0 auto;
     width: 100%;
     align-items: flex-start;
+    justify-content: center;
     container-type: inline-size;
 }
 
@@ -389,6 +390,28 @@ body {
 
 .square.dark {
     background-color: #795548;
+}
+
+/* Wood board styles (Options menu): the texture shows through tinted squares */
+.checkerboard-container.wood,
+.checkerboard-container.wood .checkerboard {
+    background: var(--wood) center / cover;
+}
+
+.checkerboard-container.golden-oak {
+    --wood: url(../textures/wood-golden-oak.jpg);
+}
+
+.checkerboard-container.reddish-wood {
+    --wood: url(../textures/wood-reddish.jpg);
+}
+
+.checkerboard-container.wood .square.light {
+    background-color: rgba(255, 244, 222, 0.55);
+}
+
+.checkerboard-container.wood .square.dark {
+    background-color: rgba(48, 24, 8, 0.55);
 }
 
 .square.dark:hover {
@@ -831,21 +854,31 @@ body {
     font-size: 0.85rem;
 }
 
+/* One row per round: number, first player's move, second player's move */
+.history-list li {
+    display: grid;
+    grid-template-columns: 2rem 1fr 1fr;
+    align-items: baseline;
+    padding: 0.1rem 0;
+}
+
 .move-num {
     color: #64748B;
     font-weight: 600;
-    margin-right: 0.4rem;
-    display: inline-block;
-    min-width: 1.5rem;
 }
 
-.history-list li {
-    padding: 0.15rem 0;
-}
-
-.move-notation {
+.move-ply {
+    justify-self: start;
+    padding: 0 0.35rem;
+    border-radius: 4px;
     font-weight: 600;
     color: #2C3E50;
+}
+
+/* The most recent move */
+.move-ply.latest {
+    background: #EBF5FB;
+    color: #1F618D;
 }
 
 /* Modal Dialogs (DialogHost) */

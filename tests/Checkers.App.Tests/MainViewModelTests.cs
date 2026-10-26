@@ -1226,6 +1226,18 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MoveCountText_CountsIndividualMoves()
+    {
+        var vm = new MainViewModel();
+        vm.MoveCountText.Should().Be("0 moves");
+
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        vm.MoveCountText.Should().Be("1 move");
+    }
+
+    [Fact]
     public async Task SetGameMode_VsComputer_InMiddleOfGame_StartsNewGameIfConfirmed()
     {
         var dialogs = new TestDialogService { ConfirmResult = true };
