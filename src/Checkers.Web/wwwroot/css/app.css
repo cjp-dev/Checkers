@@ -826,8 +826,17 @@ body {
 
 .history-list ol {
     margin: 0;
-    padding-left: 1.25rem;
+    padding-left: 0;
+    list-style: none;
     font-size: 0.85rem;
+}
+
+.move-num {
+    color: #64748B;
+    font-weight: 600;
+    margin-right: 0.4rem;
+    display: inline-block;
+    min-width: 1.5rem;
 }
 
 .history-list li {

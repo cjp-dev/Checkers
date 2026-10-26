@@ -1148,6 +1148,84 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task NewGame_InMiddleOfGame_PromptsConfirmation_AndAbortsIfCanceled()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = false };
+        var vm = new MainViewModel(dialogService: dialogs);
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        await vm.NewGameCommand.ExecuteAsync(null);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        dialogs.LastConfirmTitle.Should().Be("Start New Game");
+        vm.Session.MoveHistory.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task NewGame_InMiddleOfGame_StartsNewGameIfConfirmed()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = true };
+        var vm = new MainViewModel(dialogService: dialogs);
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        await vm.NewGameCommand.ExecuteAsync(null);
+
+        dialogs.ConfirmCallCount.Should().Be(1);
+        vm.Session.MoveHistory.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task NewGame_BeforeFirstMove_DoesNotPrompt()
+    {
+        var dialogs = new TestDialogService { ConfirmResult = false };
+        var vm = new MainViewModel(dialogService: dialogs);
+
+        await vm.NewGameCommand.ExecuteAsync(null);
+
+        dialogs.ConfirmCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EditSettings_NonClockChange_KeepsTheClocks()
+    {
+        var dialogs = new TestDialogService();
+        var vm = new MainViewModel(dialogService: dialogs);
+        vm.Settings = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5);
+        vm.ResetClock();
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        await Task.Delay(800);
+        TimeSpan blackTimeLeft = vm.BlackTimeLeft;
+        blackTimeLeft.Should().BeLessThan(TimeSpan.FromMinutes(5));
+
+        dialogs.SettingsToReturn = vm.Settings with { UseOpeningBook = !vm.Settings.UseOpeningBook };
+        await vm.EditSettings();
+
+        vm.BlackTimeLeft.Should().BeLessThanOrEqualTo(blackTimeLeft);
+        vm.WhiteTimeLeft.Should().BeLessThanOrEqualTo(TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task EditSettings_NewGameTime_ResetsTheClocks()
+    {
+        var dialogs = new TestDialogService();
+        var vm = new MainViewModel(dialogService: dialogs);
+        vm.Settings = new GameSettings(TimeControlMode.TimePerGame, 8, 5, 5);
+        vm.ResetClock();
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        dialogs.SettingsToReturn = vm.Settings with { MinutesPerGame = 10 };
+        await vm.EditSettings();
+
+        vm.WhiteTimeLeft.Should().Be(TimeSpan.FromMinutes(10));
+        vm.BlackTimeLeft.Should().Be(TimeSpan.FromMinutes(10));
+    }
+
+    [Fact]
     public async Task SetGameMode_VsComputer_InMiddleOfGame_StartsNewGameIfConfirmed()
     {
         var dialogs = new TestDialogService { ConfirmResult = true };

@@ -487,8 +487,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    public void NewGame()
+    public async Task NewGame()
     {
+        if (!await ConfirmAbandonGameAsync())
+            return;
+
         CancelAi();
         ClearSelection();
         Analysis.Reset();
@@ -693,18 +696,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         if (mode is GameMode.ComputerVsHuman or GameMode.HumanVsComputer)
         {
-            if (Session.Status == GameStatus.InProgress && Session.MoveHistory.Count > 0)
-            {
-                if (_dialogService != null)
-                {
-                    bool confirm = await _dialogService.ConfirmAsync(
-                        "Start New Game",
-                        "A game is currently in progress. Starting a new game will end the current game.\n\nDo you want to start a new game?");
-
-                    if (!confirm)
-                        return;
-                }
-            }
+            if (!await ConfirmAbandonGameAsync())
+                return;
 
             CancelAi();
             ClearSelection();
@@ -726,6 +719,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 RefreshBoard();
             }
         }
+    }
+
+    private async Task<bool> ConfirmAbandonGameAsync()
+    {
+        if (_dialogService == null || Session.Status != GameStatus.InProgress || Session.MoveHistory.Count == 0)
+            return true;
+
+        return await _dialogService.ConfirmAsync(
+            "Start New Game",
+            "A game is currently in progress. Starting a new game will end the current game.\n\nDo you want to start a new game?");
     }
 
     [RelayCommand]
@@ -756,8 +759,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 IsGameModified = true;
             }
 
+            // Only a new time control (or a new game) resets the clocks; other settings keep the time used so far.
+            bool clockChanged = updated.Mode != Settings.Mode || updated.MinutesPerGame != Settings.MinutesPerGame;
             Settings = updated;
-            ResetClock();
+            if (clockChanged || variantChanged)
+            {
+                ResetClock();
+            }
 
             if (variantChanged)
             {
