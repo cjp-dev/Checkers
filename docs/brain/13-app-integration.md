@@ -81,8 +81,8 @@ flowchart TD
 
 | Feature | WPF Desktop (`Checkers.Wpf`) | Blazor WebAssembly (`Checkers.Web`) |
 |---|---|---|
-| **Runtime Model** | Multi-threaded CLR (`.NET 10`) | Single-threaded WebAssembly (`.NET 10` AOT) |
-| **AI Search Execution** | Background ThreadPool (`Task.Run`) | Cooperative macrotask yielding (`await Task.Delay(1)`) |
+| **Runtime Model** | Multi-threaded CLR (`.NET 10`) | WebAssembly (`.NET 10` AOT): the page and an engine Web Worker each run their own .NET runtime |
+| **AI Search Execution** | Background ThreadPool (`Task.Run`) | Engine Web Worker (`engine-worker.js` + `EngineWorker.ChooseMove`); `Task.Run` fallback when no worker is available |
 | **Telemetry Marshaling** | `Dispatcher` via `Progress<SearchAnalysis>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
 | **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (GameShell's `gameShell.openTextFile` / `gameShell.downloadTextFile` in `gameshell.js`) |
 | **Audio Synthesis** | Procedural PCM wave synthesis (`SoundService`) | Web Audio / HTML5 audio interop (`checkers.playSound`) |
@@ -90,7 +90,7 @@ flowchart TD
 
 ---
 
-## Desktop ThreadPool vs. WebAssembly Cooperative Yielding
+## Desktop ThreadPool vs. WebAssembly Web Worker
 
 ```mermaid
 sequenceDiagram
@@ -127,9 +127,11 @@ sequenceDiagram
 In WPF, UI rendering runs on the main STA thread while `Task.Run` executes `MinimaxPlayer.GetMoveAsync` on a background ThreadPool worker. `Progress<SearchAnalysis>` automatically marshals callbacks onto the WPF `Dispatcher`, keeping animations and telemetry updates smooth at 60 FPS.
 
 ### Blazor WebAssembly
-In standard WebAssembly, C# code shares the browser's single UI thread with the DOM renderer:
-* If `MinimaxPlayer` ran synchronously without yielding, the browser could not process queued `Progress<T>` callbacks or repaint the screen until the entire search finished.
-* By awaiting `Task.Delay(1, cancellationToken)` after each completed depth iteration and on $\ge 150\text{ ms}$ heartbeats, `MinimaxPlayer` yields a macrotask slice to the browser event loop. During that slice, `BrowserSynchronizationContext` invokes the pending `Progress<SearchAnalysis>` handler, `AnalysisViewModel.Updated` triggers `StateHasChanged()`, and the browser paints the updated depth, node count, and evaluation score in real time.
+In WebAssembly, the page's C# code shares the browser's UI thread with the DOM renderer, so a search on that thread would freeze the page. `WebEngineHost` therefore runs the search in an engine Web Worker:
+* The worker (`engine-worker.js`) starts its own .NET runtime and calls `EngineWorker.ChooseMove`, which runs `MinimaxPlayer.GetMoveAsync` synchronously inside the worker. The page stays free to render.
+* `MinimaxPlayer` reports a `SearchAnalysis` about every $100\text{ ms}$. The worker's `ProgressPoster` sends it to the page with `postMessage` (at most every $100\text{ ms}$ unless the depth or best move changed), and `WebEngineHost.OnProgress` passes it to `AnalysisViewModel`, which triggers `StateHasChanged()`.
+* Move Now and cancel are written to a `SharedArrayBuffer` (1 = Move Now, 2 = cancel). `ProgressPoster` polls it on each report and cancels the matching token. If the worker does not stop within $300\text{ ms}$, or shared memory is not available, the page restarts the worker and plays the best move from the last analysis.
+* If the worker cannot start, `WebEngineHost` falls back to `LocalEngineHost` (`Task.Run` on the page's runtime).
 
 ---
 

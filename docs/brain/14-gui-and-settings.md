@@ -67,9 +67,9 @@ The top menu bar provides rapid access to game session management, player config
 
 ### 1. File Menu
 * **New Game (`Ctrl+N`):** If a game with moves is in progress, first asks *"A game is currently in progress. Starting a new game will end the current game. Do you want to start a new game?"* (Yes/No). Then resets the board to the initial 24-piece layout, clears move history, empties undo/redo stacks, restores countdown chess clocks to full duration, clears modified game flags, and begins a new match with White to move.
-* **Open... (`Ctrl+O`):** Loads saved Portable Draughts Notation (`.pdn`) match records, restoring board setup, rule variants, and move sequence.
-* **Save (`Ctrl+S`):** Saves the ongoing game directly to the currently active `.pdn` file.
-* **Save As...:** Prompts for a file name and exports the match to `.pdn` format with full metadata headers (`[Event ...]`, `[Variant ...]`, `[Result ...]`, `[Date ...]`) and Draughts move history.
+* **Open... (`Ctrl+O`):** Loads a saved game record (`.checkers`, or `.pdn` in the desktop app), replays its moves and restores the rule variant and the settings from its tags.
+* **Save (`Ctrl+S`):** Saves the ongoing game to its current file, or asks for a file name the first time.
+* **Save As...:** Asks for a file name (default `Game.checkers`) and saves the game in PDN style: tags for the variant, game mode and settings (`[Variant ...]`, `[GameMode ...]`, `[TimeControlMode ...]`, `[Depth ...]`, `[SecondsPerMove ...]`, `[MinutesPerGame ...]`, `[TranspositionTableEntries ...]`) followed by the moves played (undone moves are not saved).
 * **Exit** *(WPF desktop only)*: Closes the desktop application window.
 
 ### 2. Game Menu
@@ -232,16 +232,15 @@ When enabled via **Options $\rightarrow$ Analysis** (`Ctrl+A`), the telemetry pa
 | **Time** | Elapsed thinking duration in `m:ss.f` format (e.g., `0:01.9` or `0:00.0`). |
 
 ### Natural Feel Delay ($250\text{ ms}$)
-When the engine selects an instant opening move or makes an immediate forced recapture, `MainViewModel` inserts a brief $250\text{ ms}$ delay (`AiDelayMs`). This prevents jarring, sub-millisecond stone placement, giving the human player natural visual feedback that the computer has registered the move and responded.
+Before every computer move, `MainViewModel` waits $250\text{ ms}$ (`AiDelayMs`) before it starts the search. Instant moves, such as book moves and forced captures, therefore do not appear the moment the human has moved, which gives natural visual feedback that the computer has registered the move and responded.
 
-### Cooperative WebAssembly Yielding
-In the browser client (`Checkers.Web`), .NET executes within a single-threaded WebAssembly environment sharing the JavaScript UI thread:
-1. `MinimaxPlayer` monitors elapsed search time and checks a $\ge 150\text{ ms}$ heartbeat interval.
-2. Between candidate branches and at each completed depth iteration, it emits a `SearchAnalysis` telemetry snapshot and yields execution:
-   ```csharp
-   await Task.Delay(1, cancellationToken);
-   ```
-3. This relinquishes execution back to the browser's event loop, allowing `BrowserSynchronizationContext` to process pending UI events, dispatch `Analysis.Updated`, invoke `StateHasChanged()`, and smoothly render the animated thinking bar and telemetry statistics at 60 FPS without freezing the browser tab.
+### Search in a Web Worker
+In the browser client (`Checkers.Web`), the search runs in an engine Web Worker, not on the page's UI thread:
+1. The worker starts its own .NET runtime and runs `MinimaxPlayer` there, so the page keeps rendering the thinking bar and the board while the computer thinks.
+2. `MinimaxPlayer` reports a `SearchAnalysis` snapshot about every $100\text{ ms}$ and at each completed depth; the worker posts it to the page, which updates the Analysis panel.
+3. **Move Now** and **New Game** reach the worker through a `SharedArrayBuffer` signal that it checks on each report. If the worker cannot start, the page runs the search itself with `Task.Run`.
+
+See [Chapter 13](13-app-integration.md#blazor-webassembly) for the details.
 
 ---
 
@@ -250,7 +249,7 @@ In the browser client (`Checkers.Web`), .NET executes within a single-threaded W
 | Shortcut | Scope | Action |
 |---|---|---|
 | `Ctrl+N` | Global | Start a New Game |
-| `Ctrl+O` | Global | Open saved game record (`.pdn`) |
+| `Ctrl+O` | Global | Open saved game record (`.checkers`) |
 | `Ctrl+S` | Global | Save current game record |
 | `Ctrl+Z` | Board | Undo last move (refunds clock time in vs Computer mode) |
 | `Ctrl+Y` | Board | Redo previously undone move |

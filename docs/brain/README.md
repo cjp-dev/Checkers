@@ -64,7 +64,7 @@ The documentation is organized in a logical progression from architectural overv
 | 10 | [Opening book](10-opening-book.md) | **AI & Search** | Full-width early plies (`lv 0..3`), Drop-Out Expansion (`lv 4..12`), Negamax back-up, and embedded 12-ply English & International books |
 | 11 | [Bitboards](11-bitboards.md) | **Optimization** | 64-bit bitboard representation (`4 × ulong`), $O(1)$ `HasAnyCapture`, ray fast-rejection guards, `POPCNT` evaluation, copy-make search |
 | 12 | [Engine improvements during development](12-engine-improvements.md) | **Optimization** | Complete chronological milestones (Bitboard refactor & Phases 1–7) with 40-position deep, timed, self-play, and opening book benchmarks |
-| 13 | [App integration](13-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly AOT macrotask yielding, live analysis pipeline |
+| 13 | [App integration](13-app-integration.md) | **Architecture** | Shared MVVM ViewModels, WPF desktop ThreadPool vs. Blazor WebAssembly engine Web Worker, live analysis pipeline |
 | 14 | [GUI and settings](14-gui-and-settings.md) | **Architecture** | Modern light UI layout, menu bar & responsive mobile drawer, dual-card scoreboard & clocks, modified status indicator, settings dialog, and shortcuts |
 | 15 | [Glossary](15-glossary.md) | **Reference** | Definitions and cross-references for all Checkers, Draughts, Bitboard, and AI search terms |
 | 16 | [References](16-references.md) | **Reference** | Official WCDF/FMJD rulesets, foundational AI search literature, and .NET 10 technical references |

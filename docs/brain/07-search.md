@@ -189,7 +189,7 @@ When the position is outside the opening book (or the book is disabled), `Minima
 4. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
 5. **Non-Blocking UI & Cancellation:**
    - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`.
-   - **Blazor WebAssembly:** Yields cooperatively to the browser event loop via `await Task.Delay(1, cancellationToken)` after each completed depth and on $\ge 150\text{ ms}$ heartbeats ([Chapter 13](13-app-integration.md)).
+   - **Blazor WebAssembly:** Runs in an engine Web Worker with its own .NET runtime, so the search never blocks the page. Progress is reported about every $100\text{ ms}$, and Move Now and cancel arrive through a `SharedArrayBuffer` signal that the worker polls on each report ([Chapter 13](13-app-integration.md)).
    - **Amortized Cancellation Check:** Every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`), `cancellationToken.ThrowIfCancellationRequested()` and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.
 
 ---

@@ -50,7 +50,8 @@
       <!-- Byte 12: byte Flags (1B = 72px) -->
       <rect x="608" y="0" width="72" height="54" rx="4" fill="#FCE7F3" stroke="#DB2777" stroke-width="1.5"/>
       <text x="644" y="22" text-anchor="middle" font-family="Consolas, monospace" font-size="10.5" font-weight="700" fill="#831843">Flags</text>
-      <text x="644" y="40" text-anchor="middle" font-size="9" fill="#9D174D">Bound|Eval</text>
+      <text x="644" y="36" text-anchor="middle" font-size="9" fill="#9D174D">Bound|Occ</text>
+      <text x="644" y="47" text-anchor="middle" font-size="9" fill="#9D174D">Move|Eval</text>
       <text x="644" y="70" text-anchor="middle" font-family="Consolas, monospace" font-size="9.5" fill="#64748B">Byte 12</text>
 
       <!-- Bytes 13..15: Padding (3B = 88px) -->

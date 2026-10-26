@@ -86,9 +86,9 @@ flowchart TD
 In a direct-mapped (1-slot) hash table, whenever two active positions map to the same index, one must immediately overwrite or be rejected by the other. Grouping 4 entries into a **64-byte set-associative bucket** (`BucketSize = 4`) provides 4 independent ways within the exact same L1/L3 cache line fetch.
 
 Following `get_storage_index` and `add_hash_entry` in [`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), when `Store` is called for `key`:
-1. **Pass 1 — Exact Match or Empty Way:** If any of the 4 ways (`w = 0..3`) already holds `Key32 == key32` or is empty (`Flags == 0`), that way is selected immediately (`victimWay = w`).
+1. **Pass 1 — Exact Match or Empty Way:** If any of the 4 ways (`w = 0..3`) already holds `Key32 == key32` or is empty (`!IsOccupied`, the `OccupiedBit` in `Flags` is clear), that way is selected immediately.
    - **BestMove Preservation on Fail-Low:** When updating the same position (`existing.Key32 == key32`), if the new store has no best move (`bestMove == 0`, e.g., an `UpperBound` fail-low) or is an eval-only store, the existing `BestMove` and `StaticEval` are preserved!
-   - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth` (or `existing.Age != _age`).
+   - **Depth Protection on Same Key:** An existing entry for the *same* key from the current generation is only overwritten if the new bound is `Exact`, or `depth >= existing.Depth` (or `existing.Age != _age`). Otherwise only a missing static evaluation is added.
 2. **Pass 2 — Priority-Based Victim Eviction:** If all 4 ways in the bucket hold distinct keys (`Key32 != key32`), `Store` evaluates a replacement priority score (`get_storage_index` in `hash_table.c:341`) for each way $w \in \{0, 1, 2, 3\}$ and overwrites the slot with the **lowest priority**:
 
 $$\text{Priority}(e) = e.\text{Depth} - 8 \cdot \bigl((\text{age} - e.\text{Age}) \bmod 256\bigr) + \begin{cases} 4 & \text{if } e.\text{Bound} = \text{Exact} \\ 0 & \text{otherwise} \end{cases}$$

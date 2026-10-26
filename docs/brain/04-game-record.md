@@ -102,18 +102,18 @@ Every `BoardState` carries a 64-bit `ZobristHash` encoding exact piece placement
 [`GameRecordFormat.cs`](../../src/Checkers.Core/Engine/GameRecordFormat.cs) serializes and parses complete matches using the standard **Portable Draughts Notation (PDN)** format (`.pdn` / `.checkers`).
 
 ### 1. PDN File Structure & Metadata Tags
-Saved files consist of seven header tag pairs followed by numbered full-move pairs:
+Saved files consist of seven tag pairs (`MainViewModel` writes the variant, game mode and settings), a blank line, and the moves played, separated by spaces. Undone moves are not saved. The parser also accepts move numbers (`1.`), results (`1-0`, `*`) and `{...}` or `;` comments, so ordinary PDN files load too:
 
 ```pdn
-[Event "Checkers Match"]
 [Variant "International"]
 [GameMode "HumanVsComputer"]
 [TimeControlMode "TimePerGame"]
 [Depth "8"]
 [SecondsPerMove "5"]
 [MinutesPerGame "5"]
+[TranspositionTableEntries "1048576"]
 
-1. 21-17 11-15 2. 23-19 8-11 3. 17-14 9x18 4. 22x15 11x18
+21-17 11-15 23-19 8-11
 ```
 
 ### 2. Parsing & Replay Verification Pipeline
