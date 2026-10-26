@@ -2,26 +2,22 @@ using Microsoft.JSInterop;
 using Checkers.App.Models;
 using Checkers.App.Services;
 using Checkers.App.ViewModels;
+using Checkers.Web.Components;
+using GameShell;
 
 namespace Checkers.Web.Services;
 
 /// <summary>
 /// Modal dialogs shown one at a time by the DialogHost component.
 /// </summary>
-public sealed class BrowserDialogService(IJSInProcessRuntime js) : IDialogService
+public sealed class BrowserDialogService(IJSInProcessRuntime js, ShellDialogs dialogs) : IDialogService
 {
     private const string Caption = "Checkers";
-
-    private readonly Queue<DialogRequest> _queue = new();
-
-    public event Action? Changed;
-
-    public DialogRequest? Current => _queue.TryPeek(out DialogRequest? request) ? request : null;
 
     public async Task<GameSettings?> EditSettingsAsync(GameSettings current)
     {
         var settings = new SettingsViewModel(current);
-        int button = await ShowAsync(new DialogRequest { Title = "Settings", Settings = settings, Buttons = ["OK", "Cancel"] });
+        int button = await ShowAsync(new DialogRequest { Title = "Settings", Body = SettingsForm.For(settings), Buttons = ["OK", "Cancel"] });
         return button == 0 ? settings.ToSettings() : null;
     }
 
@@ -63,53 +59,5 @@ public sealed class BrowserDialogService(IJSInProcessRuntime js) : IDialogServic
         return await ShowAsync(request) == 0 ? request.Text : null;
     }
 
-    /// <summary>Closes the dialog if it is still the one shown.</summary>
-    public void Close(DialogRequest request, int button)
-    {
-        if (Current != request)
-        {
-            return;
-        }
-
-        _queue.Dequeue();
-        request.Complete(button);
-        Changed?.Invoke();
-    }
-
-    private Task<int> ShowAsync(DialogRequest request)
-    {
-        _queue.Enqueue(request);
-        Changed?.Invoke();
-        return request.Result;
-    }
-}
-
-/// <summary>The first button is the default (Enter), the last one cancels (Escape).</summary>
-public sealed class DialogRequest
-{
-    private readonly TaskCompletionSource<int> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    public required string Title { get; init; }
-
-    public string? Heading { get; init; }
-
-    public string? Message { get; init; }
-
-    public IReadOnlyList<string> Paragraphs { get; init; } = [];
-
-    /// <summary>A picture shown to the left of the text, with a caption below it.</summary>
-    public string? Picture { get; init; }
-
-    public string? PictureCaption { get; init; }
-
-    public SettingsViewModel? Settings { get; init; }
-
-    /// <summary>The text in the input box; null for dialogs without one.</summary>
-    public string? Text { get; set; }
-
-    public required IReadOnlyList<string> Buttons { get; init; }
-
-    internal Task<int> Result => _result.Task;
-
-    internal void Complete(int button) => _result.TrySetResult(button);
+    private Task<int> ShowAsync(DialogRequest request) => dialogs.ShowAsync(request);
 }

@@ -13,6 +13,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddSingleton(new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddSingleton(services => (IJSInProcessRuntime)services.GetRequiredService<IJSRuntime>());
+builder.Services.AddSingleton<ShellDialogs>();
 builder.Services.AddSingleton<BrowserDialogService>();
 builder.Services.AddSingleton<IDialogService>(services => services.GetRequiredService<BrowserDialogService>());
 builder.Services.AddSingleton<IGameFileService, BrowserGameFileService>();

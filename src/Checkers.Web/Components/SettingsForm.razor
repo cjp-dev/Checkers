@@ -1,0 +1,58 @@
+@using Checkers.App.ViewModels
+
+@* Checkers's Settings form, shown in GameShell's dialog (DialogRequest.Body). *@
+<fieldset class="settings" style="margin-bottom: 1rem;">
+    <legend>Checkers Rules &amp; Variant</legend>
+    <label><input type="radio" name="variant" checked="@Settings.IsInternational" @onchange="() => { Settings.IsInternational = true; }" /> International (Flying Kings)</label>
+    <label><input type="radio" name="variant" checked="@Settings.IsEnglish" @onchange="() => { Settings.IsEnglish = true; }" /> English Checkers (1-step Kings)</label>
+</fieldset>
+
+<fieldset class="settings" style="margin-bottom: 1rem;">
+    <legend>How long may the computer think?</legend>
+
+    <label><input type="radio" name="mode" checked="@Settings.IsFixedDepth" @onchange="() => { Settings.IsFixedDepth = true; }" /> Fixed depth</label>
+    <input type="range" min="1" max="@Settings.MaxDepth" aria-label="Depth" disabled="@(!Settings.IsFixedDepth)"
+           @bind="Settings.Depth" @bind:event="oninput" />
+    <span>@Settings.Depth plies</span>
+
+    <label><input type="radio" name="mode" checked="@Settings.IsTimePerMove" @onchange="() => { Settings.IsTimePerMove = true; }" /> Time per move</label>
+    <input type="range" min="1" max="@Settings.MaxSecondsPerMove" aria-label="Seconds per move" disabled="@(!Settings.IsTimePerMove)"
+           @bind="Settings.SecondsPerMove" @bind:event="oninput" />
+    <span>@Settings.SecondsPerMove seconds</span>
+
+    <label><input type="radio" name="mode" checked="@Settings.IsTimePerGame" @onchange="() => { Settings.IsTimePerGame = true; }" /> Time per game</label>
+    <input type="range" min="1" max="@Settings.MaxMinutesPerGame" aria-label="Minutes per game" disabled="@(!Settings.IsTimePerGame)"
+           @bind="Settings.MinutesPerGame" @bind:event="oninput" />
+    <span>@Settings.MinutesPerGame minutes</span>
+</fieldset>
+
+<fieldset class="settings">
+    <legend>Checkers Opening Book &amp; Transposition Table</legend>
+    <label style="font-weight: normal; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" @bind="Settings.UseOpeningBook" />
+        <span>@Settings.OpeningBookDescription</span>
+    </label>
+    <div style="margin-top: 0.75rem;">
+        <label style="margin-top: 0; display: block; margin-bottom: 0.25rem;">Transposition Table Capacity:</label>
+        <select class="dialog-text" style="margin: 0.25rem 0;" @bind="Settings.TranspositionTableEntries">
+            <option value="1048576">1,048,576 entries (16 MB) - Default</option>
+            <option value="2097152">2,097,152 entries (32 MB)</option>
+            <option value="4194304">4,194,304 entries (64 MB)</option>
+            <option value="8388608">8,388,608 entries (128 MB)</option>
+            <option value="16777216">16,777,216 entries (256 MB)</option>
+        </select>
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public SettingsViewModel Settings { get; set; } = default!;
+
+    /// <summary>The form as a dialog body; as a component it re-renders itself while the user edits it.</summary>
+    public static RenderFragment For(SettingsViewModel settings) => builder =>
+    {
+        builder.OpenComponent<SettingsForm>(0);
+        builder.AddComponentParameter(1, nameof(Settings), settings);
+        builder.CloseComponent();
+    };
+}

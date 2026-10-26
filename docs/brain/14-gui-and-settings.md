@@ -271,7 +271,8 @@ In the browser client (`Checkers.Web`), .NET executes within a single-threaded W
 | [`SearchAnalysis.cs`](../../src/Checkers.Core/AI/SearchAnalysis.cs) | `SearchAnalysis` | Immutable record transporting live telemetry snapshots from the search worker across thread boundaries |
 | [`Home.razor`](../../src/Checkers.Web/Pages/Home.razor) | `Home` | Web page: Checkers' menus, board styles and shortcuts, built from the shared [GameShell](https://github.com/cjp-dev/GameShell) components (`ShellLayout` with menu bar, mobile drawer and keyboard shortcuts, `StatusPanel`, `AnalysisPanel`, `MoveHistoryPanel`) |
 | [`Board.razor`](../../src/Checkers.Web/Components/Board.razor) | `Board` | SVG vector board renderer handling square coordinates, piece styling, selection glows, and board flips |
-| [`DialogHost.razor`](../../src/Checkers.Web/Components/DialogHost.razor) | `DialogHost` | Modal dialog host for Game Settings, About box, new game confirmation prompts, and timeout continuation dialogs |
+| [`DialogHost.razor`](https://github.com/cjp-dev/GameShell/blob/main/src/GameShell/Dialogs/DialogHost.razor) | `DialogHost` | Shared modal dialog host (GameShell) for the About box, new game confirmation prompts and timeout continuation dialogs |
+| [`SettingsForm.razor`](../../src/Checkers.Web/Components/SettingsForm.razor) | `SettingsForm` | The Game Settings form, shown in the dialog host |
 | [`MainWindow.xaml`](../../src/Checkers.Wpf/MainWindow.xaml) | `MainWindow` | WPF desktop application window defining native menus, input bindings, vector board hosting, and telemetry panels |
 | [`checkers.js`](../../src/Checkers.Web/wwwroot/js/checkers.js) | JavaScript Bridge | Sound playback; the keyboard shortcuts (`Ctrl+N`, `Ctrl+Z`, `F1`, `Shift+F1`, `F2`, `Escape`, ...) and file helpers come from GameShell's `gameshell.js` |
 
