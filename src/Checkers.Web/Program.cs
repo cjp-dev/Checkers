@@ -5,6 +5,7 @@ using Checkers.App.Services;
 using Checkers.App.ViewModels;
 using Checkers.Web;
 using Checkers.Web.Services;
+using GameShell;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -16,7 +17,7 @@ builder.Services.AddSingleton<BrowserDialogService>();
 builder.Services.AddSingleton<IDialogService>(services => services.GetRequiredService<BrowserDialogService>());
 builder.Services.AddSingleton<IGameFileService, BrowserGameFileService>();
 builder.Services.AddSingleton<ISoundService, BrowserSoundService>();
-builder.Services.AddSingleton<BrainDocs>();
+builder.Services.AddBrainDocs("The Checkers brain", "Checkers", "https://github.com/cjp-dev/Checkers/blob/main/docs/brain/");
 builder.Services.AddSingleton<AppearanceStore>();
 builder.Services.AddSingleton<ISettingsStore, LocalStorageSettingsStore>();
 builder.Services.AddSingleton<IEngineHost, WebEngineHost>();

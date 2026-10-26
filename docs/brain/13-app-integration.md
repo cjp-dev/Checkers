@@ -86,7 +86,7 @@ flowchart TD
 | **Telemetry Marshaling** | `Dispatcher` via `Progress<SearchAnalysis>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
 | **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (`fileService.js`) |
 | **Audio Synthesis** | Procedural PCM wave synthesis (`SoundService`) | Web Audio / HTML5 audio interop (`checkers.playSound`) |
-| **Documentation Viewer** | Links to documentation | Integrated `/docs` route (`BrainDocs.cs` + Markdig + KaTeX + Mermaid) |
+| **Documentation Viewer** | Links to documentation | Integrated `/docs` route (GameShell's `DocsViewer` and `BrainDocs` + Markdig + KaTeX + Mermaid) |
 
 ---
 
@@ -124,12 +124,12 @@ In standard WebAssembly, C# code shares the browser's single UI thread with the 
 
 ---
 
-## Integrated Documentation Pipeline (`BrainDocs.cs`)
+## Integrated Documentation Pipeline (`BrainDocs`)
 
-In `Checkers.Web`, the contents of `docs/brain/` (including Markdown chapters and `images/*.svg` diagrams) are copied into `wwwroot/content/brain/` during build (`CopyBrainDocs` target in `Checkers.Web.csproj`) and rendered dynamically at `/docs`:
-1. **Chapter Discovery:** [`BrainDocs.cs`](../../src/Checkers.Web/Services/BrainDocs.cs) parses `README.md` and extracts all links matching `^\d\d-[a-z0-9-]+\.md$` to build the ordered sidebar Table of Contents and Previous/Next chapter navigation.
+In `Checkers.Web`, the contents of `docs/brain/` (including Markdown chapters and `images/*.svg` diagrams) are copied into `wwwroot/content/brain/` during build (`CopyBrainDocs` target in `Checkers.Web.csproj`) and rendered dynamically at `/docs` ([`Docs.razor`](../../src/Checkers.Web/Pages/Docs.razor) routes to the shared [GameShell](https://github.com/cjp-dev/GameShell) viewer, registered with `AddBrainDocs` in `Program.cs`):
+1. **Chapter Discovery:** [`BrainDocs.cs`](https://github.com/cjp-dev/GameShell/blob/main/src/GameShell/Docs/BrainDocs.cs) parses `README.md` and extracts all links to chapter files (`05-evaluation.md`, or appendices such as `appendix-a-....md`) to build the ordered sidebar Table of Contents and Previous/Next chapter navigation.
 2. **Markdown to HTML:** Markdig (`UseAutoIdentifiers(AutoIdentifierOptions.GitHub)` + `UseAdvancedExtensions()`) compiles Markdown tables, code blocks, math spans (`$...$`, `$$...$$`), and `mermaid` fenced blocks into semantic HTML and rewrites relative image and chapter URLs.
-3. **Client-Side Math & Diagrams:** [`docs.js`](../../src/Checkers.Web/wwwroot/js/docs.js) lazy-loads **KaTeX** to typeset LaTeX equations and **Mermaid.js** to render architectural flowcharts, sequence diagrams, and state machines.
+3. **Client-Side Math & Diagrams:** [`docs.js`](https://github.com/cjp-dev/GameShell/blob/main/src/GameShell/wwwroot/docs.js) lazy-loads **KaTeX** to typeset LaTeX equations and **Mermaid.js** to render architectural flowcharts, sequence diagrams, and state machines.
 
 ---
 
