@@ -1,0 +1,3 @@
+[submodule "external/GameShell"]
+	path = external/GameShell
+	url = https://github.com/cjp-dev/GameShell.git

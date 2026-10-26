@@ -1,6 +1,5 @@
 @page "/"
 @using System.ComponentModel
-@using System.Windows.Input
 @using CommunityToolkit.Mvvm.Input
 @implements IDisposable
 @inject MainViewModel Vm
@@ -10,224 +9,60 @@
 
 <PageTitle>@(string.IsNullOrEmpty(Vm.FileName) ? "Checkers (Draughts) – Play Online" : $"Checkers – {System.IO.Path.GetFileName(Vm.FileName)}")</PageTitle>
 
-<div class="app" inert="@(Dialogs.Current is not null)">
-    <!-- Top Menu Bar -->
-    <nav class="menubar" aria-label="Menu">
-        <div class="menubar-inner">
-            <!-- Mobile Header (Visible on screens <= 768px) -->
-            <div class="mobile-nav-bar">
-                <span class="app-brand">Checkers</span>
-                <button class="hamburger-btn"
-                        aria-label="Open navigation menu"
-                        aria-expanded="@(_mobileDrawerOpen ? "true" : "false")"
-                        @onclick="ToggleMobileDrawer">
-                    <span class="hamburger-icon">☰</span>
-                </button>
-            </div>
+<ShellLayout Brand="Checkers" Menus="_menus" Shortcuts="_shortcuts" Inert="@(Dialogs.Current is not null)" OnCommand="() => { }">
+    <BoardArea>
+        <Board Squares="Vm.Squares"
+               IsFlipped="Vm.IsBoardFlipped"
+               Style="_appearance.Board"
+               OnSquareClick="HandleSquareClick" />
+    </BoardArea>
+    <SidePanels>
+        <StatusPanel IsModified="Vm.IsStatusModified"
+                     VariantBadge="@Vm.VariantBadgeText"
+                     SettingBadge="@(Vm.IsGameSettingVisible ? Vm.SettingsBadgeText : null)"
+                     StatusText="@Vm.StatusText"
+                     IsThinking="Vm.IsAiThinking"
+                     First="@WhitePlayer"
+                     Second="@BlackPlayer"
+                     Undo="Vm.UndoCommand" CanUndo="Vm.CanUndo"
+                     Redo="Vm.RedoCommand" CanRedo="Vm.CanRedo"
+                     MoveNow="@(Vm.IsVsComputer ? Vm.MoveNowCommand : null)" CanMoveNow="Vm.IsAiThinking" />
 
-            <!-- Desktop Menu Bar (Visible on screens > 768px) -->
-            <div class="desktop-menu-bar">
-                @foreach (MenuDefinition menu in _menus)
-                {
-                    <div class="menu">
-                        <button class="menu-title @(menu == _openMenu ? "open" : null)"
-                                aria-haspopup="menu"
-                                aria-expanded="@(menu == _openMenu ? "true" : "false")"
-                                @onclick="() => ToggleMenu(menu)"
-                                @onmouseenter="() => HoverMenu(menu)">
-                            @menu.Title
-                        </button>
-                        @if (menu == _openMenu)
-                        {
-                            <div class="menu-items" role="menu">
-                                @foreach (MenuEntry entry in menu.Entries)
-                                {
-                                    bool? isChecked = entry.IsChecked?.Invoke();
-                                    string role = isChecked is null ? "menuitem" : entry.Radio ? "menuitemradio" : "menuitemcheckbox";
-                                    <button role="@role"
-                                            aria-checked="@(isChecked is { } c ? (c ? "true" : "false") : null)"
-                                            class="@(entry.SeparatorBefore ? "separator-before" : null)"
-                                            disabled="@(!entry.Command.CanExecute(null))"
-                                            @onclick="() => RunAsync(entry.Command)">
-                                        <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
-                                        <span>@entry.Text</span>
-                                        <span class="shortcut">@entry.Shortcut</span>
-                                    </button>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
-    </nav>
-    @if (_openMenu is not null)
-    {
-        <div class="menu-backdrop" @onclick="() => _openMenu = null"></div>
-    }
+        @if (Vm.ShowAnalysis)
+        {
+            <AnalysisPanel Analysis="_analysis" />
+        }
 
-    <!-- Mobile Navigation Drawer -->
-    <div class="mobile-drawer @(_mobileDrawerOpen ? "open" : null)" role="dialog" aria-modal="true" aria-label="Game Menu">
-        <div class="mobile-drawer-header">
-            <span class="mobile-drawer-title">Menu</span>
-            <button class="mobile-drawer-close" aria-label="Close menu" @onclick="CloseMobileDrawer">✕</button>
-        </div>
-        <div class="mobile-drawer-body">
-            @foreach (MenuDefinition menu in _menus)
-            {
-                <div class="mobile-menu-section">
-                    <div class="mobile-section-header">@menu.Title</div>
-                    <div class="mobile-section-items">
-                        @foreach (MenuEntry entry in menu.Entries)
-                        {
-                            bool? isChecked = entry.IsChecked?.Invoke();
-                            <button class="mobile-menu-item @(entry.SeparatorBefore ? "separator-before" : null)"
-                                    disabled="@(!entry.Command.CanExecute(null))"
-                                    @onclick="() => RunAsync(entry.Command)">
-                                <span class="check">@(isChecked == true ? (entry.Radio ? "●" : "✓") : "")</span>
-                                <span class="label">@entry.Text</span>
-                            </button>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    </div>
-    @if (_mobileDrawerOpen)
-    {
-        <div class="mobile-drawer-backdrop" @onclick="CloseMobileDrawer"></div>
-    }
-
-    <!-- Main Game Area -->
-    <main class="content">
-        <!-- Checkerboard View -->
-        <div class="board-area">
-            <Board Squares="Vm.Squares"
-                   IsFlipped="Vm.IsBoardFlipped"
-                   Style="_appearance.Board"
-                   OnSquareClick="HandleSquareClick" />
-        </div>
-
-        <!-- Right Side Information Panels -->
-        <div class="side-panels">
-            <!-- Game Status Panel -->
-            <section class="panel status-panel" role="status" aria-label="Game Status">
-                <div class="panel-header">
-                    <h2 class="@(Vm.IsStatusModified ? "status-modified" : null)">STATUS</h2>
-                    <span class="mode-badge">@Vm.VariantBadgeText</span>
-                    @if (Vm.IsGameSettingVisible)
-                    {
-                        <span class="setting-text">@Vm.SettingsBadgeText</span>
-                    }
-                </div>
-
-                <div class="status-message">
-                    <p class="status-main">@Vm.StatusText</p>
-                    @if (Vm.IsAiThinking)
-                    {
-                        <div class="thinking-bar" role="progressbar" aria-label="AI Thinking">
-                            <div class="thinking-progress"></div>
-                        </div>
-                    }
-                </div>
-
-                <!-- Piece Counts & Player Indicators -->
-                <div class="pieces-scoreboard">
-                    <div class="score-card white-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.White && Vm.Session.Status == GameStatus.InProgress ? "active-turn" : "")">
-                        <div class="player-header @(Vm.IsClockVisible ? "" : "no-clock")">
-                            <div class="player-title">
-                                <span class="piece-dot white-dot"></span>
-                                <span class="player-name">White</span>
-                            </div>
-                            @if (Vm.IsClockVisible)
-                            {
-                                <span class="player-clock">@Vm.WhiteClockText</span>
-                            }
-                        </div>
-                        <span class="player-role">@Vm.WhitePlayerLabel</span>
-                        <div class="piece-count">@Vm.WhitePiecesCount</div>
-                        <span class="kings-count">Kings: @Vm.WhiteKingsCount</span>
-                    </div>
-
-                    <div class="score-card black-score @(Vm.Session.CurrentState.ActivePlayer == PieceColor.Black && Vm.Session.Status == GameStatus.InProgress ? "active-turn" : "")">
-                        <div class="player-header @(Vm.IsClockVisible ? "" : "no-clock")">
-                            <div class="player-title">
-                                <span class="piece-dot black-dot"></span>
-                                <span class="player-name">Black</span>
-                            </div>
-                            @if (Vm.IsClockVisible)
-                            {
-                                <span class="player-clock">@Vm.BlackClockText</span>
-                            }
-                        </div>
-                        <span class="player-role">@Vm.BlackPlayerLabel</span>
-                        <div class="piece-count">@Vm.BlackPiecesCount</div>
-                        <span class="kings-count">Kings: @Vm.BlackKingsCount</span>
-                    </div>
-                </div>
-
-                <!-- Quick Action Buttons -->
-                <div class="action-buttons">
-                    <button class="btn btn-secondary" disabled="@(!Vm.CanUndo)" @onclick="() => RunAsync(Vm.UndoCommand)">Undo</button>
-                    <button class="btn btn-secondary" disabled="@(!Vm.CanRedo)" @onclick="() => RunAsync(Vm.RedoCommand)">Redo</button>
-                    @if (Vm.IsVsComputer)
-                    {
-                        <button class="btn btn-warning" disabled="@(!Vm.IsAiThinking)" @onclick="() => RunAsync(Vm.MoveNowCommand)">Move Now</button>
-                    }
-                </div>
-            </section>
-
-            <!-- Real-time Analysis Panel (Live updates while AI thinks) -->
-            @if (Vm.ShowAnalysis)
-            {
-                <AnalysisPanel Analysis="Vm.Analysis" />
-            }
-
-            <!-- Move History Panel -->
-            <section class="panel history-panel" aria-label="Move History">
-                <h2>MOVE HISTORY (@Vm.MoveCountText)</h2>
-                <div class="history-list" @ref="_historyList">
-                    @if (Vm.MoveHistoryList.Count == 0)
-                    {
-                        <p class="history-empty">No moves played yet.</p>
-                    }
-                    else
-                    {
-                        <ol>
-                            @for (int i = 0; i < Vm.MoveHistoryList.Count; i += 2)
-                            {
-                                int last = Vm.MoveHistoryList.Count - 1;
-                                <li>
-                                    <span class="move-num">@(i / 2 + 1).</span>
-                                    <span class="move-ply @(i == last ? "latest" : null)">@Vm.MoveHistoryList[i].Notation</span>
-                                    @if (i + 1 <= last)
-                                    {
-                                        <span class="move-ply @(i + 1 == last ? "latest" : null)">@Vm.MoveHistoryList[i + 1].Notation</span>
-                                    }
-                                </li>
-                            }
-                        </ol>
-                    }
-                </div>
-            </section>
-        </div>
-    </main>
-</div>
+        <MoveHistoryPanel Rows="@HistoryRows" />
+    </SidePanels>
+</ShellLayout>
 
 @code {
     private MenuDefinition[] _menus = [];
-    private ICommand[] _commands = [];
-    private MenuDefinition? _openMenu;
-    private bool _mobileDrawerOpen;
-    private DotNetObjectReference<Home>? _self;
-    private bool _renderPending;
+    private Dictionary<string, Func<Task>> _shortcuts = [];
+    private AnalysisAdapter _analysis = default!;
     private Appearance _appearance = Appearance.Default;
-    private ElementReference _historyList;
-    private int _scrolledHistoryMoves;
+    private bool _renderPending;
+
+    private bool IsActive(PieceColor color) =>
+        Vm.Session.CurrentState.ActivePlayer == color && Vm.Session.Status == GameStatus.InProgress;
+
+    // White moves first, so its card comes first.
+    private PlayerInfo WhitePlayer => new(
+        "White", "white-dot", Vm.WhitePlayerLabel, Vm.WhitePiecesCount.ToString(), $"Kings: {Vm.WhiteKingsCount}",
+        Vm.IsClockVisible ? Vm.WhiteClockText : null, IsActive(PieceColor.White));
+
+    private PlayerInfo BlackPlayer => new(
+        "Black", "black-dot", Vm.BlackPlayerLabel, Vm.BlackPiecesCount.ToString(), $"Kings: {Vm.BlackKingsCount}",
+        Vm.IsClockVisible ? Vm.BlackClockText : null, IsActive(PieceColor.Black));
+
+    private IReadOnlyList<MoveHistoryRow> HistoryRows =>
+        MoveHistoryRow.Pair([.. Vm.MoveHistoryList.Select(move => move.Notation)]);
 
     protected override void OnInitialized()
     {
         _appearance = AppearanceStore.Load();
+        _analysis = new AnalysisAdapter(Vm.Analysis);
 
         _menus =
         [
@@ -262,11 +97,22 @@
             ]),
         ];
 
-        _commands = _menus.SelectMany(menu => menu.Entries).Select(entry => entry.Command).ToArray();
+        _shortcuts = new()
+        {
+            ["n"] = () => ShellCommands.RunAsync(Vm.NewGameCommand),
+            ["o"] = () => ShellCommands.RunAsync(Vm.OpenCommand),
+            ["s"] = () => ShellCommands.RunAsync(Vm.SaveCommand),
+            ["z"] = () => ShellCommands.RunAsync(Vm.UndoCommand),
+            ["y"] = () => ShellCommands.RunAsync(Vm.RedoCommand),
+            ["a"] = () => ShellCommands.RunAsync(Vm.ToggleAnalysisCommand),
+            ["m"] = () => ShellCommands.RunAsync(Vm.MoveNowCommand),
+            ["f1"] = () => Run(OpenUserGuide),
+            ["shift+f1"] = () => Run(OpenDocs),
+            ["f2"] = () => ShellCommands.RunAsync(Vm.EditSettingsCommand),
+        };
 
         Vm.PropertyChanged += OnChanged;
         Dialogs.Changed += OnDialogChanged;
-
         for (int r = 0; r < 8; r++)
         {
             for (int c = 0; c < 8; c++)
@@ -274,34 +120,12 @@
                 Vm.Squares[r, c].PropertyChanged += OnChanged;
             }
         }
-
-        foreach (var command in _commands)
-        {
-            command.CanExecuteChanged += OnChanged;
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            _self = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("checkers.registerShortcuts", _self);
-            await JS.InvokeVoidAsync("checkers.initMenuAlignment");
-        }
-
-        if (Vm.MoveHistoryList.Count != _scrolledHistoryMoves)
-        {
-            _scrolledHistoryMoves = Vm.MoveHistoryList.Count;
-            await JS.InvokeVoidAsync("checkers.scrollHistoryToEnd", _historyList);
-        }
     }
 
     public void Dispose()
     {
         Vm.PropertyChanged -= OnChanged;
         Dialogs.Changed -= OnDialogChanged;
-
         for (int r = 0; r < 8; r++)
         {
             for (int c = 0; c < 8; c++)
@@ -309,36 +133,7 @@
                 Vm.Squares[r, c].PropertyChanged -= OnChanged;
             }
         }
-
-        foreach (var command in _commands)
-        {
-            command.CanExecuteChanged -= OnChanged;
-        }
-
-        if (_self is not null)
-        {
-            ((IJSInProcessRuntime)JS).InvokeVoid("checkers.unregisterShortcuts");
-            ((IJSInProcessRuntime)JS).InvokeVoid("checkers.cleanupMenuAlignment");
-            _self.Dispose();
-        }
     }
-
-    [JSInvokable]
-    public Task OnShortcut(string key) => Dialogs.Current is not null ? Task.CompletedTask : key switch
-    {
-        "n" => RunAsync(Vm.NewGameCommand),
-        "o" => RunAsync(Vm.OpenCommand),
-        "s" => RunAsync(Vm.SaveCommand),
-        "z" => RunAsync(Vm.UndoCommand),
-        "y" => RunAsync(Vm.RedoCommand),
-        "a" => RunAsync(Vm.ToggleAnalysisCommand),
-        "m" => RunAsync(Vm.MoveNowCommand),
-        "f1" => RunUserGuide(),
-        "shift+f1" => RunDocs(),
-        "f2" => RunAsync(Vm.EditSettingsCommand),
-        "escape" => CloseMenus(),
-        _ => Task.CompletedTask,
-    };
 
     private void HandleSquareClick(SquareViewModel square) => Vm.SquareClicked(square);
 
@@ -348,15 +143,9 @@
     private void OpenDocs() =>
         ((IJSInProcessRuntime)JS).InvokeVoid("open", BrainDocs.PageRoute(""), "_blank", "noopener");
 
-    private Task RunUserGuide()
+    private static Task Run(Action action)
     {
-        OpenUserGuide();
-        return Task.CompletedTask;
-    }
-
-    private Task RunDocs()
-    {
-        OpenDocs();
+        action();
         return Task.CompletedTask;
     }
 
@@ -384,55 +173,4 @@
         _appearance = change(_appearance);
         AppearanceStore.Save(_appearance);
     });
-
-    private Task CloseMenus()
-    {
-        _openMenu = null;
-        _mobileDrawerOpen = false;
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private void ToggleMenu(MenuDefinition menu) => _openMenu = _openMenu == menu ? null : menu;
-
-    private void ToggleMobileDrawer() => _mobileDrawerOpen = !_mobileDrawerOpen;
-
-    private void CloseMobileDrawer() => _mobileDrawerOpen = false;
-
-    private void HoverMenu(MenuDefinition menu)
-    {
-        if (_openMenu is not null)
-        {
-            _openMenu = menu;
-        }
-    }
-
-    private async Task RunAsync(ICommand command)
-    {
-        _openMenu = null;
-        _mobileDrawerOpen = false;
-        if (!command.CanExecute(null))
-            return;
-
-        if (command is IAsyncRelayCommand asyncCommand)
-        {
-            await asyncCommand.ExecuteAsync(null);
-        }
-        else
-        {
-            command.Execute(null);
-        }
-
-        StateHasChanged();
-    }
-
-    private sealed record MenuDefinition(string Title, MenuEntry[] Entries);
-
-    private sealed record MenuEntry(
-        string Text,
-        ICommand Command,
-        string? Shortcut = null,
-        Func<bool>? IsChecked = null,
-        bool Radio = false,
-        bool SeparatorBefore = false);
 }

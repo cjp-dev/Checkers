@@ -9,6 +9,9 @@ on:
       - 'src/Checkers.Core/**'
       - 'docs/brain/**'
       - 'Images/**'
+      - 'external/GameShell'
+      - 'external/GameShell/**'
+      - '.gitmodules'
       - '.github/workflows/azure-static-web-apps.yml'
   workflow_dispatch:
 
@@ -19,7 +22,10 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
+      # The shared GUI (GameShell) is a git submodule.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - uses: actions/setup-dotnet@v4
         with:

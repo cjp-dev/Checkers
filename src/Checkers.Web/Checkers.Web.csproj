@@ -22,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Checkers.App\Checkers.App.csproj" />
     <ProjectReference Include="..\Checkers.Core\Checkers.Core.csproj" />
+    <!-- The shared game GUI (git submodule). -->
+    <ProjectReference Include="..\..\external\GameShell\src\GameShell\GameShell.csproj" />
   </ItemGroup>
 
   <!-- The brain documentation is shown by the Docs pages; copied into wwwroot (git-ignored). -->

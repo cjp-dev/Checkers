@@ -15,7 +15,7 @@ public sealed class BrowserGameFileService(IJSRuntime js, BrowserDialogService d
         string[]? file;
         try
         {
-            file = await js.InvokeAsync<string[]?>("checkers.openTextFile", DefaultExtension);
+            file = await js.InvokeAsync<string[]?>("gameShell.openTextFile", DefaultExtension);
         }
         catch (JSException exception)
         {
@@ -42,7 +42,7 @@ public sealed class BrowserGameFileService(IJSRuntime js, BrowserDialogService d
             }
         }
 
-        await js.InvokeVoidAsync("checkers.downloadTextFile", name, text);
+        await js.InvokeVoidAsync("gameShell.downloadTextFile", name, text);
         return name;
     }
 }
