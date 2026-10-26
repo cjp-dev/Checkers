@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Checkers.App.Models;
 using Checkers.App.Services;
 using Checkers.App.ViewModels;
@@ -581,6 +582,77 @@ public class MainViewModelTests
         vm.NewGameCommand.Execute(null);
         vm.FileName.Should().BeEmpty();
         vm.Title.Should().Be("Checkers (Draughts)");
+    }
+
+    [Fact]
+    public async Task AiTurn_InstantMove_WaitsForTheDelay()
+    {
+        var vm = new MainViewModel { AiDelayMs = 400 };
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.AiPlayerFactory = (settings, time) => new DelayedAiPlayer(vm.Session.LegalMoves.First(), 0);
+
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        await Task.Delay(150);
+        vm.Session.MoveHistory.Should().HaveCount(1);
+
+        await WaitForMovesAsync(vm, 2, TimeSpan.FromSeconds(3));
+        vm.Session.MoveHistory.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task AiTurn_SlowMove_IsPlayedWithoutTheDelay()
+    {
+        var vm = new MainViewModel { AiDelayMs = 1000 };
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.AiPlayerFactory = (settings, time) => new DelayedAiPlayer(vm.Session.LegalMoves.First(), 1200);
+
+        var clock = Stopwatch.StartNew();
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+
+        await WaitForMovesAsync(vm, 2, TimeSpan.FromSeconds(5));
+        vm.Session.MoveHistory.Should().HaveCount(2);
+        clock.ElapsedMilliseconds.Should().BeLessThan(1900, "the search took longer than the delay, so no delay is added");
+    }
+
+    [Fact]
+    public async Task AiTurn_MoveNow_SkipsTheDelay()
+    {
+        var vm = new MainViewModel { AiDelayMs = 10_000 };
+        vm.SetGameModeCommand.Execute(GameMode.HumanVsComputer);
+        vm.AiPlayerFactory = (settings, time) => new DelayedAiPlayer(vm.Session.LegalMoves.First(), 0);
+
+        vm.SquareClickedCommand.Execute(vm.Squares[5, 0]);
+        vm.SquareClickedCommand.Execute(vm.Squares[4, 1]);
+        await Task.Delay(100);
+        vm.IsAiThinking.Should().BeTrue();
+
+        vm.MoveNow();
+
+        await WaitForMovesAsync(vm, 2, TimeSpan.FromSeconds(2));
+        vm.Session.MoveHistory.Should().HaveCount(2);
+    }
+
+    private static async Task WaitForMovesAsync(MainViewModel vm, int count, TimeSpan timeout)
+    {
+        var clock = Stopwatch.StartNew();
+        while (vm.Session.MoveHistory.Count < count && clock.Elapsed < timeout)
+        {
+            await Task.Delay(20);
+        }
+    }
+
+    private sealed class DelayedAiPlayer(Move move, int delayMs) : IPlayer
+    {
+        public string Name => "Delayed AI";
+
+        public async ValueTask<Move> GetMoveAsync(BoardState state, IReadOnlyList<Move> legalMoves, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(delayMs, cancellationToken);
+            return move;
+        }
     }
 
     private class TestAiPlayer : IPlayer

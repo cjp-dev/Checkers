@@ -27,7 +27,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public IEngineHost EngineHost => _engineHost;
 
     /// <summary>
-    /// Artificial delay in milliseconds before AI starts searching to provide a natural feel.
+    /// Minimum time in milliseconds before the computer plays, so instant moves (book moves, forced captures) feel natural.
+    /// Searches that take longer are not delayed.
     /// Can be set to 0 in automated unit tests.
     /// </summary>
     public int AiDelayMs { get; set; } = 250;
@@ -1066,16 +1067,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             var legalMoves = Session.LegalMoves;
 
-            // Small delay for natural feel
-            if (AiDelayMs > 0)
-            {
-                await Task.Delay(AiDelayMs, token);
-            }
-
             var stateHashes = Session.StateHistory.Select(s => s.ZobristHash).ToList();
             var computerTime = Session.CurrentState.ActivePlayer == PieceColor.White ? _whiteTimeLeft : _blackTimeLeft;
+            long searchStart = Stopwatch.GetTimestamp();
             var (move, lastAnalysis) = await _engineHost.ChooseMoveAsync(
                 Session.CurrentState, legalMoves, Settings, computerTime, stateHashes, progress, token, moveNowToken);
+
+            // Instant moves (book moves, forced captures) wait until AiDelayMs has passed for a natural feel.
+            // Moves that took longer are played at once, and Move Now skips the wait.
+            int remainingMs = AiDelayMs - (int)Stopwatch.GetElapsedTime(searchStart).TotalMilliseconds;
+            if (remainingMs > 0 && !moveNowToken.IsCancellationRequested)
+            {
+                using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(token, moveNowToken);
+                try
+                {
+                    await Task.Delay(remainingMs, delayCts.Token);
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    // Move Now: play the move at once
+                }
+            }
 
             if (searchId == _searchId && !token.IsCancellationRequested && lastAnalysis != null)
             {

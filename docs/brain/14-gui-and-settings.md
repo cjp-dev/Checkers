@@ -232,7 +232,7 @@ When enabled via **Options $\rightarrow$ Analysis** (`Ctrl+A`), the telemetry pa
 | **Time** | Elapsed thinking duration in `m:ss.f` format (e.g., `0:01.9` or `0:00.0`). |
 
 ### Natural Feel Delay ($250\text{ ms}$)
-Before every computer move, `MainViewModel` waits $250\text{ ms}$ (`AiDelayMs`) before it starts the search. Instant moves, such as book moves and forced captures, therefore do not appear the moment the human has moved, which gives natural visual feedback that the computer has registered the move and responded.
+Instant moves, such as book moves and forced captures, would otherwise appear the moment the human has moved. `MainViewModel` therefore plays a computer move no sooner than $250\text{ ms}$ (`AiDelayMs`) after the search started: a search that took $40\text{ ms}$ waits another $210\text{ ms}$, while a search that took longer than $250\text{ ms}$ is played at once. **Move Now** skips the wait.
 
 ### Search in a Web Worker
 In the browser client (`Checkers.Web`), the search runs in an engine Web Worker, not on the page's UI thread:
