@@ -70,7 +70,7 @@ Official rulesets, foundational artificial intelligence research, bitboard engin
 * **CommunityToolkit.Mvvm:**
   * Source-generated MVVM observables and relay commands in `Checkers.App` ([Chapter 13](13-app-integration.md)).
 * **Markdig, KaTeX & Mermaid.js:**
-  * Browser-hosted Markdown, LaTeX mathematics, and diagram rendering pipeline in `Checkers.Web` ([Chapter 13](13-app-integration.md)).
+  * Browser-hosted Markdown, LaTeX mathematics, and diagram rendering pipeline in the shared GameShell docs viewer used by `Checkers.Web` ([Chapter 13](13-app-integration.md)).
 
 ---
 

@@ -15,7 +15,7 @@
 
   <!-- LEFT PANEL: English Checkers (1-Step King) -->
   <text x="215" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">English Checkers (1-Step King)</text>
-  <text x="215" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Moves 1 square in 4 directions • Jumps adjacent enemy onto immediate square behind</text>
+  <text x="215" y="46" text-anchor="middle" font-size="10.5" fill="#64748B">1 square in 4 directions • Jumps an adjacent enemy to the square behind</text>
 
   <g transform="translate(55,62)">
     <rect width="320" height="320" fill="#F1F5F9" stroke="#334155" stroke-width="2"/>
@@ -57,8 +57,8 @@
   </g>
 
   <!-- RIGHT PANEL: International Draughts (Flying King + Mandatory Continuation) -->
-  <text x="645" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E293B">International Draughts (Flying King &amp; Continuation Rule)</text>
-  <text x="645" y="46" text-anchor="middle" font-size="11.5" fill="#64748B">Flies across empty diagonal • Must choose Landing A when it enables a follow-up jump</text>
+  <text x="645" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#1E293B">International Draughts (Flying King &amp; Continuation Rule)</text>
+  <text x="645" y="46" text-anchor="middle" font-size="10.5" fill="#64748B">Flies along empty diagonals • Must land on A when it enables a follow-up jump</text>
 
   <g transform="translate(485,62)">
     <rect width="320" height="320" fill="#F1F5F9" stroke="#334155" stroke-width="2"/>

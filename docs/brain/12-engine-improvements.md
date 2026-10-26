@@ -11,12 +11,12 @@ Every milestone was validated against automated benchmark suites (`tools/Checker
 * **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`193 ms` ($0.19\text{ seconds}$)** in Phase 6 (**771× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
 * **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **21-ply forced win** on Position #40 in **`< 2.2 seconds`**.
 * **200-Game Bot-vs-Bot Self-Play Verification (`1000 ms/move`, 50 Balanced Opening Ballots × 2 Sides per Variant):** The Phase 6 static evaluation overhaul defeated the baseline evaluation by **`69.5 – 30.5` (`+41 =57 -2`, `+143.1 ± 42.9 Elo`, `100.0% LOS`)** in **English Checkers** and **`56.5 – 43.5` (`+22 =69 -9`, `+45.4 ± 37.8 Elo`, `99.2% LOS`)** in **International (Flying Kings) Checkers** (`126.0 / 200` combined, `+63 =126 -11`).
-* **Embedded 12-Ply DOE Opening Books (Phase 7):** Built across 3 stages of innovation—Stage 1 Top-Down Multi-PV ($k=3$) DAG to `lv 8` (`999` / `995` positions), Stage 2 Full-Width Early Plies (`lv 0..3`, `149` positions), and Stage 3 Depth-First Drop-Out Expansion (`lv 4..12`, search depth $d=16$)—yielding **`32,369` English** and **`26,367` International** book positions (`0` Negamax back-up errors).
+* **Embedded 12-Ply DOE Opening Books (Phase 7):** Built across 3 stages of innovation—Stage 1 Top-Down Multi-PV ($k=3$) DAG to `lv 8` (`999` / `995` positions), Stage 2 Full-Width Early Plies (`lv 0..3`, `149` positions), and Stage 3 Depth-First Drop-Out Expansion (`lv 4..12`, `60 s` Multi-PV search per position)—yielding **`32,369` English** and **`26,367` International** book positions (`0` Negamax back-up errors).
 
 > [!NOTE]
 > **Engineering Inspiration ([`Stermere/Checkers-Engine`](https://github.com/Stermere/Checkers-Engine)):** Phases 1 through 6 of this progression—as well as our node-equality verification gate, fixed-depth node-reduction benchmarks, and paired-ballot bot-vs-bot Elo harness (`EvaluationMatchRunner.cs`)—were directly inspired by Collin Kees's open-source C engine [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine). Specifically, Phase 1 adapted `has_any_jump` and 16-bit `(from << 8) | to` move packing; Phase 2 adapted the 16-byte 4-way cache-line bucket layout, victim replacement formula, and `_mm_prefetch` from [`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c); Phase 3 adapted [`killer_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/killer_table.c), [`draw_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/draw_table.c), and `USE_PVS` / `USE_HISTORY` from [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c); Phase 4 adapted `USE_RFP`, `USE_FUTILITY`, and `USE_VERIFIED_LMR` from [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c); Phase 5 adapted `USE_PARTIAL_ITERATION` and `TERMINATE_EARLY_THRESHOLD` from [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c); and Phase 6 ported the handcrafted static evaluator from [`board_eval.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_eval.c) and validated it using a paired-ballot match methodology modeled on [`bot_vs_bot.py`](https://github.com/Stermere/Checkers-Engine/blob/main/src/python/bot_vs_bot.py) and [`bench_eval_speed.py`](https://github.com/Stermere/Checkers-Engine/blob/main/src/python/nnue/bench_eval_speed.py).
 
-![Checkers Engine Evolution: From 2D Array Prototype to Phase 5 Bitboard Engine](images/engine-evolution-chart.svg)
+![Checkers Engine Evolution: From 2D Array Prototype to Phase 4 Bitboard Engine](images/engine-evolution-chart.svg)
 
 ---
 
@@ -25,7 +25,7 @@ Every milestone was validated against automated benchmark suites (`tools/Checker
 ```mermaid
 flowchart LR
     M0["Baseline Prototype<br/>Piece?[8,8] Array Engine<br/>0.65M NPS • 148.8s (40 Deep)"] --> M1["Milestone 1: Bitboards<br/>4×ulong + Copy-Make + POPCNT<br/>35.6M NPS • 50x–65x Faster"]
-    M1 --> M2["Milestone 2: Zobrist TT<br/>1M–16M Power-of-Two Cache<br/>−88.5% Nodes • 8.2x Pruning"]
+    M1 --> M2["Milestone 2: Zobrist TT<br/>1M–16M Power-of-Two Cache<br/>−88.4% Nodes • 8.2x Faster"]
     M2 --> P1["Milestone 3 (Phase 1): Speed<br/>O(1) HasAnyCapture + Ray Guards<br/>+6.2%..10.9% TT Throughput"]
     P1 --> P2["Milestone 4 (Phase 2): 4-Way TT<br/>64B Cache Buckets + Sse.Prefetch0<br/>−99.9%..100% Collisions"]
     P2 --> P3["Milestone 5 (Phase 3): Stage A<br/>Exact PVS + Killers + History<br/>−64.9% Nodes (No-TT) / −28.5% (TT)"]
@@ -196,18 +196,18 @@ In Milestone 1, the heap-allocated `Piece?[8, 8]` board representation and `List
 
 Detailed architectural documentation: [Chapter 08 – Transposition table](08-transposition-table.md).
 
-Before upgrading to 4-way buckets in Phase 2, we benchmarked the impact of Zobrist transposition caching across both Standard ($7\text{–}9$ plies) and Deep ($7\text{–}14$ plies) suites and compared the default $1,048,576$-entry table ($16\text{ MiB}$) against the maximum $16,777,216$-entry table ($256\text{ MiB}$):
+Before upgrading to 4-way buckets in Phase 2, we benchmarked the impact of Zobrist transposition caching across both Standard ($7\text{–}9$ plies) and Deep ($7\text{–}14$ plies) suites and compared the default $1{,}048{,}576$-entry table ($16\text{ MiB}$) against the maximum $16{,}777{,}216$-entry table ($256\text{ MiB}$):
 
 | Metric | **Standard Benchmark (7–9 plies)** | **Deep Benchmark (7–14 plies)** | **Scaling Comparison** |
 | :--- | ---: | ---: | :--- |
-| **Total Baseline Nodes (No TT)** | $2,408,731$ | **$95,898,151$** | **$39.8\times$ more baseline nodes** |
-| **Total Default TT Nodes ($1\text{M}$)** | $711,546$ | **$11,117,122$** | $15.6\times$ more TT nodes |
-| **Total Max TT Nodes ($16\text{M}$)** | $711,485$ | **$11,076,738$** | **Saves $40,384$ additional nodes** ($662\times$ larger node savings than at 7–9 plies) |
+| **Total Baseline Nodes (No TT)** | $2{,}408{,}731$ | **$95{,}898{,}151$** | **$39.8\times$ more baseline nodes** |
+| **Total Default TT Nodes ($1\text{M}$)** | $711{,}546$ | **$11{,}117{,}122$** | $15.6\times$ more TT nodes |
+| **Total Max TT Nodes ($16\text{M}$)** | $711{,}485$ | **$11{,}076{,}738$** | **Saves $40{,}384$ additional nodes** ($662\times$ larger node savings than at 7–9 plies) |
 | **Overall Node Reduction %** | **70.5%** | **88.4%** ($1\text{M}$) / **88.45%** ($16\text{M}$) | **+17.9 percentage points higher pruning efficiency** |
 | **Peak Single-Position Reduction** | **92.3%** (Pos 7) | **97.1%** (Pos 3: `2,152,631` $\rightarrow$ `62,373` nodes) | **32.53x single-position speedup** (`3,416 ms` $\rightarrow$ `105 ms`) |
 | **Overall Speedup Factor** | **3.22x** | **8.16x** ($1\text{M}$) / **8.06x** ($16\text{M}$) | **Speedup more than doubles ($3.22\text{x} \rightarrow 8.16\text{x}$)** |
-| **Total TT Cutoffs** | $20,686$ | **$532,359$** | **$25.7\times$ more direct hash cutoffs** |
-| **1-Slot Hash Collisions ($1\text{M}$ vs. $16\text{M}$)** | $608 \rightarrow 36$ | **$142,781 \rightarrow 9,165$** | **93.6% fewer collisions** at $16\text{M}$ (and later **100% eliminated** in Phase 2!) |
+| **Total TT Cutoffs** | $20{,}686$ | **$532{,}359$** | **$25.7\times$ more direct hash cutoffs** |
+| **1-Slot Hash Collisions ($1\text{M}$ vs. $16\text{M}$)** | $608 \rightarrow 36$ | **$142{,}781 \rightarrow 9{,}165$** | **93.6% fewer collisions** at $16\text{M}$ (and later **100% eliminated** in Phase 2!) |
 
 ---
 
@@ -478,7 +478,7 @@ Detailed architectural documentation: [Chapter 10 – Opening book](10-opening-b
 In **Phase 7**, we designed and generated embedded, human-readable opening books ([`OpeningBook.English.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.English.txt) and [`OpeningBook.International.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.International.txt)) across three iterative stages:
 1. **Stage 1 — Top-Down Multi-PV ($k = 3$) DAG (`lv 0..8`):** Used `MinimaxPlayer.SearchMultiPv` ($k=3$, $d=14$) to build a compact initial book of `999` English and `995` International positions, proving the Zobrist DAG format and bottom-up Negamax verification (`BookBuilder.CheckBackUp`).
 2. **Stage 2 — Full-Width Early Plies (`lv 0..3`):** Expanded all legal moves (`100%` width) across the first 4 plies (`149` core nodes) so the computer never falls out of book on moves 1–2 regardless of which of the 7 legal opening moves (`22-18`, `24-19`, `22-17`, `23-18`, `23-19`, `21-17`, `24-20`) a human opponent chooses.
-3. **Stage 3 — Depth-First Drop-Out Expansion (`lv 4..12`, Search Depth $d = 16$):** Replaced breadth-first expansion with Thomas Lincke's priority-driven **Drop-Out Expansion (DOE)** (`BookBuilder.ExpandDropOut`), continuously walking from the root to the highest-priority leaf within ` MaxDelta = 30 cp` (`W_player = 2`, `W_opponent = 1`), evaluating all legal moves at depth $d = 16$ (`32 MiB` TT), and immediately propagating backed-up Negamax scores (`PropagateBackUp`) to guide the next trajectory all the way to **100% completion at `lv 12`**.
+3. **Stage 3 — Depth-First Drop-Out Expansion (`lv 4..12`, `60 s` Multi-PV Search per Position):** Replaced breadth-first expansion with Thomas Lincke's priority-driven **Drop-Out Expansion (DOE)** (`BookBuilder.ExpandDropOut`), continuously walking from the root to the highest-priority leaf within ` MaxDelta = 30 cp` (`W_player = 2`, `W_opponent = 1`), evaluating each position with a `60 s` Multi-PV search (`32 MiB` TT), and immediately propagating backed-up Negamax scores (`PropagateBackUp`) to guide the next trajectory all the way to **100% completion at `lv 12`**.
 
 | Metric | Stage 1 (Width-3 DAG to `lv 8`) | **Stage 2 + 3 Final Book (`OpeningBook.English.txt`)** | **Stage 2 + 3 Final Book (`OpeningBook.International.txt`)** |
 | :--- | :---: | :---: | :---: |

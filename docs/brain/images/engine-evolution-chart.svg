@@ -99,6 +99,6 @@
       <text x="150" y="33" font-size="10" font-weight="700" fill="#FFFFFF">P4: 22 plies (Win in 23 / 2.15s!)</text>
     </g>
 
-    <text x="190" y="322" text-anchor="middle" font-size="10.5" font-weight="600" fill="#15803D">Up to 875x faster in English (No-TT: 142,038 ms → 302 ms)</text>
+    <text x="190" y="322" text-anchor="middle" font-size="10.5" font-weight="600" fill="#15803D">Up to 470x faster in English (No-TT: 142,038 ms → 302 ms)</text>
   </g>
 </svg>

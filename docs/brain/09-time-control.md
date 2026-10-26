@@ -50,21 +50,21 @@ flowchart TD
     Forced -- "Yes" --> RetForced["Immediate Return (1 ply Forced)<br/>LastSearchTerminatedEarly = true"]
     Forced -- "No" --> BookCheck{"UseOpeningBook &amp;<br/>Book Hit (12 plies)?"}
     BookCheck -- "Yes" --> RetBook["Immediate Return (0 ms, 0 Nodes)<br/>FromBook = true"]
-    BookCheck -- "No" --> D1["Stopwatch.StartNew()<br/>Complete Depth 1 (Always finishes)"]
-    D1 --> CheckSoft{"Elapsed >= T_soft<br/>(2/3 of budget)?"}
+    BookCheck -- "No" --> D1["Stopwatch.StartNew()<br/>Start depth d = 1 (no soft-limit check)"]
+    D1 --> RootLoop["Search root move i = 0 .. N-1 at depth d<br/>(currentOrder[0] = previous best move)"]
+    CheckSoft{"d = d + 1:<br/>Elapsed >= T_soft<br/>(2/3 of budget)?"}
     CheckSoft -- "Yes (Stop early)" --> Return["Return bestMoveOverall<br/>&amp; bestScoreOverall"]
-    CheckSoft -- "No (Time remains)" --> NextD["Start Depth d + 1<br/>(currentOrder[0] = previous best move)"]
-    NextD --> RootLoop["Search Root Move i = 0 .. N-1"]
-    RootLoop --> NodeCheck{"Every 4,096 nodes:<br/>Elapsed >= T_hard?"}
+    CheckSoft -- "No (Time remains)" --> RootLoop
+    RootLoop --> NodeCheck{"Before each root move and<br/>every 4,096 nodes:<br/>Elapsed >= T_hard?"}
     NodeCheck -- "No (Move i finished)" --> AdoptMove["If score > bestScoreThisDepth:<br/>Immediately publish to bestMoveOverall (Phase 5.1)<br/>&amp; track secondBestScoreThisDepth"]
-    AdoptMove --> MoreMoves{"More root moves<br/>at depth d+1?"}
+    AdoptMove --> MoreMoves{"More root moves<br/>at depth d?"}
     MoreMoves -- "Yes" --> RootLoop
-    MoreMoves -- "No (Completed d+1)" --> DomCheck{"Phase 5.2: Mate found OR<br/>Timed mode, d+1 >= 8 &amp;<br/>margin >= 150 cp for 2 plies?"}
-    DomCheck -- "Yes (Dominant / Mate)" --> Return
+    MoreMoves -- "No (Completed d)" --> DomCheck{"Stop after depth d?<br/>• d = max depth (D, or 48 when timed)<br/>• forced win found (score >= 28,000)<br/>• timed: all moves lose (score <= −28,000), or d >= 8 &amp;<br/>same best move led by >= 150 cp for 2 iterations"}
+    DomCheck -- "Yes (Max depth / Mate / Dominant)" --> Return
     DomCheck -- "No" --> CheckSoft
-    NodeCheck -- "Yes (Hard Timeout)" --> PartialCheck{"Did move i == 0<br/>already finish at d+1?"}
-    PartialCheck -- "Yes (Phase 5.1)" --> Salvage["Keep bestMoveOverall proven at d+1<br/>LastSearchAdoptedPartialIteration = true"]
-    PartialCheck -- "No (Aborted on i == 0)" --> Fallback["Keep bestMoveOverall from depth d"]
+    NodeCheck -- "Yes (Hard Timeout)" --> PartialCheck{"Did move i == 0<br/>already finish at depth d?"}
+    PartialCheck -- "Yes (Phase 5.1)" --> Salvage["Keep bestMoveOverall proven at depth d<br/>LastSearchAdoptedPartialIteration = true"]
+    PartialCheck -- "No (Aborted on i == 0)" --> Fallback["Keep bestMoveOverall from depth d − 1<br/>(at depth 1: first root move in capture-first order)"]
     Salvage --> Return
     Fallback --> Return
 ```
@@ -122,6 +122,6 @@ The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Che
 2. **Computer Search Limits:**
    - Radio selection between **Fixed Depth** ($1\text{–}20$ plies), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
 3. **Transposition Table Capacity:**
-   - Selector from **$1,048,576$ entries ($16\text{ MiB}$, default)** up to **$16,777,216$ entries ($256\text{ MiB}$)** ([Chapter 08](08-transposition-table.md)).
+   - Selector from **$1{,}048{,}576$ entries ($16\text{ MiB}$, default)** up to **$16{,}777{,}216$ entries ($256\text{ MiB}$)** ([Chapter 08](08-transposition-table.md)).
 4. **Opening Book (`UseOpeningBook`):**
    - Checkbox toggle (**enabled by default**) to use the embedded 12-ply Drop-Out Expansion opening book (`32,369` English / `26,367` International positions; [Chapter 10](10-opening-book.md)).

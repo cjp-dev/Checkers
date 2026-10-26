@@ -25,7 +25,7 @@ $$V(s, d, \alpha, \beta, \text{ply}) = \begin{cases} -30{,}000 + \text{ply} & \t
 
 ```mermaid
 flowchart TD
-    Entry["NegaMax(pos, depth d, α, β, ply)"] --> Term{"Terminal / Draw check:<br/>0 own pieces, 80-halfmove rule,<br/>or DrawTable.IsRepetition (ply > 0)?"}
+    Entry["NegaMax(pos, depth d, α, β, ply)"] --> Term{"Terminal / Draw check:<br/>0 own pieces or no legal moves, 80-halfmove rule,<br/>or DrawTable.IsRepetition (ply > 0)?"}
     Term -- "Loss" --> RetLoss["Return −30,000 + ply"]
     Term -- "Draw / Repetition" --> RetDraw["Return 0"]
     Term -- "InProgress" --> TTProbe["Probe 4-Way Bucket TT (pos.Hash)<br/>Extract ttScore, ttPackedMove, cachedStaticEval"]
@@ -33,21 +33,23 @@ flowchart TD
     TTCut -- "Yes" --> RetTT["Return ttScore"]
     TTCut -- "No" --> Depth0{"Is d == 0?"}
     Depth0 -- "Yes" --> Quiesce["Run Quiescence(pos, α, β, cachedStaticEval)<br/>(O(1) HasAnyCapture + capture-only extension)"]
-    Depth0 -- "No" --> GenOrder["Generate moves into _moveBuffers[ply],<br/>OrderBitMoves(TT, Captures, Promo, Killers, History),<br/>&amp; DrawTable.Record(ply, pos.Hash)"]
-    GenOrder --> RFP{"Stage B — RFP:<br/>Non-PV, Quiet, d <= 6,<br/>eval₀ − 40·d >= β?"}
+    Depth0 -- "No" --> Gen["Generate moves into _moveBuffers[ply]<br/>(0 legal moves → Return −30,000 + ply)"]
+    Gen --> RFP{"Stage B — RFP:<br/>Non-PV, Quiet, d <= 6, −28,000 < β < 28,000,<br/>no opponent capture, eval₀ − 40·d >= β?"}
     RFP -- "Yes" --> RetRFP["Return eval₀ (Static Cutoff)"]
-    RFP -- "No" --> Loop["For each move i = 0 .. moveCount − 1:<br/>nextPos = pos.Apply(in moves[i])<br/>_tt.Prefetch(nextPos.Hash)"]
-    Loop --> FP{"Stage B — FP:<br/>Non-PV, Quiet, d <= 3, i > 0,<br/>eval₀ + 60·d <= α?"}
+    RFP -- "No" --> Order["Set FP flag (d <= 3, eval₀ + 60·d <= α),<br/>OrderBitMoves(TT, Captures, Promo, Killers, History)<br/>&amp; DrawTable.Record(ply, pos.Hash)"]
+    Order --> Loop["For each move i = 0 .. moveCount − 1:<br/>nextPos = pos.Apply(in moves[i])"]
+    Loop --> FP{"Stage B — FP:<br/>FP flag set, quiet move, i > 0,<br/>no opponent capture after the move?"}
     FP -- "Yes (Prune)" --> NextMove["Continue to i + 1"]
-    FP -- "No" --> PVCheck{"Move i == 0<br/>or β > α + 1 (PV)?"}
+    FP -- "No" --> Prefetch["_tt.Prefetch(nextPos.Hash)"]
+    Prefetch --> PVCheck{"Move i == 0?"}
     PVCheck -- "i == 0" --> FullWin["Full-window search:<br/>score = −NegaMax(nextPos, d−1, −β, −α, ply+1)"]
-    PVCheck -- "i > 0" --> LMRCheck{"Stage B — LMR:<br/>Quiet, d >= 3, ply >= 2, i >= 3?"}
+    PVCheck -- "i > 0" --> LMRCheck{"Stage B — LMR:<br/>Quiet, d >= 3, ply >= 2, i >= 3,<br/>no opponent capture after the move?"}
     LMRCheck -- "Yes" --> LMRSearch["Reduced Null-Window:<br/>score = −NegaMax(nextPos, d−1−R, −α−1, −α, ply+1)<br/>If score > α → Verify at full d−1 on [−α−1, −α]"]
     LMRCheck -- "No" --> NullWin["Stage A — PVS Null-Window:<br/>score = −NegaMax(nextPos, d−1, −α−1, −α, ply+1)"]
-    LMRSearch --> ReSearch{"Did null window fail high?<br/>(α < score < β)"}
+    LMRSearch --> ReSearch{"PV node (β > α + 1) and<br/>null window failed high (α < score < β)?"}
     NullWin --> ReSearch
     ReSearch -- "Yes" --> FullWin
-    ReSearch -- "No" --> UpdateAlpha["α = max(α, score)"]
+    ReSearch -- "No" --> UpdateAlpha["maxScore = max(maxScore, score)<br/>α = max(α, score)"]
     FullWin --> UpdateAlpha
     UpdateAlpha --> Cutoff{"Is α >= β?"}
     Cutoff -- "Yes (Beta Cutoff)" --> KillerHist["If quiet move: update _killers[ply]<br/>&amp; _history[side, from, to] += d²"]
@@ -103,7 +105,7 @@ Inspired by [`draw_table.c`](https://github.com/Stermere/Checkers-Engine/blob/ma
 3. **Active Search Path Stack (`_pathHashes[ply]`):**
    - Because regular men only advance forward (`HalfMoveClock` resets to $0$ on every capture or promotion), an in-tree cycle requires at least one King on the board (`pos.Kings != 0UL`) and at least 4 reversible half-moves (`ply >= 4 && pos.HalfMoveClock >= 4`).
    - `IsRepetition` scans backward by steps of 2 plies (same `SideToMove`):
-     $$\exists\, p \in \bigl\{\text{ply} - 4,\, \text{ply} - 6,\, \dots,\, \max(0,\, \text{ply} - \text{HalfMoveClock})\bigr\} \quad \text{such that} \quad \text{PathHash}[p] = \text{Hash}(s)$$
+     $$\exists\, p \in \bigl\{\text{ply} - 4,\, \text{ply} - 6,\, \text{ply} - 8,\, \dots\bigr\},\; p \ge \max(0,\, \text{ply} - \text{HalfMoveClock}) \quad \text{such that} \quad \text{PathHash}[p] = \text{Hash}(s)$$
 
 ---
 

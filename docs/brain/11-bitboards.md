@@ -114,10 +114,10 @@ For Flying Kings, ray attacks along each of the 4 diagonal directions (`UL`, `UR
 flowchart TD
     RayStart["For each diagonal dir in 0..3:<br/>ulong ray = Rays[dir, sq]"] --> Guard1{"Fast-Rejection Guard 1 (Captures):<br/>(ray &amp; unjumpedEnemy) == 0UL?"}
     Guard1 -- "Yes (No enemy on ray)" --> Skip["Skip ray immediately (O(1))"]
-    Guard1 -- "No (Enemy present)" --> Blockers["ulong blockers = ray &amp; occupied<br/>firstBlocker = dir < 2 ? 63 − LZCNT(blockers) : TZCNT(blockers)"]
+    Guard1 -- "No (Enemy present)" --> Blockers["ulong blockers = ray &amp; occupied<br/>firstBlocker = dir &lt; 2 ? 63 − LZCNT(blockers) : TZCNT(blockers)"]
     Blockers --> IsEnemy{"Is firstBlocker an<br/>unjumped enemy piece?"}
-    IsEnemy -- "No (Friendly piece)" --> Skip
-    IsEnemy -- "Yes" --> Guard2{"Fast-Rejection Guard 2:<br/>nextSq = StepTarget[dir, firstBlocker]<br/>nextSq < 0 or occupied[nextSq]?"}
+    IsEnemy -- "No (Friendly or already jumped piece)" --> Skip
+    IsEnemy -- "Yes" --> Guard2{"Fast-Rejection Guard 2:<br/>nextSq = StepTarget[dir, firstBlocker]<br/>nextSq &lt; 0 or occupied[nextSq]?"}
     Guard2 -- "Yes (Blocked behind enemy)" --> Skip
     Guard2 -- "No (At least 1 landing square open)" --> LandMask["Compute landingMask before secondBlocker<br/>&amp; recurse for mandatory continuation"]
 ```

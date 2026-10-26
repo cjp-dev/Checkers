@@ -45,7 +45,7 @@ flowchart TD
         I3["3. Positional Masks:<br/>Center (+12), Full Back Rank (+15), Man PST Nuances (+2/+4/+6)"]
         I4["4. Runaway Checkers (ConeWhite / ConeBlack):<br/>+(40 + 6 × advance) when enemyKings == 0 &amp; cone clear"]
         I5["5. King Tail Pins (+10 cp) + Flying King Long-Diagonal PST (+12 cp)<br/>+ Inner Ring (+6 cp) − Short-Corner Penalty (−20 cp)"]
-        I6["6. Material-Gated Simplification Bonus (materialDiff &gt;= 80 cp):<br/>Scales from +18 cp up to +400 cp as opponent pieces decrease"]
+        I6["6. Material-Gated Simplification Bonus (materialDiff &gt;= 80 cp):<br/>Scales from 0 cp (12 opponent pieces) up to +400 cp (none left)"]
         I7["7. Back-Rank Structural Formations:<br/>Bridge (+18), Triangle (+12), Oreo (+12)"]
         I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7
     end

@@ -17,10 +17,10 @@ The domain library `Checkers.Core` has zero UI dependencies, produces determinis
 | `Checkers.Core` | Class library (`net10.0`) | 64-bit bitboards (`BitPosition`, `BitMove`), rules engine, move generator, Zobrist hashing, Negamax $\alpha$-$\beta$ AI (PVS, LMR, RFP, FP, Killer/History heuristics, `DrawTable`), embedded 12-ply Drop-Out Expansion (DOE) opening books (`OpeningBook`, `BookBuilder`), 4-way bucket transposition table, PDN serializer, and benchmark/self-play runners. |
 | `Checkers.App` | Class library (`net10.0`) | Shared MVVM ViewModels (`CommunityToolkit.Mvvm`), game loop coordinator, chess clock management, and platform service abstractions (`ISoundService`, `IDialogService`, `IGameFileService`). |
 | `Checkers.Wpf` | WPF Application (`net10.0-windows`) | Desktop presentation client: 60 FPS board rendering, click-to-move, drag-and-drop, sound effects, Settings dialog, and live search telemetry pane. |
-| `Checkers.Web` | Blazor WebAssembly (`net10.0`) | Web presentation client: Ahead-Of-Time (AOT) compiled WebAssembly app with responsive board UI, cooperative AI search yielding, and integrated Markdig/KaTeX/Mermaid `/docs` viewer. |
+| `Checkers.Web` | Blazor WebAssembly (`net10.0`) | Web presentation client: Ahead-Of-Time (AOT) compiled WebAssembly app with responsive board UI built on the shared GameShell library, cooperative AI search yielding, and an integrated `/docs` viewer (GameShell's `DocsViewer`: Markdig/KaTeX/Mermaid). |
 | `Checkers.Benchmark` | Console CLI (`net10.0`) | Automated 40-position and 5-position empirical benchmark runner, 10M-evaluation microbenchmark (`eval-speed`), 200-game bot-vs-bot self-play match runner (`eval-match`), and opening book construction/verification CLI (`book generate`, `book expand-doe`, `book verify`). |
 | `Checkers.Core.Tests` | xUnit + FluentAssertions (`net10.0`) | 124 unit tests validating bitboard masks, move generation, mandatory captures, flying kings, English kings, promotions, Zobrist hashing, `DrawTable` repetitions, Phase 6 evaluation terms, PVS/LMR search, 12-ply DOE opening books, and PDN persistence. |
-| `Checkers.App.Tests` | xUnit (`net10.0`) | 70 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, and UI command workflows. |
+| `Checkers.App.Tests` | xUnit (`net10.0`) | 76 unit tests covering `MainViewModel`, `SettingsViewModel`, variant switching, clock refunds, New Game confirmation, and UI command workflows. |
 
 ```mermaid
 flowchart TD
@@ -28,6 +28,7 @@ flowchart TD
         WPF["Checkers.Wpf<br/>(Windows Desktop)"]
         Web["Checkers.Web<br/>(Blazor WebAssembly + /docs)"]
         CLI["Checkers.Benchmark<br/>(Empirical &amp; Book CLI Suite)"]
+        Shell["GameShell<br/>(Shared Web GUI &amp; /docs Viewer, git submodule)"]
     end
 
     subgraph Application ["Application Layer"]
@@ -40,7 +41,7 @@ flowchart TD
 
     subgraph Verification ["Automated Test Suites"]
         CoreTests["Checkers.Core.Tests (124 tests)"]
-        AppTests["Checkers.App.Tests (70 tests)"]
+        AppTests["Checkers.App.Tests (76 tests)"]
     end
 
     WPF --> App
@@ -48,6 +49,7 @@ flowchart TD
     App --> Core
     WPF --> Core
     Web --> Core
+    Web --> Shell
     CLI --> Core
     CoreTests --> Core
     AppTests --> App
@@ -122,7 +124,7 @@ sequenceDiagram
     Engine-->>Session: New BoardState
     Session->>Engine: EvaluateGameStatus(NewState, stateHashHistory)
     Engine-->>Session: Status (InProgress / Win / Draw)
-    Session->>VM: Fire MoveExecuted &amp; GameOver events
+    Session->>VM: Fire MoveExecuted (and GameOver if terminal)
     VM->>Player: Update 8x8 SquareViewModels, play sound, trigger AI if next turn
 ```
 

@@ -43,12 +43,20 @@ public sealed record Move
 
 ```mermaid
 stateDiagram-v2
-    [*] --> InProgress : StartNewGame() /CreateInitial()
-    InProgress --> InProgress : TryMakeMove(move)<br/>Push to _stateHistory & _moveHistory<br/>Clear _redoStack
-    InProgress --> InProgress : Undo()<br/>Pop latest state & move → Push to _redoStack
-    InProgress --> InProgress : Redo()<br/>Pop from _redoStack → Restore state & move
-    InProgress --> GameOver : EvaluateGameStatus() != InProgress<br/>Fire GameOver event
-    GameOver --> InProgress : Undo() / StartNewGame()
+    [*] --> InProgress : StartNewGame() / StartFromState()
+    InProgress --> GameOver : game decided or FlagFell
+    GameOver --> InProgress : StartNewGame() / StartFromState()
+    note right of InProgress
+        The start position comes from CreateInitial().
+        Moves, Undo and Redo keep the game InProgress.
+        TryMakeMove appends to _stateHistory and _moveHistory and clears _redoStack.
+        Undo (CanUndo) moves the latest state and move to _redoStack.
+        Redo (CanRedo) pops them from _redoStack and restores them.
+    end note
+    note right of GameOver
+        EvaluateGameStatus() is no longer InProgress, or FlagFell(timedOutPlayer).
+        Fires the GameOver event. Undo and Redo are disabled.
+    end note
 ```
 
 ### Undo and Redo Invariants

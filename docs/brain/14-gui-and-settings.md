@@ -4,7 +4,7 @@
 
 ## In short
 
-Checkers .NET features a unified, modern user interface across both **WPF desktop** (`Checkers.Wpf`) and **Blazor WebAssembly** (`Checkers.Web`) clients. Designed with a clean light theme, warm parchment aesthetic, dark walnut and maple board styling, dual-card scoreboard, and responsive SVG vector graphics, the application provides intuitive controls for casual players while exposing tournament-grade engine configuration, real-time AI search analysis telemetry, and dynamic status indicators.
+Checkers .NET features a unified, modern user interface across both **WPF desktop** (`Checkers.Wpf`) and **Blazor WebAssembly** (`Checkers.Web`) clients. Designed with a clean light theme, warm parchment aesthetic, dark walnut and maple board styling (the web version also offers Golden Oak and Reddish Wood board styles), dual-card scoreboard, and responsive SVG vector graphics, the application provides intuitive controls for casual players while exposing tournament-grade engine configuration, real-time AI search analysis telemetry, and dynamic status indicators.
 
 This chapter documents the visual layout, responsive mobile drawer navigation, menu commands, dual-card scoreboard with chess clocks, dynamic status indicators (including the "Modified Game" alert), Game Settings configuration, the live search telemetry engine, and keyboard shortcuts.
 
@@ -21,7 +21,7 @@ graph TD
         Scoreboard["Status &amp; Dual-Card Scoreboard<br/>Status / Game Modified • Variant Badge • Clock Badge • Player Score Cards"]
         Board["Interactive 8×8 Checkers Board<br/>Dark-Square Parity (32 Playable) • Draughts 1–32 Coordinates • King Crown Badges • Move Indicators"]
         Analysis["Real-Time AI Analysis Panel<br/>Move • Depth • Score • Best Move • Nodes • Speed • Time"]
-        History["Move History Panel<br/>Move List • Draughts Algebraic Notation (e.g. 11-15, 29x18x4)"]
+        History["Move History Panel<br/>MOVE HISTORY (N moves) • Paired Rows: No. • White • Black<br/>Latest Move Highlighted • Draughts Notation (e.g. 11-15, 29x18x4)"]
     end
 
     MenuBar --> Scoreboard
@@ -52,12 +52,12 @@ Both clients share a consistent palette designed for high contrast, warm wood to
 
 ### Responsive Layout & Mobile Navigation Drawer
 
-On standard desktop displays ($> 768\text{px}$), the application features a persistent horizontal menu bar and a two-column layout with the $8 \times 8$ board on the left and stacked information panels on the right.
+On desktop displays (wider than $900\text{ px}$, or $601\text{–}900\text{ px}$ in landscape), the application shows a persistent horizontal menu bar and a centred two-column layout with the $8 \times 8$ board on the left and stacked information panels on the right; the menu bar lines up with the board's left edge.
 
 On mobile devices and narrow screens ($\le 768\text{px}$):
 1. **Mobile Header & Hamburger Toggle:** The horizontal menu bar transforms into a compact header displaying the **Checkers** brand title and a hamburger button (`☰`).
-2. **Slide-Out Drawer:** Tapping the hamburger button opens a modal slide-out navigation drawer with an overlay backdrop. The drawer organizes commands into grouped sections (**File**, **Game**, **Options**, **Help**) with large touch targets ($44\text{ px}$ minimum height), clear selection indicators (`●` for active game mode, `✓` for active toggles), and keyboard/tap dismissal.
-3. **Fluid Layout Stacking:** The game board scales responsively to the screen width, and the status scoreboard, quick action buttons, analysis telemetry, and move history stack naturally below the board.
+2. **Slide-Out Drawer:** Tapping the hamburger button opens a modal slide-out navigation drawer from the right with an overlay backdrop. The drawer organizes commands into grouped sections (**File**, **Game**, **Options**, **Help**) with large touch targets ($44\text{ px}$ minimum height), clear selection indicators (`●` for active game mode, `✓` for active toggles), and dismissal by tap, the close button or `Escape`.
+3. **Fluid Layout Stacking:** On narrow screens ($\le 600\text{ px}$, or $\le 900\text{ px}$ in portrait) the board scales to the screen width and the status scoreboard, quick action buttons, analysis telemetry, and move history stack below it; compact landscape screens ($601\text{–}900\text{ px}$) keep the two columns.
 
 ---
 
@@ -66,7 +66,7 @@ On mobile devices and narrow screens ($\le 768\text{px}$):
 The top menu bar provides rapid access to game session management, player configurations, AI settings, and documentation:
 
 ### 1. File Menu
-* **New Game (`Ctrl+N`):** Resets the board to the initial 24-piece layout, clears move history, empties undo/redo stacks, restores countdown chess clocks to full duration, clears modified game flags, and begins a new match with White to move.
+* **New Game (`Ctrl+N`):** If a game with moves is in progress, first asks *"A game is currently in progress. Starting a new game will end the current game. Do you want to start a new game?"* (Yes/No). Then resets the board to the initial 24-piece layout, clears move history, empties undo/redo stacks, restores countdown chess clocks to full duration, clears modified game flags, and begins a new match with White to move.
 * **Open... (`Ctrl+O`):** Loads saved Portable Draughts Notation (`.pdn`) match records, restoring board setup, rule variants, and move sequence.
 * **Save (`Ctrl+S`):** Saves the ongoing game directly to the currently active `.pdn` file.
 * **Save As...:** Prompts for a file name and exports the match to `.pdn` format with full metadata headers (`[Event ...]`, `[Variant ...]`, `[Result ...]`, `[Date ...]`) and Draughts move history.
@@ -74,22 +74,22 @@ The top menu bar provides rapid access to game session management, player config
 
 ### 2. Game Menu
 * **vs Computer (White):** Sets the game mode so the **Human plays White** (moving first from the bottom) and the **Computer plays Black**.
-  * *New Game Safeguard:* If clicked while a match is currently in progress, a confirmation warning dialog asks whether to abandon the current match and start a new game, with an option to cancel.
+  * *New Game Safeguard:* If a match with moves is in progress, the same Yes/No dialog as **New Game** asks whether to start a new game.
 * **vs Computer (Black):** Sets the game mode so the **Computer plays White** (moving first) and the **Human plays Black**. The board automatically flips $180^\circ$ so Black's home rank is at the bottom.
-  * *New Game Safeguard:* If clicked while a match is currently in progress, a confirmation warning dialog prompts before restarting.
+  * *New Game Safeguard:* If a match with moves is in progress, the same Yes/No dialog as **New Game** asks whether to start a new game.
 * **vs Human (Two players):** Enables local hot-seat multiplayer mode where two human players share the board without computer assistance.
 * *(Separator)*
 * **Switch sides:** Allows the human player to switch sides mid-game during their turn without resetting the game state or move history.
   * *Availability:* Enabled only when playing against the computer, during the human's turn, while the game is in progress, and while the AI is not actively calculating.
   * *Game Modification:* Using switch sides marks the match as **Modified** (`IsGameModified = true`), turning the status header red.
 * *(Separator)*
-* **Settings...:** Opens the modal Game Settings dialog to configure rule variants, AI thinking limits, transposition table memory, and opening book activation.
+* **Settings... (`F2`, web):** Opens the modal Game Settings dialog to configure rule variants, AI thinking limits, transposition table memory, and opening book activation.
 
-### 3. Options Menu *(and Moves / View in WPF)*
+### 3. Options Menu *(Moves / View / Options in WPF)*
 * **Analysis (`Ctrl+A`):** Toggles visibility of the real-time AI Search Analysis telemetry panel (available in vs Computer modes).
 * **Sound:** Toggles procedural audio feedback for piece clicks, board drops, jumps, king crownings, invalid move buzzers, and match end fanfare.
-* **Undo (`Ctrl+Z`):** Reverts the most recent move. In vs Computer mode, Undo rolls back both the computer's response and the player's prior move, refunds elapsed clock time, and marks the game as **Modified**.
-* **Redo (`Ctrl+Y`):** Re-applies a previously undone move from the redo stack.
+* **Walnut Board / Golden Oak Board / Reddish Wood Board** *(web only)*: Chooses the board's wood texture (Walnut is the default); the choice is remembered in the browser (`localStorage`).
+* **Undo (`Ctrl+Z`) / Redo (`Ctrl+Y`):** In the web version these are the **Undo**/**Redo** buttons and shortcuts, not menu items; WPF also lists them in its **Moves** menu. Undo reverts the most recent move (in vs Computer mode both the computer's response and the player's prior move), refunds elapsed clock time, and marks the game as **Modified**; Redo re-applies an undone move.
 
 ### 4. Help Menu
 * **User guide (`F1`):** Opens this comprehensive user guide chapter immediately (`/docs/14-gui-and-settings` in the web client, or the GitHub documentation page in WPF) for instant access to controls, settings, and shortcut references.
@@ -209,7 +209,7 @@ When enabled via **Options $\rightarrow$ Analysis** (`Ctrl+A`), the telemetry pa
 ┌─────────────────────────────────┐
 │ ANALYSIS                        │
 ├───────────────────┬─────────────┤
-│ Move:             │ 6           │
+│ Move:             │ 11-15       │
 │ Depth:            │ 9 plies     │
 │ Score:            │ +34         │
 │ Best move:        │ 18          │
@@ -223,7 +223,7 @@ When enabled via **Options $\rightarrow$ Analysis** (`Ctrl+A`), the telemetry pa
 
 | Field | Description & Formatting |
 |---|---|
-| **Move** | The active game ply number (e.g., `1`, `6`). |
+| **Move** | The move currently being searched (e.g., `11-15`), or the book/forced move played. Fields with no value yet show `-`. |
 | **Depth** | The active search depth reached by iterative deepening (e.g. `9 plies`, or `"Book"` when retrieved from the opening book). |
 | **Score** | Heuristic evaluation from the computer's perspective in centipawns:<br/>• Positive (e.g. `+34`): Advantage for the computer ($+34\text{ cp}$).<br/>• Negative (e.g. `-85`): Advantage for the human opponent ($-85\text{ cp}$).<br/>• `"+Win in N plies"` / `"-Loss in N plies"`: Forced winning or losing sequence detected. |
 | **Best move** | Standard Draughts algebraic notation for the currently leading root candidate (e.g., `18`, `11-15`, `29x18x4`). |
@@ -258,6 +258,8 @@ In the browser client (`Checkers.Web`), .NET executes within a single-threaded W
 | `Ctrl+M` | Engine | **Move Now:** Interrupt AI search and force immediate move |
 | `F1` | Global | Open **User guide** (this chapter) |
 | `Shift+F1` | Global | Open **Rules & Documentation** (architectural manual) |
+| `F2` | Global (web) | Open **Settings** |
+| `Escape` | Global (web) | Close an open menu or the mobile drawer |
 
 ---
 

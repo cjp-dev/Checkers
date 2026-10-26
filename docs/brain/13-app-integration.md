@@ -26,7 +26,7 @@ flowchart TD
         AnalysisVM["AnalysisViewModel"]
         SettingsVM["SettingsViewModel"]
         SquareVM["SquareViewModel (8×8)"]
-        Services["Platform Abstractions:<br/>• ISoundService<br/>• IDialogService<br/>• IGameFileService"]
+        Services["Platform Abstractions:<br/>• ISoundService<br/>• IDialogService<br/>• IGameFileService<br/>• ISettingsStore<br/>• IEngineHost (LocalEngineHost / WebEngineHost)"]
     end
 
     subgraph Domain ["Domain &amp; AI Engine (Checkers.Core)"]
@@ -45,7 +45,7 @@ flowchart TD
     MainVM --> Services
     MainVM --> Session
     Session --> RuleEngine
-    MainVM --> AI
+    Services --> AI
     AI --> RuleEngine
     AI --> Zobrist
     MainVM --> PDN
@@ -72,7 +72,7 @@ flowchart TD
 [`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs) backs the **Game -> Settings...** modal dialog:
 * Rule variant selection: **International Draughts (Flying Kings)** vs. **English Checkers (1-Step Kings)**.
 * Time control mode & sliders: **Fixed Depth** ($1\text{–}20$), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
-* Transposition Table size selector: **$1,048,576$ ($16\text{ MiB}$)** up to **$16,777,216$ ($256\text{ MiB}$)** entries.
+* Transposition Table size selector: **$1{,}048{,}576$ ($16\text{ MiB}$)** up to **$16{,}777{,}216$ ($256\text{ MiB}$)** entries.
 * Opening Book toggle (`UseOpeningBook`): Enables or disables the embedded 12-ply opening book (`true` by default).
 
 ---
@@ -84,7 +84,7 @@ flowchart TD
 | **Runtime Model** | Multi-threaded CLR (`.NET 10`) | Single-threaded WebAssembly (`.NET 10` AOT) |
 | **AI Search Execution** | Background ThreadPool (`Task.Run`) | Cooperative macrotask yielding (`await Task.Delay(1)`) |
 | **Telemetry Marshaling** | `Dispatcher` via `Progress<SearchAnalysis>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
-| **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (`fileService.js`) |
+| **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (GameShell's `gameShell.openTextFile` / `gameShell.downloadTextFile` in `gameshell.js`) |
 | **Audio Synthesis** | Procedural PCM wave synthesis (`SoundService`) | Web Audio / HTML5 audio interop (`checkers.playSound`) |
 | **Documentation Viewer** | Links to documentation | Integrated `/docs` route (GameShell's `DocsViewer` and `BrainDocs` + Markdig + KaTeX + Mermaid) |
 
@@ -95,23 +95,32 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as Browser Event Loop / Home.razor
+    participant UI as Browser UI thread / Home.razor
     participant VM as MainViewModel / AnalysisViewModel
-    participant AI as MinimaxPlayer (WASM Single Thread)
+    participant Host as WebEngineHost
+    participant W as Engine Web Worker (own .NET runtime)
+    participant AI as MinimaxPlayer
 
     UI->>VM: Human completes move → Trigger AI turn
-    VM->>AI: GetMoveAsync(state, legalMoves, progress, ct, stateHashHistory)
-    loop Iterative Deepening (d = 1 .. MaxDepth)
-        AI->>AI: NegaMax search (d plies)
-        AI->>VM: progress.Report(SearchAnalysis)
-        AI->>UI: await Task.Delay(1, ct) [Yield macrotask]
-        UI->>VM: BrowserSynchronizationContext dispatches Progress callback
-        VM->>UI: Analysis.Updated fires → InvokeAsync(StateHasChanged)
-        UI->>UI: Browser repaints DOM &amp; thinking progress bar (60 FPS)
-        UI-->>AI: Resume C# continuation for depth d + 1
+    VM->>Host: ChooseMoveAsync(state, legalMoves, settings, timeLeft, stateHashHistory, progress, ct, moveNowCt)
+    alt Web Worker available
+        Host->>W: chooseMove(requestJson) via engine-client.js
+        W->>AI: GetMoveAsync(state, legalMoves, progress, stateHashHistory, ct, moveNowCt)
+        loop Iterative Deepening (d = 1 .. MaxDepth)
+            AI->>AI: NegaMax search (d plies)
+            AI->>W: progress.Report(SearchAnalysis), polls Move Now / cancel signal
+            W->>Host: postMessage progress → OnProgress(json)
+            Host->>VM: progress.Report(SearchAnalysis) → Analysis.Update
+            VM->>UI: Analysis.Updated fires → StateHasChanged
+        end
+        AI-->>W: Return bestMoveOverall
+        W-->>Host: responseJson
+    else Worker unavailable (fallback)
+        Host->>AI: LocalEngineHost: GetMoveAsync(...) in the page's runtime
+        AI-->>Host: Return bestMoveOverall
     end
-    AI-->>VM: Return bestMoveOverall
-    VM->>UI: Apply move &amp; update board
+    Host-->>VM: (Move, LastAnalysis)
+    VM->>UI: Apply move and update board
 ```
 
 ### Desktop WPF

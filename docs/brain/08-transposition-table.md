@@ -69,7 +69,7 @@ flowchart TD
     Probe["TryProbe(key, depth, α, β, ply)"] --> Base["baseIndex = (int)(key &amp; _bucketMask) &lt;&lt; 2<br/>key32 = (uint)(key &gt;&gt; 32)"]
     Base --> Scan["Scan 4 Ways in Single 64B Cache Line:<br/>w = 0, 1, 2, 3 at _entries[baseIndex + w]"]
     Scan --> Match{"entry.IsOccupied &amp;&amp;<br/>entry.Key32 == key32?"}
-    Match -- "No (All 4 ways miss)" --> Miss["Return false"]
+    Match -- "No (empty way reached or all 4 ways miss)" --> Miss["Return false"]
     Match -- "Yes (Hit in Way w)" --> Extract["Extract BestMove (if HasMove)<br/>&amp; StaticEval (if HasStaticEval)"]
     Extract --> CheckDepth{"entry.Depth >= depth?"}
     CheckDepth -- "No (Too shallow / Eval-only)" --> OrderOnly["Return true with hasCutoff = false<br/>(Seed move ordering + reuse StaticEval)"]
@@ -129,18 +129,18 @@ By the time the recursive `NegaMax` call finishes its terminal/repetition checks
 
 The table capacity $N = 2^k$ is always an exact power of two (with $N_{\text{buckets}} = N / 4 = 2^{k-2}$), replacing integer division (`%`) with a single-cycle bitwise AND mask:
 
-$$\text{baseIndex} = \bigl(\text{key} \land (N_{\text{buckets}} - 1)\bigr) \ll 2$$
+$$\text{baseIndex} = \bigl(\text{key} \mathbin{\&} (N_{\text{buckets}} - 1)\bigr) \ll 2$$
 
-The capacity is user-configurable in the **Game -> Settings...** dialog across five power-of-two tiers from **$1,048,576$ ($2^{20}$, default)** up to **$16,777,216$ ($2^{24}$)**:
+The capacity is user-configurable in the **Game -> Settings...** dialog across five power-of-two tiers from **$1{,}048{,}576$ ($2^{20}$, default)** up to **$16{,}777{,}216$ ($2^{24}$)**:
 
 | Setting | Entries ($N = 2^k$) | 4-Way Buckets ($2^{k-2}$) | Memory ($16\text{ B} \times N$) | Target Environment |
 |---|---|---|---|---|
-| **Default ($2^{20}$)** | $1,048,576$ | $262,144$ | $16\text{ MiB}$ | Default desktop & web client (fits inside CPU L3 cache) |
-| **Medium ($2^{21}$)** | $2,097,152$ | $524,288$ | $32\text{ MiB}$ | Extended time-per-move play |
-| **Large ($2^{22}$)** | $4,194,304$ | $1,048,576$ | $64\text{ MiB}$ | Deep tactical analysis |
-| **Extra Large ($2^{23}$)** | $8,388,608$ | $2,097,152$ | $128\text{ MiB}$ | Long clock games |
-| **Maximum ($2^{24}$)** | $16,777,216$ | $4,194,304$ | $256\text{ MiB}$ | Maximum capacity (zero collisions across 40 deep positions) |
-| **Lightweight / Tests ($2^{16}$)** | $65,536$ | $16,384$ | $1\text{ MiB}$ | Fast unit test execution |
+| **Default ($2^{20}$)** | $1{,}048{,}576$ | $262{,}144$ | $16\text{ MiB}$ | Default desktop & web client (fits inside CPU L3 cache) |
+| **Medium ($2^{21}$)** | $2{,}097{,}152$ | $524{,}288$ | $32\text{ MiB}$ | Extended time-per-move play |
+| **Large ($2^{22}$)** | $4{,}194{,}304$ | $1{,}048{,}576$ | $64\text{ MiB}$ | Deep tactical analysis |
+| **Extra Large ($2^{23}$)** | $8{,}388{,}608$ | $2{,}097{,}152$ | $128\text{ MiB}$ | Long clock games |
+| **Maximum ($2^{24}$)** | $16{,}777{,}216$ | $4{,}194{,}304$ | $256\text{ MiB}$ | Maximum capacity (zero collisions across 40 deep positions) |
+| **Lightweight / Tests ($2^{16}$)** | $65{,}536$ | $16{,}384$ | $1\text{ MiB}$ | Fast unit test execution |
 
 During interactive gameplay, `MainViewModel` retains the `TranspositionTable` across turns without calling `Clear()`. At the start of each computer turn, `MinimaxPlayer` calls `_tt.NewSearch()`, which increments `_currentAge` (`byte`, $0\dots 255$) in $O(1)$ time—allowing deep subtrees calculated on turn $t$ to accelerate turn $t + 1$ while automatically aging out stale entries during bucket eviction.
 
@@ -152,9 +152,9 @@ As described in [Chapter 07](07-search.md#distance-to-mate-scoring), a forced wi
 
 To make stored mate scores independent of the root path length, `TranspositionTable` normalizes mate scores relative to the node itself:
 
-$$\text{NormalizeForStore}(\text{score}, \text{ply}) = \begin{cases} \text{score} + \text{ply} & \text{if } \text{score} \ge +28{,}000 \\ \text{score} - \text{ply} & \text{if } \text{score} \le -28{,}000 \\ \text{score} & \text{otherwise} \end{cases}$$
+$$\text{ScoreToTt}(\text{score}, \text{ply}) = \begin{cases} \text{score} + \text{ply} & \text{if } \text{score} \ge +28{,}000 \\ \text{score} - \text{ply} & \text{if } \text{score} \le -28{,}000 \\ \text{score} & \text{otherwise} \end{cases}$$
 
-$$\text{NormalizeForRetrieve}(\text{stored}, \text{ply}) = \begin{cases} \text{stored} - \text{ply} & \text{if } \text{stored} \ge +28{,}000 \\ \text{stored} + \text{ply} & \text{if } \text{stored} \le -28{,}000 \\ \text{stored} & \text{otherwise} \end{cases}$$
+$$\text{ScoreFromTt}(\text{stored}, \text{ply}) = \begin{cases} \text{stored} - \text{ply} & \text{if } \text{stored} \ge +28{,}000 \\ \text{stored} + \text{ply} & \text{if } \text{stored} \le -28{,}000 \\ \text{stored} & \text{otherwise} \end{cases}$$
 
 ---
 

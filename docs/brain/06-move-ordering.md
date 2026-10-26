@@ -22,10 +22,10 @@ At every interior node, [`MinimaxPlayer.cs`](../../src/Checkers.Core/AI/MinimaxP
 
 ```mermaid
 flowchart TD
-    Gen["BitboardMoveGenerator.Generate(in pos, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves"] --> ScorePass["Single-Pass Pre-Scoring into stackalloc int[count]:<br/>TT (10M) > Captures (1M + 10k·c + 1k·p) > Promo (500k) > Killer 1 (90k) > Killer 2 (80k) > History (0..70k)"]
+    Gen["BitboardMoveGenerator.Generate(in pos, variant, moveBuffer)<br/>Produces Span&lt;BitMove&gt; moves"] --> ScorePass["Single-Pass Pre-Scoring into stackalloc int[count]:<br/>TT (10M) &gt; Captures (1M + 10k·c + 1k·p) &gt; Promo (500k) &gt; Killer 1 (90k) &gt; Killer 2 (80k) &gt; History (0..70k)"]
     ScorePass --> Sort["In-Place Insertion Sort<br/>by scores[i] descending (skips score == 0 in O(1))"]
     Sort --> Ready["Ordered Span&lt;BitMove&gt; ready for<br/>PVS Null-Window &amp; LMR Search"]
-    Quiesce["Quiescence Search (depth == 0)"] --> QGen["GenerateCaptures(in pos, captures)"]
+    Quiesce["Quiescence Search (depth == 0)"] --> QGen["GenerateCaptures(in pos, variant, moveBuffer)"]
     QGen --> QSort["OrderCaptureMoves(captures)<br/>(Sorts captures directly by capture count &amp; promotion)"]
 ```
 
