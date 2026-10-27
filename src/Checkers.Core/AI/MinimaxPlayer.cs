@@ -21,35 +21,52 @@ public readonly record struct MultiPvMoveResult(Move Move, int Score, int Comple
 /// </summary>
 public sealed class MinimaxPlayer : IPlayer
 {
-    private const int WinScore = 30_000;
-    private const int LossScore = -30_000;
-    private const int MaxPly = 64;
-    private const int MaxMovesPerNode = 128;
+    internal const int WinScore = 30_000;
+    internal const int LossScore = -30_000;
 
-    private const int RfpMaxDepth = 6;
-    private const int RfpMargin = 40;
-    private const int FutilityMaxDepth = 3;
-    private const int FutilityMargin = 60;
-    private const int LmrMinDepth = 3;
-    private const int LmrMinPly = 2;
-    private const int LmrMinMoveIndex = 3;
-    private const int LmrLateMoveIndex = 8;
+    /// <summary>Upper limit for <see cref="Threads"/>.</summary>
+    public const int MaxThreads = 64;
     private const int DominantMoveMinDepth = 8;
     private const int DominantMoveMargin = 150;
     private const int DominantMoveRequiredStreak = 2;
 
     private readonly CheckersVariant _variant;
     private readonly IEvaluationFunction? _customEvaluator;
-    private readonly BitMove[][] _moveBuffers;
-    private readonly ushort[] _killers = new ushort[MaxPly * 2];
-    private readonly int[] _history = new int[2 * 64 * 64];
-    private readonly DrawTable _drawTable = new();
+
+    // Worker 0 is the main search; workers 1.. are the Lazy SMP helpers, created on first use.
+    private readonly List<SearchWorker> _workers = [];
+    private int _activeWorkers = 1;
 
     public string Name { get; }
     public SearchLimits Limits { get; }
     public int Depth => Limits.Depth;
-    public long NodesEvaluated { get; private set; }
-    public long LeafEvaluations { get; private set; }
+    /// <summary>Nodes searched by all threads in the last search (live while a search runs).</summary>
+    public long NodesEvaluated
+    {
+        get
+        {
+            long total = 0;
+            for (int i = 0; i < _activeWorkers; i++)
+            {
+                total += Volatile.Read(ref _workers[i].Nodes);
+            }
+            return total;
+        }
+    }
+
+    /// <summary>Static evaluations made by all threads in the last search.</summary>
+    public long LeafEvaluations
+    {
+        get
+        {
+            long total = 0;
+            for (int i = 0; i < _activeWorkers; i++)
+            {
+                total += Volatile.Read(ref _workers[i].Leaves);
+            }
+            return total;
+        }
+    }
     public SearchAnalysis? LastAnalysis { get; private set; }
 
     public TranspositionTable? TranspositionTable { get; }
@@ -60,6 +77,19 @@ public sealed class MinimaxPlayer : IPlayer
     public bool UseQuiescence { get; set; } = true;
     public bool UseSelectivePruning { get; set; } = true;
     public bool UseEarlyRootTermination { get; set; } = true;
+
+    /// <summary>
+    /// Search threads (Lazy SMP): the main thread plus <c>Threads - 1</c> helpers that search the same root
+    /// and share the transposition table. 1 (the default) is the plain single-threaded search.
+    /// Ignored (1 thread) with a custom evaluation function, which may not be thread-safe, without a
+    /// transposition table, and by <see cref="SearchMultiPv"/>.
+    /// </summary>
+    public int Threads
+    {
+        get => _threads;
+        set => _threads = Math.Clamp(value, 1, MaxThreads);
+    }
+    private int _threads = 1;
     public bool LastSearchAdoptedPartialIteration { get; private set; }
     public bool LastSearchTerminatedEarly { get; private set; }
 
@@ -94,12 +124,10 @@ public sealed class MinimaxPlayer : IPlayer
         OpeningBook = openingBook;
         UseOpeningBook = openingBook != null || limits.UseOpeningBook;
 
-        _moveBuffers = new BitMove[MaxPly][];
-        for (int i = 0; i < MaxPly; i++)
-        {
-            _moveBuffers[i] = new BitMove[MaxMovesPerNode];
-        }
+        _workers.Add(CreateWorker());
     }
+
+    private SearchWorker CreateWorker() => new(this, _variant, _customEvaluator, TranspositionTable);
 
     public MinimaxPlayer(
         int depth = 4,
@@ -114,12 +142,6 @@ public sealed class MinimaxPlayer : IPlayer
         : this(SearchLimits.FixedDepth(depth, useOpeningBook: openingBook != null), name, ruleEngine, evaluator, transpositionTable, useTranspositionTable, useQuiescence, variant, openingBook)
     {
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int EvaluatePosition(in BitPosition pos) =>
-        _customEvaluator != null
-            ? _customEvaluator.Evaluate(in pos)
-            : EvaluationFunction.Evaluate(in pos, _variant);
 
     public ValueTask<Move> GetMoveAsync(
         BoardState state,
@@ -181,8 +203,7 @@ public sealed class MinimaxPlayer : IPlayer
             if (activeBook.Count > 0 &&
                 activeBook.TryGetMove(state, legalMoves, BookRandom, Limits.BookRandomMarginCp, out var bookMove, out int bookScore))
             {
-                NodesEvaluated = 0;
-                LeafEvaluations = 0;
+                ResetNodeCounters();
                 LastSearchTerminatedEarly = true;
                 LastAnalysis = new SearchAnalysis
                 {
@@ -201,13 +222,7 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         var sw = Stopwatch.StartNew();
-        NodesEvaluated = 0;
-        LeafEvaluations = 0;
-        long lastReportMs = 0;
-
         TranspositionTable?.NewSearch();
-        Array.Clear(_killers);
-        Array.Clear(_history);
 
         long softLimitMs = long.MaxValue;
         long hardLimitMs = long.MaxValue;
@@ -229,7 +244,9 @@ public sealed class MinimaxPlayer : IPlayer
         }
 
         BitPosition rootPos = state.BitPosition;
-        _drawTable.Reset(in rootPos, stateHashHistory);
+        SearchWorker main = _workers[0];
+        _activeWorkers = 1;
+        main.BeginSearch(in rootPos, stateHashHistory, sw, hardLimitMs, cancellationToken, moveNowToken, progress, stop: null);
 
         var currentOrder = legalMoves
             .OrderByDescending(m => m.CapturedPositions.Count)
@@ -237,163 +254,161 @@ public sealed class MinimaxPlayer : IPlayer
             .Select(m => (Move: m, BitMove: BitMove.FromMove(m)))
             .ToList();
 
+        var stop = new SearchStop();
+        Task[]? helpers = StartHelpers(in rootPos, stateHashHistory, currentOrder, maxTargetDepth, stop);
+
         Move? bestMoveOverall = null;
         int bestScoreOverall = 0;
         int completedDepth = 1;
         ushort lastCompletedBestPacked = 0;
         int dominantMoveStreak = 0;
 
-        for (int d = 1; d <= maxTargetDepth; d++)
+        try
         {
-            if (d > 1 && sw.ElapsedMilliseconds >= softLimitMs)
-                break;
-
-            (Move Move, BitMove BitMove)? bestEntryThisDepth = null;
-            int bestScoreThisDepth = int.MinValue;
-            int secondBestScoreThisDepth = int.MinValue;
-            int alpha = -200_000;
-            int beta = 200_000;
-            bool depthAborted = false;
-
-            for (int i = 0; i < currentOrder.Count; i++)
+            for (int d = 1; d <= maxTargetDepth; d++)
             {
-                var entry = currentOrder[i];
-                cancellationToken.ThrowIfCancellationRequested();
-                if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
-                {
-                    depthAborted = true;
+                if (d > 1 && sw.ElapsedMilliseconds >= softLimitMs)
                     break;
-                }
 
-                BitPosition nextPos = rootPos.Apply(in entry.BitMove);
-                TranspositionTable?.Prefetch(nextPos.Hash);
-                int score = -NegaMax(
-                    in nextPos,
-                    d - 1,
-                    -beta,
-                    -alpha,
-                    ply: 1,
-                    sw,
-                    hardLimitMs,
-                    cancellationToken,
-                    progress,
-                    ref lastReportMs,
-                    d,
-                    entry.Move,
-                    bestMoveOverall,
-                    bestScoreOverall,
-                    out bool aborted,
-                    moveNowToken);
+                (Move Move, BitMove BitMove)? bestEntryThisDepth = null;
+                int bestScoreThisDepth = int.MinValue;
+                int secondBestScoreThisDepth = int.MinValue;
+                int alpha = -200_000;
+                int beta = 200_000;
+                bool depthAborted = false;
 
-                if (aborted)
+                for (int i = 0; i < currentOrder.Count; i++)
                 {
-                    depthAborted = true;
-                    break;
-                }
-
-                if (score > bestScoreThisDepth)
-                {
-                    secondBestScoreThisDepth = bestScoreThisDepth;
-                    bestScoreThisDepth = score;
-                    bestEntryThisDepth = entry;
-
-                    // 5.1 Partial-Iteration Root Move Adoption on Timeout:
-                    // currentOrder[0] is always the previous iteration's best move. Once i == 0 finishes
-                    // cleanly at depth d (or a later root move i > 0 finishes cleanly and beats it at depth d),
-                    // publish it immediately so a timeout on a later root move preserves the deeper result.
-                    bestMoveOverall = entry.Move;
-                    bestScoreOverall = score;
-                }
-                else if (score > secondBestScoreThisDepth)
-                {
-                    secondBestScoreThisDepth = score;
-                }
-
-                if (score > alpha)
-                {
-                    alpha = score;
-                }
-
-                if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 100)
-                {
-                    lastReportMs = sw.ElapsedMilliseconds;
-                    var heartbeatAnalysis = new SearchAnalysis
+                    var entry = currentOrder[i];
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
                     {
-                        Move = entry.Move.Notation,
-                        Depth = $"{d} plies...",
-                        Score = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
-                        BestMove = bestEntryThisDepth?.Move.Notation ?? bestMoveOverall?.Notation ?? entry.Move.Notation,
+                        depthAborted = true;
+                        break;
+                    }
+
+                    BitPosition nextPos = rootPos.Apply(in entry.BitMove);
+                    TranspositionTable?.Prefetch(nextPos.Hash);
+                    main.CurrentIterDepth = d;
+                    main.CurrentRootMove = entry.Move;
+                    main.BestRootMoveOverall = bestMoveOverall;
+                    main.BestScoreOverall = bestScoreOverall;
+                    int score = -main.NegaMax(in nextPos, d - 1, -beta, -alpha, ply: 1, out bool aborted);
+
+                    if (aborted)
+                    {
+                        depthAborted = true;
+                        break;
+                    }
+
+                    if (score > bestScoreThisDepth)
+                    {
+                        secondBestScoreThisDepth = bestScoreThisDepth;
+                        bestScoreThisDepth = score;
+                        bestEntryThisDepth = entry;
+
+                        // 5.1 Partial-Iteration Root Move Adoption on Timeout:
+                        // currentOrder[0] is always the previous iteration's best move. Once i == 0 finishes
+                        // cleanly at depth d (or a later root move i > 0 finishes cleanly and beats it at depth d),
+                        // publish it immediately so a timeout on a later root move preserves the deeper result.
+                        bestMoveOverall = entry.Move;
+                        bestScoreOverall = score;
+                    }
+                    else if (score > secondBestScoreThisDepth)
+                    {
+                        secondBestScoreThisDepth = score;
+                    }
+
+                    if (score > alpha)
+                    {
+                        alpha = score;
+                    }
+
+                    if (progress != null && sw.ElapsedMilliseconds - main.LastReportMs >= 100)
+                    {
+                        main.LastReportMs = sw.ElapsedMilliseconds;
+                        var heartbeatAnalysis = new SearchAnalysis
+                        {
+                            Move = entry.Move.Notation,
+                            Depth = $"{d} plies...",
+                            Score = FormatValue(bestScoreThisDepth > int.MinValue ? bestScoreThisDepth : bestScoreOverall),
+                            BestMove = bestEntryThisDepth?.Move.Notation ?? bestMoveOverall?.Notation ?? entry.Move.Notation,
+                            Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
+                            Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
+                            Time = sw.Elapsed.ToString(@"m\:ss\.f")
+                        };
+                        progress.Report(heartbeatAnalysis);
+                    }
+                }
+
+                if (!depthAborted && bestEntryThisDepth.HasValue)
+                {
+                    bestMoveOverall = bestEntryThisDepth.Value.Move;
+                    bestScoreOverall = bestScoreThisDepth;
+                    completedDepth = d;
+                    LastSearchAdoptedPartialIteration = false;
+
+                    ushort currentBestPacked = bestEntryThisDepth.Value.BitMove.PackedMove;
+                    if (secondBestScoreThisDepth > int.MinValue &&
+                        bestScoreThisDepth - secondBestScoreThisDepth >= DominantMoveMargin)
+                    {
+                        dominantMoveStreak = currentBestPacked == lastCompletedBestPacked
+                            ? dominantMoveStreak + 1
+                            : 1;
+                    }
+                    else
+                    {
+                        dominantMoveStreak = 0;
+                    }
+                    lastCompletedBestPacked = currentBestPacked;
+
+                    currentOrder.Remove(bestEntryThisDepth.Value);
+                    currentOrder.Insert(0, bestEntryThisDepth.Value);
+
+                    var iterationAnalysis = new SearchAnalysis
+                    {
+                        Move = bestMoveOverall.Notation,
+                        Depth = $"{completedDepth} plies",
+                        Score = FormatValue(bestScoreOverall),
+                        BestMove = bestMoveOverall.Notation,
                         Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
                         Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
                         Time = sw.Elapsed.ToString(@"m\:ss\.f")
                     };
-                    progress.Report(heartbeatAnalysis);
-                }
-            }
+                    LastAnalysis = iterationAnalysis;
+                    main.LastReportMs = sw.ElapsedMilliseconds;
+                    progress?.Report(iterationAnalysis);
 
-            if (!depthAborted && bestEntryThisDepth.HasValue)
-            {
-                bestMoveOverall = bestEntryThisDepth.Value.Move;
-                bestScoreOverall = bestScoreThisDepth;
-                completedDepth = d;
-                LastSearchAdoptedPartialIteration = false;
+                    if (bestScoreOverall >= TranspositionTable.WinThreshold)
+                        break;
 
-                ushort currentBestPacked = bestEntryThisDepth.Value.BitMove.PackedMove;
-                if (secondBestScoreThisDepth > int.MinValue &&
-                    bestScoreThisDepth - secondBestScoreThisDepth >= DominantMoveMargin)
-                {
-                    dominantMoveStreak = currentBestPacked == lastCompletedBestPacked
-                        ? dominantMoveStreak + 1
-                        : 1;
+                    // 5.2 Early Root Termination on Single Viable Move (Dominant Move Exit):
+                    // In timed searches at depth >= 8, if the same root move leads all alternatives by >= 150 cp
+                    // (1.5 men) for 2 consecutive completed iterations (or all moves are proven forced losses),
+                    // terminate early to save clock time.
+                    if (UseEarlyRootTermination && isTimedSearch && d < maxTargetDepth)
+                    {
+                        if (bestScoreOverall <= -TranspositionTable.WinThreshold ||
+                            (d >= DominantMoveMinDepth && dominantMoveStreak >= DominantMoveRequiredStreak))
+                        {
+                            LastSearchTerminatedEarly = true;
+                            break;
+                        }
+                    }
                 }
                 else
                 {
-                    dominantMoveStreak = 0;
-                }
-                lastCompletedBestPacked = currentBestPacked;
-
-                currentOrder.Remove(bestEntryThisDepth.Value);
-                currentOrder.Insert(0, bestEntryThisDepth.Value);
-
-                var iterationAnalysis = new SearchAnalysis
-                {
-                    Move = bestMoveOverall.Notation,
-                    Depth = $"{completedDepth} plies",
-                    Score = FormatValue(bestScoreOverall),
-                    BestMove = bestMoveOverall.Notation,
-                    Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-                    Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
-                    Time = sw.Elapsed.ToString(@"m\:ss\.f")
-                };
-                LastAnalysis = iterationAnalysis;
-                lastReportMs = sw.ElapsedMilliseconds;
-                progress?.Report(iterationAnalysis);
-
-                if (bestScoreOverall >= TranspositionTable.WinThreshold)
-                    break;
-
-                // 5.2 Early Root Termination on Single Viable Move (Dominant Move Exit):
-                // In timed searches at depth >= 8, if the same root move leads all alternatives by >= 150 cp
-                // (1.5 men) for 2 consecutive completed iterations (or all moves are proven forced losses),
-                // terminate early to save clock time.
-                if (UseEarlyRootTermination && isTimedSearch && d < maxTargetDepth)
-                {
-                    if (bestScoreOverall <= -TranspositionTable.WinThreshold ||
-                        (d >= DominantMoveMinDepth && dominantMoveStreak >= DominantMoveRequiredStreak))
+                    if (bestEntryThisDepth.HasValue)
                     {
-                        LastSearchTerminatedEarly = true;
-                        break;
+                        LastSearchAdoptedPartialIteration = true;
                     }
+                    break;
                 }
             }
-            else
-            {
-                if (bestEntryThisDepth.HasValue)
-                {
-                    LastSearchAdoptedPartialIteration = true;
-                }
-                break;
-            }
+        }
+        finally
+        {
+            StopHelpers(helpers, stop);
         }
 
         sw.Stop();
@@ -440,13 +455,7 @@ public sealed class MinimaxPlayer : IPlayer
         int targetK = Math.Clamp(multiPvCount, 1, legalMoves.Count);
 
         var sw = Stopwatch.StartNew();
-        NodesEvaluated = 0;
-        LeafEvaluations = 0;
-        long lastReportMs = 0;
-
         TranspositionTable?.NewSearch();
-        Array.Clear(_killers);
-        Array.Clear(_history);
 
         bool isTimedSearch = Limits.Mode != TimeControlMode.FixedDepth;
         long hardLimitMs = isTimedSearch
@@ -455,7 +464,9 @@ public sealed class MinimaxPlayer : IPlayer
         int maxTargetDepth = isTimedSearch ? 48 : Math.Max(1, Limits.Depth);
 
         BitPosition rootPos = state.BitPosition;
-        _drawTable.Reset(in rootPos, stateHashHistory: null);
+        SearchWorker main = _workers[0];
+        _activeWorkers = 1;
+        main.BeginSearch(in rootPos, stateHashHistory: null, sw, hardLimitMs, cancellationToken, moveNowToken: default, progress: null, stop: null);
 
         var currentOrder = legalMoves
             .OrderByDescending(m => m.CapturedPositions.Count)
@@ -493,22 +504,7 @@ public sealed class MinimaxPlayer : IPlayer
 
                 BitPosition nextPos = rootPos.Apply(in entry.BitMove);
                 TranspositionTable?.Prefetch(nextPos.Hash);
-                int score = -NegaMax(
-                    in nextPos,
-                    d - 1,
-                    -beta,
-                    -alpha,
-                    ply: 1,
-                    sw,
-                    hardLimitMs,
-                    cancellationToken,
-                    progress: null,
-                    ref lastReportMs,
-                    d,
-                    entry.Move,
-                    currentOrder[0].Move,
-                    currentOrder[0].Score,
-                    out bool aborted);
+                int score = -main.NegaMax(in nextPos, d - 1, -beta, -alpha, ply: 1, out bool aborted);
 
                 if (aborted)
                 {
@@ -586,7 +582,7 @@ public sealed class MinimaxPlayer : IPlayer
                 .Select(x =>
                 {
                     BitPosition nextPos = rootPos.Apply(in x.BitMove);
-                    int staticScore = Math.Clamp(-EvaluatePosition(in nextPos), BookFile.MinScore, BookFile.MaxScore);
+                    int staticScore = Math.Clamp(-main.EvaluatePosition(in nextPos), BookFile.MinScore, BookFile.MaxScore);
                     return new MultiPvMoveResult(x.Move, staticScore, 1);
                 })
                 .OrderByDescending(x => x.Score)
@@ -611,556 +607,94 @@ public sealed class MinimaxPlayer : IPlayer
         return lastCompletedTopK;
     }
 
-    private int NegaMax(
-        in BitPosition pos,
-        int depth,
-        int alpha,
-        int beta,
-        int ply,
-        Stopwatch sw,
-        long hardLimitMs,
-        CancellationToken cancellationToken,
-        IProgress<SearchAnalysis>? progress,
-        ref long lastReportMs,
-        int currentIterDepth,
-        Move? currentRootMove,
-        Move? bestRootMoveOverall,
-        int bestScoreOverall,
-        out bool aborted,
-        CancellationToken moveNowToken = default)
+    private void ResetNodeCounters()
     {
-        aborted = false;
-
-        if ((NodesEvaluated & 4095) == 0)
+        for (int i = 0; i < _workers.Count; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
-            {
-                aborted = true;
-                return 0;
-            }
-
-            if (progress != null && sw.ElapsedMilliseconds - lastReportMs >= 100)
-            {
-                lastReportMs = sw.ElapsedMilliseconds;
-                progress.Report(new SearchAnalysis
-                {
-                    Move = currentRootMove?.Notation ?? bestRootMoveOverall?.Notation ?? "-",
-                    Depth = $"{currentIterDepth} plies...",
-                    Score = FormatValue(bestScoreOverall),
-                    BestMove = bestRootMoveOverall?.Notation ?? "-",
-                    Nodes = NodesEvaluated.ToString("N0", CultureInfo.InvariantCulture),
-                    Speed = FormatSpeed(NodesEvaluated, sw.ElapsedMilliseconds),
-                    Time = sw.Elapsed.ToString(@"m\:ss\.f")
-                });
-            }
+            _workers[i].Nodes = 0;
+            _workers[i].Leaves = 0;
         }
-
-        NodesEvaluated++;
-
-        // Fast terminal status check matching RuleEngine.EvaluateGameStatus.
-        // At depth > 0 with HalfMoveClock < 80, BitboardMoveGenerator.Generate below will catch 0 legal moves,
-        // avoiding a redundant HasAnyLegalMove call on every interior node.
-        ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
-        if (ownPieces == 0UL || ((depth == 0 || pos.HalfMoveClock >= 80) && !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant)))
-        {
-            return LossScore + ply;
-        }
-        if (pos.HalfMoveClock >= 80)
-        {
-            return 0;
-        }
-
-        // In-search repetition check BEFORE probing the Transposition Table so cached
-        // static/subtree scores never mask a repetition draw along the active search line.
-        if (_drawTable.IsRepetition(in pos, ply))
-        {
-            return 0;
-        }
-
-        int originalAlpha = alpha;
-        bool hasTtMove = false;
-        ushort ttPackedMove = 0;
-        int cachedStaticEval = TranspositionEntry.NoStaticEval;
-
-        // 4-Way Bucket Transposition Table Probe
-        if (TranspositionTable != null &&
-            TranspositionTable.TryProbe(
-                pos.Hash,
-                depth,
-                alpha,
-                beta,
-                ply,
-                out int ttScore,
-                out ttPackedMove,
-                out hasTtMove,
-                out int probedStaticEval,
-                out bool hasStaticEval,
-                out bool hasCutoff))
-        {
-            if (hasCutoff)
-            {
-                return ttScore;
-            }
-            if (hasStaticEval)
-            {
-                cachedStaticEval = probedStaticEval;
-            }
-        }
-
-        // Quiescence search at leaf nodes
-        if (depth == 0)
-        {
-            if (UseQuiescence)
-            {
-                return Quiescence(in pos, alpha, beta, ply, sw, hardLimitMs, cancellationToken, legalMovesVerified: true, cachedStaticEval, out aborted, moveNowToken);
-            }
-            if (cachedStaticEval != TranspositionEntry.NoStaticEval)
-            {
-                return cachedStaticEval;
-            }
-            LeafEvaluations++;
-            return EvaluatePosition(in pos);
-        }
-
-        Span<BitMove> moveBuffer = ply < MaxPly ? _moveBuffers[ply] : stackalloc BitMove[MaxMovesPerNode];
-        int moveCount = BitboardMoveGenerator.Generate(in pos, _variant, moveBuffer);
-        if (moveCount == 0)
-        {
-            return LossScore + ply;
-        }
-
-        Span<BitMove> moves = moveBuffer.Slice(0, moveCount);
-        bool isCaptureNode = moves[0].IsCapture;
-        bool isNullWindow = beta <= alpha + 1;
-        bool futilityPrune = false;
-
-        // Stage B Selective Pruning (RFP & FP setup) at non-PV quiet nodes
-        if (UseSelectivePruning && !isCaptureNode && isNullWindow && depth <= RfpMaxDepth)
-        {
-            if (cachedStaticEval == TranspositionEntry.NoStaticEval)
-            {
-                LeafEvaluations++;
-                cachedStaticEval = EvaluatePosition(in pos);
-            }
-
-            // 4.2 Reverse Futility Pruning (RFP): if static eval is far above beta at a quiet non-PV node, return immediately
-            if (beta < TranspositionTable.WinThreshold &&
-                beta > -TranspositionTable.WinThreshold &&
-                cachedStaticEval - (RfpMargin * depth) >= beta)
-            {
-                BitPosition oppPos = pos;
-                oppPos.SideToMove = pos.SideToMove == PieceColor.White ? PieceColor.Black : PieceColor.White;
-                if (!BitboardMoveGenerator.HasAnyCapture(in oppPos, _variant))
-                {
-                    return cachedStaticEval;
-                }
-            }
-
-            // 4.3 Futility Pruning (FP) flag for shallow non-PV quiet nodes far below alpha
-            if (depth <= FutilityMaxDepth &&
-                alpha > -TranspositionTable.WinThreshold &&
-                alpha < TranspositionTable.WinThreshold &&
-                cachedStaticEval + (FutilityMargin * depth) <= alpha)
-            {
-                futilityPrune = true;
-            }
-        }
-
-        OrderBitMoves(moves, ttPackedMove, hasTtMove, ply, pos.SideToMove);
-        _drawTable.Record(ply, pos.Hash);
-
-        BitMove bestMoveThisNode = default;
-        bool hasBestMove = false;
-        int maxScore = int.MinValue;
-
-        for (int i = 0; i < moves.Length; i++)
-        {
-            BitPosition nextPos = pos.Apply(in moves[i]);
-            bool isQuietMove = !isCaptureNode && !moves[i].IsPromotion;
-            bool oppHasCaptureAfterMove = false;
-            bool oppCaptureChecked = false;
-
-            // 4.3 Futility Pruning (FP): skip quiet non-promoting moves after move 0 that do not leave a tactical capture
-            if (futilityPrune && i > 0 && isQuietMove)
-            {
-                oppHasCaptureAfterMove = BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant);
-                oppCaptureChecked = true;
-                if (!oppHasCaptureAfterMove)
-                {
-                    continue;
-                }
-            }
-
-            TranspositionTable?.Prefetch(nextPos.Hash);
-
-            int score;
-            if (i == 0)
-            {
-                score = -NegaMax(
-                    in nextPos,
-                    depth - 1,
-                    -beta,
-                    -alpha,
-                    ply + 1,
-                    sw,
-                    hardLimitMs,
-                    cancellationToken,
-                    progress,
-                    ref lastReportMs,
-                    currentIterDepth,
-                    currentRootMove,
-                    bestRootMoveOverall,
-                    bestScoreOverall,
-                    out aborted,
-                    moveNowToken);
-            }
-            else
-            {
-                // 4.1 Verified Late Move Reductions (LMR)
-                int reduction = 0;
-                if (UseSelectivePruning && isQuietMove && depth >= LmrMinDepth && ply >= LmrMinPly && i >= LmrMinMoveIndex)
-                {
-                    if (!oppCaptureChecked)
-                    {
-                        oppHasCaptureAfterMove = BitboardMoveGenerator.HasAnyCapture(in nextPos, _variant);
-                    }
-                    if (!oppHasCaptureAfterMove)
-                    {
-                        reduction = 1 + (i >= LmrLateMoveIndex ? 1 : 0);
-                        if (reduction > depth - 2)
-                        {
-                            reduction = depth - 2;
-                        }
-                    }
-                }
-
-                // Principal Variation Search (PVS): test subsequent moves with a zero-width window first (at reduced depth if LMR applies)
-                score = -NegaMax(
-                    in nextPos,
-                    depth - 1 - reduction,
-                    -alpha - 1,
-                    -alpha,
-                    ply + 1,
-                    sw,
-                    hardLimitMs,
-                    cancellationToken,
-                    progress,
-                    ref lastReportMs,
-                    currentIterDepth,
-                    currentRootMove,
-                    bestRootMoveOverall,
-                    bestScoreOverall,
-                    out aborted,
-                    moveNowToken);
-
-                // Verified LMR re-search: if reduced search beat alpha, verify at full depth (depth - 1) on the null window
-                if (!aborted && reduction > 0 && score > alpha)
-                {
-                    score = -NegaMax(
-                        in nextPos,
-                        depth - 1,
-                        -alpha - 1,
-                        -alpha,
-                        ply + 1,
-                        sw,
-                        hardLimitMs,
-                        cancellationToken,
-                        progress,
-                        ref lastReportMs,
-                        currentIterDepth,
-                        currentRootMove,
-                        bestRootMoveOverall,
-                        bestScoreOverall,
-                        out aborted,
-                        moveNowToken);
-                }
-
-                // PVS full-window re-search: if null-window search beat alpha inside a PV node, re-search with full window (-beta, -alpha)
-                if (!aborted && !isNullWindow && score > alpha && score < beta)
-                {
-                    score = -NegaMax(
-                        in nextPos,
-                        depth - 1,
-                        -beta,
-                        -alpha,
-                        ply + 1,
-                        sw,
-                        hardLimitMs,
-                        cancellationToken,
-                        progress,
-                        ref lastReportMs,
-                        currentIterDepth,
-                        currentRootMove,
-                        bestRootMoveOverall,
-                        bestScoreOverall,
-                        out aborted,
-                        moveNowToken);
-                }
-            }
-
-            if (aborted)
-                return 0;
-
-            if (score > maxScore)
-            {
-                maxScore = score;
-                bestMoveThisNode = moves[i];
-                hasBestMove = true;
-            }
-
-            if (score > alpha)
-            {
-                alpha = score;
-            }
-
-            if (alpha >= beta)
-            {
-                if (!moves[i].IsCapture && !moves[i].IsPromotion)
-                {
-                    RecordKillerAndHistory(in moves[i], ply, depth, pos.SideToMove);
-                }
-                break;
-            }
-        }
-
-        // Transposition Table Store
-        if (TranspositionTable != null && !aborted)
-        {
-            TranspositionBound bound;
-            if (maxScore <= originalAlpha)
-                bound = TranspositionBound.UpperBound;
-            else if (maxScore >= beta)
-                bound = TranspositionBound.LowerBound;
-            else
-                bound = TranspositionBound.Exact;
-
-            TranspositionTable.Store(
-                pos.Hash,
-                depth,
-                maxScore,
-                bound,
-                ply,
-                hasBestMove ? bestMoveThisNode.PackedMove : (ushort)0,
-                hasBestMove,
-                cachedStaticEval);
-        }
-
-        return maxScore;
     }
 
-    private int Quiescence(
-        in BitPosition pos,
-        int alpha,
-        int beta,
-        int ply,
-        Stopwatch sw,
-        long hardLimitMs,
-        CancellationToken cancellationToken,
-        bool legalMovesVerified,
-        int cachedStaticEval,
-        out bool aborted,
-        CancellationToken moveNowToken = default)
+    /// <summary>
+    /// Starts the Lazy SMP helper threads (none when <see cref="Threads"/> is 1). All workers are prepared
+    /// before the first helper starts. Odd helpers start one ply deeper than the main thread, and each helper
+    /// searches the root moves after the first in a rotated order, so the threads spread over different subtrees.
+    /// </summary>
+    private Task[]? StartHelpers(
+        in BitPosition rootPos,
+        IReadOnlyList<ulong>? stateHashHistory,
+        List<(Move Move, BitMove BitMove)> rootOrder,
+        int maxTargetDepth,
+        SearchStop stop)
     {
-        aborted = false;
-
-        if ((NodesEvaluated & 4095) == 0)
+        int threads = _customEvaluator == null && TranspositionTable != null ? _threads : 1;
+        if (threads <= 1 || rootOrder.Count < 2)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (moveNowToken.IsCancellationRequested || sw.ElapsedMilliseconds >= hardLimitMs)
+            return null;
+        }
+
+        while (_workers.Count < threads)
+        {
+            _workers.Add(CreateWorker());
+        }
+
+        var unused = new Stopwatch();
+        for (int id = 1; id < threads; id++)
+        {
+            _workers[id].BeginSearch(in rootPos, stateHashHistory, unused, long.MaxValue, default, default, progress: null, stop);
+        }
+        _activeWorkers = threads;
+
+        var helpers = new List<Task>(threads - 1);
+        BitPosition root = rootPos;
+        try
+        {
+            for (int id = 1; id < threads; id++)
             {
-                aborted = true;
-                return 0;
+                SearchWorker worker = _workers[id];
+                BitMove[] moves = RotatedRootMoves(rootOrder, id);
+                int startDepth = Math.Min(1 + (id & 1), maxTargetDepth);
+                helpers.Add(Task.Factory.StartNew(
+                    () => worker.RunHelper(root, moves, startDepth, maxTargetDepth),
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default));
             }
         }
-
-        NodesEvaluated++;
-
-        if (!legalMovesVerified)
+        catch (Exception ex) when (ex is PlatformNotSupportedException or NotSupportedException)
         {
-            ulong ownPieces = pos.SideToMove == PieceColor.White ? pos.White : pos.Black;
-            if (ownPieces == 0UL || !BitboardMoveGenerator.HasAnyLegalMove(in pos, _variant))
-            {
-                return LossScore + ply;
-            }
-            if (pos.HalfMoveClock >= 80)
-            {
-                return 0;
-            }
+            // No threads on this platform (single-threaded WebAssembly): search with the helpers started so far.
         }
 
-        int standPat;
-        if (cachedStaticEval != TranspositionEntry.NoStaticEval)
-        {
-            standPat = cachedStaticEval;
-        }
-        else
-        {
-            standPat = EvaluatePosition(in pos);
-            LeafEvaluations++;
-        }
-
-        if (standPat >= beta)
-        {
-            return beta;
-        }
-
-        if (standPat > alpha)
-        {
-            alpha = standPat;
-        }
-
-        if (ply >= 24 || !BitboardMoveGenerator.HasAnyCapture(in pos, _variant))
-        {
-            return alpha;
-        }
-
-        Span<BitMove> moveBuffer = ply < MaxPly ? _moveBuffers[ply] : stackalloc BitMove[MaxMovesPerNode];
-        int captureCount = BitboardMoveGenerator.GenerateCaptures(in pos, _variant, moveBuffer);
-        if (captureCount == 0)
-        {
-            return alpha;
-        }
-
-        Span<BitMove> captures = moveBuffer.Slice(0, captureCount);
-        OrderCaptureMoves(captures);
-
-        for (int i = 0; i < captures.Length; i++)
-        {
-            BitPosition nextPos = pos.Apply(in captures[i]);
-            int score = -Quiescence(in nextPos, -beta, -alpha, ply + 1, sw, hardLimitMs, cancellationToken, legalMovesVerified: false, TranspositionEntry.NoStaticEval, out aborted, moveNowToken);
-
-            if (aborted)
-                return 0;
-
-            if (score >= beta)
-            {
-                return beta;
-            }
-
-            if (score > alpha)
-            {
-                alpha = score;
-            }
-        }
-
-        return alpha;
+        return helpers.ToArray();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void RecordKillerAndHistory(in BitMove move, int ply, int depth, PieceColor sideToMove)
+    private static BitMove[] RotatedRootMoves(List<(Move Move, BitMove BitMove)> rootOrder, int helperId)
     {
-        if ((uint)ply < MaxPly)
-        {
-            ushort packed = move.PackedMove;
-            int killerIdx = ply << 1;
-            if (_killers[killerIdx] != packed)
-            {
-                _killers[killerIdx + 1] = _killers[killerIdx];
-                _killers[killerIdx] = packed;
-            }
-        }
-
-        int histIdx = ((int)sideToMove << 12) | (move.From << 6) | move.To;
-        int updated = _history[histIdx] + (depth * depth);
-        _history[histIdx] = updated > 70_000 ? 70_000 : updated;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void OrderBitMoves(
-        Span<BitMove> moves,
-        ushort ttPackedMove,
-        bool hasTtMove,
-        int ply,
-        PieceColor sideToMove)
-    {
-        int count = moves.Length;
-        if (count <= 1)
-            return;
-
-        Span<int> scores = stackalloc int[count];
-        ushort killer1 = 0;
-        ushort killer2 = 0;
-        if ((uint)ply < MaxPly)
-        {
-            int killerIdx = ply << 1;
-            killer1 = _killers[killerIdx];
-            killer2 = _killers[killerIdx + 1];
-        }
-        int sideOffset = (int)sideToMove << 12;
-
-        for (int i = 0; i < count; i++)
-        {
-            ref readonly BitMove m = ref moves[i];
-            ushort packed = m.PackedMove;
-            int score;
-            if (hasTtMove && packed == ttPackedMove)
-            {
-                score = 10_000_000;
-            }
-            else if (m.IsCapture)
-            {
-                score = 1_000_000 + (m.CaptureCount * 10_000) + (m.IsPromotion ? 1_000 : 0);
-            }
-            else if (m.IsPromotion)
-            {
-                score = 500_000;
-            }
-            else if (packed == killer1)
-            {
-                score = 90_000;
-            }
-            else if (packed == killer2)
-            {
-                score = 80_000;
-            }
-            else
-            {
-                score = _history[sideOffset | (m.From << 6) | m.To];
-            }
-            scores[i] = score;
-        }
-
+        int count = rootOrder.Count;
+        var moves = new BitMove[count];
+        moves[0] = rootOrder[0].BitMove;
+        int shift = helperId % (count - 1);
         for (int i = 1; i < count; i++)
         {
-            int currentScore = scores[i];
-            if (currentScore == 0)
-                continue;
-
-            BitMove currentMove = moves[i];
-            int j = i - 1;
-            while (j >= 0 && scores[j] < currentScore)
-            {
-                moves[j + 1] = moves[j];
-                scores[j + 1] = scores[j];
-                j--;
-            }
-            moves[j + 1] = currentMove;
-            scores[j + 1] = currentScore;
+            moves[i] = rootOrder[1 + ((i - 1 + shift) % (count - 1))].BitMove;
         }
+        return moves;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void OrderCaptureMoves(Span<BitMove> captures)
+    private static void StopHelpers(Task[]? helpers, SearchStop stop)
     {
-        for (int i = 1; i < captures.Length; i++)
+        if (helpers == null)
         {
-            BitMove current = captures[i];
-            int currentKey = (current.CaptureCount << 1) | (current.IsPromotion ? 1 : 0);
-            int j = i - 1;
-            while (j >= 0)
-            {
-                int prevKey = (captures[j].CaptureCount << 1) | (captures[j].IsPromotion ? 1 : 0);
-                if (prevKey >= currentKey)
-                    break;
-                captures[j + 1] = captures[j];
-                j--;
-            }
-            captures[j + 1] = current;
+            return;
         }
+
+        stop.Requested = true;
+        Task.WaitAll(helpers);
     }
 
-    private static string FormatSpeed(long nodes, long elapsedMs)
+    internal static string FormatSpeed(long nodes, long elapsedMs)
     {
         if (elapsedMs <= 0 || nodes <= 0)
             return "-";
@@ -1168,7 +702,7 @@ public sealed class MinimaxPlayer : IPlayer
         return $"{nps.ToString("N0", CultureInfo.InvariantCulture)} nps";
     }
 
-    private static string FormatValue(int score) => score switch
+    internal static string FormatValue(int score) => score switch
     {
         >= TranspositionTable.WinThreshold => $"+Win in {WinScore - score} plies",
         <= -TranspositionTable.WinThreshold => $"-Loss in {score - LossScore} plies",

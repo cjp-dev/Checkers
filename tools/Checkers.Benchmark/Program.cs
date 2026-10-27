@@ -18,6 +18,18 @@ if (args.Length > 0 && args[0].Equals("signature", StringComparison.OrdinalIgnor
     return;
 }
 
+if (args.Length > 0 && args[0].Equals("smp-bench", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await SmpCommands.RunSmpBenchAsync(args);
+    return;
+}
+
+if (args.Length > 0 && args[0].Equals("smp-match", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await SmpCommands.RunSmpMatchAsync(args);
+    return;
+}
+
 if (args.Any(a => a.Equals("eval-speed", StringComparison.OrdinalIgnoreCase)))
 {
     await RunEvalSpeedBenchmarkAsync();

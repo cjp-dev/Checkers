@@ -465,11 +465,49 @@ public static class EvaluationMatchRunner
     /// Runs a 50-position (100-game color-swapped) head-to-head match between <see cref="EvaluationFunction"/>
     /// and <see cref="LegacyEvaluationFunction"/> with complete per-engine data structure isolation.
     /// </summary>
-    public static async Task<VariantMatchSummary> RunMatchAsync(
+    public static Task<VariantMatchSummary> RunMatchAsync(
         CheckersVariant variant,
         int ballotCount = 50,
         int timePerMoveMs = 1000,
         int workers = 4,
+        Action<int, int, MatchGameResult>? progressCallback = null) =>
+        RunMatchAsync(
+            variant,
+            createNewPlayer: (ruleEngine, limits) => CreateMatchPlayer(ruleEngine, limits, new EvaluationFunction(variant), threads: 1),
+            createLegacyPlayer: (ruleEngine, limits) => CreateMatchPlayer(ruleEngine, limits, new LegacyEvaluationFunction(variant), threads: 1),
+            ballotCount,
+            timePerMoveMs,
+            workers,
+            progressCallback);
+
+    /// <summary>
+    /// Creates a match player with its own 1M-entry transposition table.
+    /// </summary>
+    public static MinimaxPlayer CreateMatchPlayer(RuleEngine ruleEngine, SearchLimits limits, IEvaluationFunction evaluator, int threads) =>
+        new(
+            limits,
+            ruleEngine: ruleEngine,
+            evaluator: evaluator,
+            transpositionTable: TranspositionTable.FromEntries(TranspositionTable.DefaultEntries),
+            useTranspositionTable: true,
+            useQuiescence: true,
+            variant: ruleEngine.Variant)
+        {
+            Threads = threads
+        };
+
+    /// <summary>
+    /// Runs a color-swapped head-to-head match between two engine configurations: the "new" side (the candidate)
+    /// and the "legacy" side (the baseline). Each factory is called once per game, so every game starts
+    /// with fresh players and transposition tables.
+    /// </summary>
+    public static async Task<VariantMatchSummary> RunMatchAsync(
+        CheckersVariant variant,
+        Func<RuleEngine, SearchLimits, MinimaxPlayer> createNewPlayer,
+        Func<RuleEngine, SearchLimits, MinimaxPlayer> createLegacyPlayer,
+        int ballotCount,
+        int timePerMoveMs,
+        int workers,
         Action<int, int, MatchGameResult>? progressCallback = null)
     {
         var ballots = GenerateBalancedBallots(variant, ballotCount);
@@ -494,6 +532,8 @@ public static class EvaluationMatchRunner
             {
                 var gameResult = await PlayIsolatedGameAsync(
                     variant,
+                    createNewPlayer,
+                    createLegacyPlayer,
                     spec.GameId,
                     spec.Ballot,
                     spec.NewEvalIsWhite,
@@ -513,6 +553,8 @@ public static class EvaluationMatchRunner
 
     private static async Task<MatchGameResult> PlayIsolatedGameAsync(
         CheckersVariant variant,
+        Func<RuleEngine, SearchLimits, MinimaxPlayer> createNewPlayer,
+        Func<RuleEngine, SearchLimits, MinimaxPlayer> createLegacyPlayer,
         int gameId,
         OpeningBallot ballot,
         bool newEvalIsWhite,
@@ -521,38 +563,12 @@ public static class EvaluationMatchRunner
     {
         var ruleEngine = new RuleEngine(variant);
 
-        // Complete Per-Engine Data Structure Isolation:
-        // Separate TranspositionTable (16 MiB = 1,048,576 entries) and separate MinimaxPlayer per side
-        var whiteTt = new TranspositionTable(16);
-        var blackTt = new TranspositionTable(16);
-
-        IEvaluationFunction whiteEval = newEvalIsWhite
-            ? new EvaluationFunction(variant)
-            : new LegacyEvaluationFunction(variant);
-
-        IEvaluationFunction blackEval = newEvalIsWhite
-            ? new LegacyEvaluationFunction(variant)
-            : new EvaluationFunction(variant);
-
+        // Complete Per-Engine Data Structure Isolation: separate MinimaxPlayer and TranspositionTable per side
         var limits = SearchLimits.TimePerMove(TimeSpan.FromMilliseconds(timePerMoveMs));
-
-        var whitePlayer = new MinimaxPlayer(
-            limits,
-            ruleEngine: ruleEngine,
-            evaluator: whiteEval,
-            transpositionTable: whiteTt,
-            useTranspositionTable: true,
-            useQuiescence: true,
-            variant: variant);
-
-        var blackPlayer = new MinimaxPlayer(
-            limits,
-            ruleEngine: ruleEngine,
-            evaluator: blackEval,
-            transpositionTable: blackTt,
-            useTranspositionTable: true,
-            useQuiescence: true,
-            variant: variant);
+        MinimaxPlayer newPlayer = createNewPlayer(ruleEngine, limits);
+        MinimaxPlayer legacyPlayer = createLegacyPlayer(ruleEngine, limits);
+        MinimaxPlayer whitePlayer = newEvalIsWhite ? newPlayer : legacyPlayer;
+        MinimaxPlayer blackPlayer = newEvalIsWhite ? legacyPlayer : newPlayer;
 
         var state = ballot.State.Clone();
         var history = new List<ulong>(256);
@@ -724,21 +740,25 @@ public static class EvaluationMatchRunner
             Games: games);
     }
 
-    public static string FormatMatchSummaryMarkdown(VariantMatchSummary s)
+    public static string FormatMatchSummaryMarkdown(VariantMatchSummary s) =>
+        FormatMatchSummaryMarkdown(s, "NewEval", "EvaluationFunction", "LegacyEval", "LegacyEvaluationFunction");
+
+    public static string FormatMatchSummaryMarkdown(VariantMatchSummary s, string newName, string newDetail, string legacyName, string legacyDetail)
     {
         var sb = new StringBuilder();
         double points = s.NewEvalWins + (0.5 * s.Draws);
         double legacyPoints = s.LegacyEvalWins + (0.5 * s.Draws);
+        int ballots = s.TotalGames / 2;
 
-        sb.AppendLine($"### {s.Variant} Checkers — 100-Game Match (`NewEval` vs. `LegacyEval`, {s.TimePerMoveMs} ms/move)");
+        sb.AppendLine($"### {s.Variant} Checkers — {s.TotalGames}-Game Match (`{newName}` vs. `{legacyName}`, {s.TimePerMoveMs} ms/move)");
         sb.AppendLine();
-        sb.AppendLine("| Metric | `NewEval` (`EvaluationFunction`) | `LegacyEval` (`LegacyEvaluationFunction`) |");
+        sb.AppendLine($"| Metric | `{newName}` (`{newDetail}`) | `{legacyName}` (`{legacyDetail}`) |");
         sb.AppendLine("| :--- | :---: | :---: |");
-        sb.AppendLine($"| **Total Score (100 Games)** | **{points:F1} / {s.TotalGames}** (**{s.ScorePercentage:F1}%**) | {legacyPoints:F1} / {s.TotalGames} ({100.0 - s.ScorePercentage:F1}%) |");
+        sb.AppendLine($"| **Total Score ({s.TotalGames} Games)** | **{points:F1} / {s.TotalGames}** (**{s.ScorePercentage:F1}%**) | {legacyPoints:F1} / {s.TotalGames} ({100.0 - s.ScorePercentage:F1}%) |");
         sb.AppendLine($"| **Wins / Draws / Losses** | **+{s.NewEvalWins} = {s.Draws} -{s.LegacyEvalWins}** | +{s.LegacyEvalWins} = {s.Draws} -{s.NewEvalWins} |");
-        sb.AppendLine($"| **As White (50 Games)** | +{s.NewWhiteWins} = {s.NewWhiteDraws} -{s.NewWhiteLosses} | +{s.NewBlackLosses} = {s.NewBlackDraws} -{s.NewBlackWins} |");
-        sb.AppendLine($"| **As Black (50 Games)** | +{s.NewBlackWins} = {s.NewBlackDraws} -{s.NewBlackLosses} | +{s.NewWhiteLosses} = {s.NewWhiteDraws} -{s.NewWhiteWins} |");
-        sb.AppendLine($"| **Paired 50-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | `{s.BallotSweepsWin}` / `{s.BallotMiniWins}` / `{s.BallotSplits}` / `{s.BallotMiniLosses}` / `{s.BallotSweepsLoss}` | `{s.BallotSweepsLoss}` / `{s.BallotMiniLosses}` / `{s.BallotSplits}` / `{s.BallotMiniWins}` / `{s.BallotSweepsWin}` |");
+        sb.AppendLine($"| **As White ({ballots} Games)** | +{s.NewWhiteWins} = {s.NewWhiteDraws} -{s.NewWhiteLosses} | +{s.NewBlackLosses} = {s.NewBlackDraws} -{s.NewBlackWins} |");
+        sb.AppendLine($"| **As Black ({ballots} Games)** | +{s.NewBlackWins} = {s.NewBlackDraws} -{s.NewBlackLosses} | +{s.NewWhiteLosses} = {s.NewWhiteDraws} -{s.NewWhiteWins} |");
+        sb.AppendLine($"| **Paired {ballots}-Ballot Breakdown (`2-0` / `1.5-0.5` / `1-1` / `0.5-1.5` / `0-2`)** | `{s.BallotSweepsWin}` / `{s.BallotMiniWins}` / `{s.BallotSplits}` / `{s.BallotMiniLosses}` / `{s.BallotSweepsLoss}` | `{s.BallotSweepsLoss}` / `{s.BallotMiniLosses}` / `{s.BallotSplits}` / `{s.BallotMiniWins}` / `{s.BallotSweepsWin}` |");
         sb.AppendLine($"| **Elo Difference ($\\Delta\\text{{Elo}}$ ± 95% CI)** | **{s.EloDifference:+0.0;-0.0;0.0} ± {s.EloError95:F1} Elo** (LOS: **{s.LikelihoodOfSuperiority:F1}%**) | {-s.EloDifference:+0.0;-0.0;0.0} ± {s.EloError95:F1} Elo |");
         sb.AppendLine($"| **Average Search Depth** | `{s.AvgNewEvalDepth:F2} plies` | `{s.AvgLegacyEvalDepth:F2} plies` |");
         sb.AppendLine($"| **Average Search Speed (NPS)** | `{s.AvgNewEvalNpsMillions:F2}M nodes/s` | `{s.AvgLegacyEvalNpsMillions:F2}M nodes/s` |");
