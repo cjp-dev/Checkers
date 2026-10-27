@@ -73,6 +73,6 @@ Dev server, headless Chromium (Playwright), AOT-compiled engine, 3 s/move from t
 
 ## Problems found on the way
 
-- **Service-worker scope.** `coi-serviceworker.js` must be in the site root: a service worker only controls pages below its own folder. Gomoku has it in `js/`, where it never controls the page; it only works there because Azure sends the COOP/COEP headers itself.
+- **Service-worker scope (local testing only).** On Azure the COOP/COEP headers from `staticwebapp.config.json` isolate the page, so the service worker is never needed there (as in Gomoku, which keeps it in `js/`). The local dev server sends no headers, and a service worker only controls pages below its own folder, so `coi-serviceworker.js` is in the site root to make local testing work too.
 - **Broken responses from the dev server.** Copying the engine's precompressed `.br`/`.gz` files into the app's `wwwroot` made the dev server send broken response bodies. The build now copies only uncompressed files, refreshes the Content items and lets the app compress them.
 - **Pruning at low depth.** At depth 9 the 1-thread search can prefer a move that multi-PV shows is 184 cp worse, so the SMP best-move tests compare against `SearchMultiPv` at depth 10 instead of the plain search.
