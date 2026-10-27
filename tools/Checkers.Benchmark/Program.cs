@@ -12,6 +12,12 @@ if (args.Length > 0 && args[0].Equals("book", StringComparison.OrdinalIgnoreCase
     return;
 }
 
+if (args.Length > 0 && args[0].Equals("signature", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await SmpCommands.RunSignatureAsync(args);
+    return;
+}
+
 if (args.Any(a => a.Equals("eval-speed", StringComparison.OrdinalIgnoreCase)))
 {
     await RunEvalSpeedBenchmarkAsync();
@@ -118,6 +124,8 @@ static async Task RunPhaseBenchmarkAsync()
         var engine = new RuleEngine(variant);
         var tt1M = TranspositionTable.FromEntries(TranspositionTable.DefaultEntries);
         var tt16M = TranspositionTable.FromEntries(TranspositionTable.MaxEntries);
+        tt1M.CollectStatistics = true;
+        tt16M.CollectStatistics = true;
 
         long totalNoTtNodes = 0, baseNoTtNodes = 0;
         long totalTt1MNodes = 0, baseTt1MNodes = 0;

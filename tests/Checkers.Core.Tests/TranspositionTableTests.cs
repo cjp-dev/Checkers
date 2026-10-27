@@ -17,7 +17,7 @@ public class TranspositionTableTests
     [Fact]
     public void StoreAndProbe_ExactScore_ReturnsHitAndCutoff()
     {
-        var tt = new TranspositionTable(megabytes: 1);
+        var tt = new TranspositionTable(megabytes: 1) { CollectStatistics = true };
         ulong key = 0x123456789ABCDEF0;
         var from = new Position(5, 0);
         var to = new Position(4, 1);
@@ -133,7 +133,7 @@ public class TranspositionTableTests
     [Fact]
     public void Clear_EmptiesAllEntriesAndResetsStats()
     {
-        var tt = new TranspositionTable(megabytes: 1);
+        var tt = new TranspositionTable(megabytes: 1) { CollectStatistics = true };
         ulong key = 0x12345;
         tt.Store(key, depth: 3, score: 50, bound: TranspositionBound.Exact, ply: 0);
 
@@ -170,6 +170,7 @@ public class TranspositionTableTests
     public void FourWayBucket_StoresFourDistinctKeysInSameBucketWithoutCollision()
     {
         var tt = TranspositionTable.FromEntries(1024); // 256 buckets
+        tt.CollectStatistics = true;
         ulong bucketIndex = 42UL;
 
         // 4 distinct keys sharing the exact same lower bits (same bucket) but different upper 32 bits

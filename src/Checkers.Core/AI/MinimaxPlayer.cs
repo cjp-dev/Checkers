@@ -88,7 +88,7 @@ public sealed class MinimaxPlayer : IPlayer
             _ => "Minimax AI"
         };
         TranspositionTable = useTranspositionTable
-            ? (transpositionTable ?? new TranspositionTable(megabytes: 32))
+            ? (transpositionTable ?? new TranspositionTable(megabytes: 16))
             : null;
         UseQuiescence = useQuiescence;
         OpeningBook = openingBook;

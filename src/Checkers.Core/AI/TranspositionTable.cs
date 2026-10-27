@@ -25,7 +25,15 @@ public enum TranspositionBound : byte
 /// <summary>
 /// An individual cached entry in the transposition table (compact 16-byte layout, 4 entries = 64-byte CPU cache line).
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
+/// <remarks>
+/// The entry is two 64-bit words so that several search threads can share the table without locks
+/// (the "lockless hashing" XOR trick). <c>_data</c> holds score, static eval, move, depth and flags;
+/// <c>_keyWord</c> holds the 32-bit key XOR-ed with a fold of <c>_data</c>, plus the age.
+/// A reader accepts the entry only if the key recomputed from both words matches, so an entry
+/// that another thread is halfway through writing reads as a different key (a miss) instead of
+/// returning a score from one position with the bound or depth of another.
+/// </remarks>
+[StructLayout(LayoutKind.Sequential)]
 public struct TranspositionEntry
 {
     public const int NoStaticEval = 32_000;
@@ -35,125 +43,114 @@ public struct TranspositionEntry
     private const byte HasMoveBit = 0x08;
     private const byte HasStaticEvalBit = 0x10;
 
+    private const int StaticEvalShift = 16;
+    private const int MoveShift = 32;
+    private const int DepthShift = 48;
+    private const int FlagsShift = 56;
+    private const int AgeShift = 32;
+
+    // Bits 0-31: Key32 ^ Fold(_data); bits 32-39: age.
+    private ulong _keyWord;
+
+    // Bits 0-15 score, 16-31 static eval, 32-47 packed move, 48-55 depth, 56-63 flags.
+    private ulong _data;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Fold(ulong data) => (uint)data ^ (uint)(data >> 32);
+
     /// <summary>
     /// Upper 32 bits of the 64-bit Zobrist hash ((uint)(key &gt;&gt; 32)).
     /// Combined with the bucket index bits, provides 50–54 bits of hash verification.
     /// </summary>
-    public uint Key32;
+    public readonly uint Key32
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (uint)_keyWord ^ Fold(_data);
+    }
 
-    private short _score;
-    private short _staticEval;
+    public readonly byte Age
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (byte)(_keyWord >> AgeShift);
+    }
 
-    /// <summary>
-    /// Packed 16-bit best move ((fromSq &lt;&lt; 8) | toSq).
-    /// </summary>
-    public ushort BestMove;
-
-    private sbyte _depth;
-    public byte Age;
-    private byte _flags;
-    private byte _pad1;
-    private byte _pad2;
-    private byte _pad3;
+    private readonly byte Flags
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (byte)(_data >> FlagsShift);
+    }
 
     public readonly bool IsOccupied
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (_flags & OccupiedBit) != 0;
+        get => (Flags & OccupiedBit) != 0;
     }
 
     public readonly bool HasMove
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (_flags & HasMoveBit) != 0;
+        get => (Flags & HasMoveBit) != 0;
     }
 
     public readonly bool HasStaticEval
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => (_flags & HasStaticEvalBit) != 0;
+        get => (Flags & HasStaticEvalBit) != 0;
     }
 
-    public int Score
+    public readonly int Score
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly get => _score;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => _score = (short)Math.Clamp(value, short.MinValue, short.MaxValue);
+        get => (short)_data;
     }
 
     internal readonly int RawStaticEval
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _staticEval;
+        get => (short)(_data >> StaticEvalShift);
     }
 
-    public int StaticEval
+    public readonly int StaticEval
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly get => HasStaticEval ? _staticEval : NoStaticEval;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set
-        {
-            if (value == NoStaticEval)
-            {
-                _staticEval = 0;
-                _flags = (byte)(_flags & ~HasStaticEvalBit);
-            }
-            else
-            {
-                _staticEval = (short)Math.Clamp(value, short.MinValue, short.MaxValue);
-                _flags |= HasStaticEvalBit;
-            }
-        }
+        get => HasStaticEval ? RawStaticEval : NoStaticEval;
     }
 
-    public int Depth
+    /// <summary>
+    /// Packed 16-bit best move ((fromSq &lt;&lt; 8) | toSq).
+    /// </summary>
+    public readonly ushort BestMove
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly get => _depth;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => _depth = (sbyte)Math.Clamp(value, sbyte.MinValue, sbyte.MaxValue);
+        get => (ushort)(_data >> MoveShift);
     }
 
-    public TranspositionBound Bound
+    public readonly int Depth
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly get => (TranspositionBound)(_flags & BoundMask);
+        get => (sbyte)(_data >> DepthShift);
+    }
+
+    public readonly TranspositionBound Bound
+    {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => _flags = (byte)((_flags & ~BoundMask) | ((byte)value & BoundMask));
+        get => (TranspositionBound)(Flags & BoundMask);
     }
 
-    public Position BestMoveFrom
-    {
-        readonly get => HasMove ? BitboardMasks.Positions[(BestMove >> 8) & 0x3F] : default;
-        set
-        {
-            if (!value.IsValid)
-            {
-                _flags = (byte)(_flags & ~HasMoveBit);
-                return;
-            }
-            int fromSq = BitboardMasks.ToSquareIndex(value);
-            BestMove = (ushort)((fromSq << 8) | (BestMove & 0xFF));
-            _flags |= HasMoveBit;
-        }
-    }
+    public readonly Position BestMoveFrom => HasMove ? BitboardMasks.Positions[(BestMove >> 8) & 0x3F] : default;
 
-    public Position BestMoveTo
+    public readonly Position BestMoveTo => HasMove ? BitboardMasks.Positions[BestMove & 0x3F] : default;
+
+    /// <summary>
+    /// Takes a snapshot of the shared slot: key word first, then data (the writer stores them in the opposite order).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static TranspositionEntry Load(ref TranspositionEntry slot)
     {
-        readonly get => HasMove ? BitboardMasks.Positions[BestMove & 0x3F] : default;
-        set
-        {
-            if (!value.IsValid)
-            {
-                _flags = (byte)(_flags & ~HasMoveBit);
-                return;
-            }
-            int toSq = BitboardMasks.ToSquareIndex(value);
-            BestMove = (ushort)((BestMove & 0xFF00) | toSq);
-            _flags |= HasMoveBit;
-        }
+        TranspositionEntry copy;
+        copy._keyWord = Volatile.Read(ref slot._keyWord);
+        copy._data = Volatile.Read(ref slot._data);
+        return copy;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -167,34 +164,36 @@ public struct TranspositionEntry
         bool hasMove,
         int staticEval)
     {
-        Key32 = key32;
-        _score = (short)Math.Clamp(ttScore, short.MinValue, short.MaxValue);
-        _depth = (sbyte)Math.Clamp(depth, sbyte.MinValue, sbyte.MaxValue);
-        Age = age;
-        BestMove = bestPackedMove;
-
         byte flags = (byte)(((byte)bound & BoundMask) | OccupiedBit);
         if (hasMove)
         {
             flags |= HasMoveBit;
         }
+
+        ulong eval = 0;
         if (staticEval != NoStaticEval)
         {
-            _staticEval = (short)Math.Clamp(staticEval, short.MinValue, short.MaxValue);
+            eval = (ushort)(short)Math.Clamp(staticEval, short.MinValue, short.MaxValue);
             flags |= HasStaticEvalBit;
         }
-        else
-        {
-            _staticEval = 0;
-        }
-        _flags = flags;
+
+        ulong data =
+            (ushort)(short)Math.Clamp(ttScore, short.MinValue, short.MaxValue)
+            | (eval << StaticEvalShift)
+            | ((ulong)bestPackedMove << MoveShift)
+            | ((ulong)(byte)(sbyte)Math.Clamp(depth, sbyte.MinValue, sbyte.MaxValue) << DepthShift)
+            | ((ulong)flags << FlagsShift);
+
+        Volatile.Write(ref _data, data);
+        Volatile.Write(ref _keyWord, (key32 ^ Fold(data)) | ((ulong)age << AgeShift));
     }
 }
 
 /// <summary>
 /// High-performance 4-way set-associative transposition table (64-byte cache-line buckets)
 /// with 32-bit upper Zobrist key verification, cached static evaluation, hardware cache prefetching,
-/// age + depth + exact-bound victim replacement, and search telemetry.
+/// age + depth + exact-bound victim replacement, and optional search telemetry.
+/// Safe to share between search threads (see <see cref="TranspositionEntry"/>).
 /// </summary>
 public sealed class TranspositionTable
 {
@@ -208,7 +207,9 @@ public sealed class TranspositionTable
     private readonly ulong _bucketMask;
     private byte _age;
 
-    // Telemetry counters
+    // Telemetry counters, only maintained while CollectStatistics is on. They are plain (non-atomic) fields:
+    // with several search threads they would race and make every thread write the same cache line.
+    public bool CollectStatistics { get; set; }
     public long Probes { get; private set; }
     public long Hits { get; private set; }
     public long Cutoffs { get; private set; }
@@ -237,12 +238,12 @@ public sealed class TranspositionTable
     /// <summary>
     /// Initializes a transposition table sized to the nearest power-of-two number of entries.
     /// </summary>
-    /// <param name="megabytes">Approximate memory capacity in megabytes (default: 32 -&gt; 1,048,576 entries).</param>
-    public TranspositionTable(int megabytes = 32)
+    /// <param name="megabytes">Approximate memory capacity in megabytes (default: 16 -&gt; 1,048,576 entries of 16 bytes).</param>
+    public TranspositionTable(int megabytes = 16)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(megabytes, 1);
 
-        long desiredEntries = (long)megabytes * 1024 * 1024 / 32;
+        long desiredEntries = (long)megabytes * 1024 * 1024 / Unsafe.SizeOf<TranspositionEntry>();
         int count = (int)BitOperations.RoundUpToPowerOf2((ulong)Math.Clamp(desiredEntries, 1024, 67_108_864));
 
         try
@@ -347,7 +348,8 @@ public sealed class TranspositionTable
         out bool hasStaticEval,
         out bool hasCutoff)
     {
-        Probes++;
+        bool stats = CollectStatistics;
+        if (stats) Probes++;
         int baseIndex = (int)(key & _bucketMask) << 2;
         uint key32 = (uint)(key >> 32);
         ref TranspositionEntry bucket0 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_entries), baseIndex);
@@ -361,7 +363,7 @@ public sealed class TranspositionTable
 
         for (int i = 0; i < BucketSize; i++)
         {
-            ref readonly TranspositionEntry entry = ref Unsafe.Add(ref bucket0, i);
+            TranspositionEntry entry = TranspositionEntry.Load(ref Unsafe.Add(ref bucket0, i));
             if (!entry.IsOccupied)
             {
                 return false;
@@ -369,7 +371,7 @@ public sealed class TranspositionTable
 
             if (entry.Key32 == key32)
             {
-                Hits++;
+                if (stats) Hits++;
                 hasBestMove = entry.HasMove;
                 bestPackedMove = entry.BestMove;
                 hasStaticEval = entry.HasStaticEval;
@@ -386,7 +388,7 @@ public sealed class TranspositionTable
                     {
                         score = adjustedScore;
                         hasCutoff = true;
-                        Cutoffs++;
+                        if (stats) Cutoffs++;
                     }
                 }
 
@@ -394,7 +396,7 @@ public sealed class TranspositionTable
             }
         }
 
-        Collisions++;
+        if (stats) Collisions++;
         return false;
     }
 
@@ -453,7 +455,7 @@ public sealed class TranspositionTable
         bool hasBestMove,
         int staticEval = TranspositionEntry.NoStaticEval)
     {
-        Stores++;
+        if (CollectStatistics) Stores++;
         int baseIndex = (int)(key & _bucketMask) << 2;
         uint key32 = (uint)(key >> 32);
         ref TranspositionEntry bucket0 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_entries), baseIndex);
@@ -463,11 +465,12 @@ public sealed class TranspositionTable
 
         for (int i = 0; i < BucketSize; i++)
         {
-            ref TranspositionEntry slot = ref Unsafe.Add(ref bucket0, i);
+            ref TranspositionEntry slotRef = ref Unsafe.Add(ref bucket0, i);
+            TranspositionEntry slot = TranspositionEntry.Load(ref slotRef);
 
             if (!slot.IsOccupied)
             {
-                slot.Write(
+                slotRef.Write(
                     key32,
                     ScoreToTt(score, ply),
                     depth,
@@ -489,7 +492,7 @@ public sealed class TranspositionTable
                         ? staticEval
                         : (slot.HasStaticEval ? slot.RawStaticEval : TranspositionEntry.NoStaticEval);
 
-                    slot.Write(
+                    slotRef.Write(
                         key32,
                         ScoreToTt(score, ply),
                         depth,
@@ -501,7 +504,16 @@ public sealed class TranspositionTable
                 }
                 else if (staticEval != TranspositionEntry.NoStaticEval && !slot.HasStaticEval)
                 {
-                    slot.StaticEval = staticEval;
+                    // Add the static eval to the deeper entry, keeping everything else (and its age).
+                    slotRef.Write(
+                        key32,
+                        slot.Score,
+                        slot.Depth,
+                        slot.Bound,
+                        slot.Age,
+                        slot.BestMove,
+                        slot.HasMove,
+                        staticEval);
                 }
                 return;
             }

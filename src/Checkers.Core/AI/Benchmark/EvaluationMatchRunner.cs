@@ -522,9 +522,9 @@ public static class EvaluationMatchRunner
         var ruleEngine = new RuleEngine(variant);
 
         // Complete Per-Engine Data Structure Isolation:
-        // Separate TranspositionTable (32 MiB = 2,097,152 entries) and separate MinimaxPlayer per side
-        var whiteTt = new TranspositionTable(32);
-        var blackTt = new TranspositionTable(32);
+        // Separate TranspositionTable (16 MiB = 1,048,576 entries) and separate MinimaxPlayer per side
+        var whiteTt = new TranspositionTable(16);
+        var blackTt = new TranspositionTable(16);
 
         IEvaluationFunction whiteEval = newEvalIsWhite
             ? new EvaluationFunction(variant)

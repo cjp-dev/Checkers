@@ -268,7 +268,7 @@ public static class BookBuilder
                 {
                     var localEngine = new RuleEngine(variant);
                     var localEval = new EvaluationFunction(variant);
-                    var localTt = new TranspositionTable(megabytes: 16);
+                    var localTt = new TranspositionTable(megabytes: 8);
                     int childSearchDepth = Math.Max(1, selectDepth - 1);
                     var localPlayer = new MinimaxPlayer(
                         SearchLimits.FixedDepth(childSearchDepth),
@@ -744,7 +744,7 @@ public static class BookBuilder
         {
             RuleEngine = new RuleEngine(variant);
             var evaluator = new EvaluationFunction(variant);
-            TranspositionTable = new TranspositionTable(megabytes: 32);
+            TranspositionTable = new TranspositionTable(megabytes: 16);
             Player = new MinimaxPlayer(
                 limits,
                 ruleEngine: RuleEngine,

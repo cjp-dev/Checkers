@@ -96,6 +96,7 @@ public static class TranspositionBenchmarkRunner
 
         // 3. Run with Default Transposition Table (1,048,576 entries)
         var tt = defaultTt ?? TranspositionTable.FromEntries(TranspositionTable.DefaultEntries);
+        tt.CollectStatistics = true;
         tt.Clear();
         var ttPlayer = new MinimaxPlayer(
             limits: SearchLimits.FixedDepth(calibratedDepth),
@@ -115,6 +116,7 @@ public static class TranspositionBenchmarkRunner
 
         // 4. Run with Max Transposition Table (16,777,216 entries)
         var largeTt = maxTt ?? TranspositionTable.FromEntries(TranspositionTable.MaxEntries);
+        largeTt.CollectStatistics = true;
         largeTt.Clear();
         var maxTtPlayer = new MinimaxPlayer(
             limits: SearchLimits.FixedDepth(calibratedDepth),

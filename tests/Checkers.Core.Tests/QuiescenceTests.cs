@@ -46,6 +46,7 @@ public class QuiescenceTests
 
         var playerWithTt = new MinimaxPlayer(
             limits: SearchLimits.FixedDepth(3),
+            transpositionTable: new TranspositionTable { CollectStatistics = true },
             useTranspositionTable: true,
             useQuiescence: false);
 

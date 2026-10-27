@@ -204,7 +204,7 @@ public class BitboardTests
             noTt1.LeafEvaluations.Should().Be(noTt2.LeafEvaluations);
             move1.Notation.Should().Be(move2.Notation);
 
-            var tt = new TranspositionTable(megabytes: 4);
+            var tt = new TranspositionTable(megabytes: 2);
             var withTt = new MinimaxPlayer(
                 depth: 6,
                 variant: variant,
