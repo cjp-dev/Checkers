@@ -40,6 +40,7 @@ bld/
 # Generated static files in Checkers.Web wwwroot
 src/Checkers.Web/wwwroot/content/
 src/Checkers.Web/wwwroot/images/
+src/Checkers.Web/wwwroot/engine/
 
 # Visual Studio 2017 auto generated files
 Generated\ Files/

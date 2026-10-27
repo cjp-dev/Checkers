@@ -128,4 +128,49 @@ public class SettingsViewModelTests
         vm.UseOpeningBook = true;
         vm.ToSettings().UseOpeningBook.Should().BeTrue();
     }
+
+    [Fact]
+    public void ThreadCount_DefaultsToAuto_AndPersistsInToSettings()
+    {
+        var vm = new SettingsViewModel(GameSettings.Default, new EngineThreadOptions(AutoThreads: 6, MaxThreads: 12));
+        vm.ThreadCount.Should().Be(GameSettings.AutoThreads);
+        vm.ThreadCountText.Should().Be("Auto (6 threads)");
+        vm.MaxThreadCount.Should().Be(12);
+
+        vm.ThreadCount = 1;
+        vm.ThreadCountText.Should().Be("1 thread");
+        vm.ToSettings().ThreadCount.Should().Be(1);
+
+        vm.ThreadCount = 8;
+        vm.ThreadCountText.Should().Be("8 threads");
+        vm.ToSettings().ThreadCount.Should().Be(8);
+    }
+
+    [Fact]
+    public void ThreadCount_AboveTheHostMaximum_IsClamped()
+    {
+        var vm = new SettingsViewModel(GameSettings.Default with { ThreadCount = 16 }, new EngineThreadOptions(4, 8, Available: false));
+
+        vm.ThreadCount.Should().Be(8);
+        vm.ThreadsAvailable.Should().BeFalse();
+        vm.ThreadChoices.Select(c => c.Value).Should().Equal(0, 1, 2, 3, 4, 5, 6, 7, 8);
+        vm.ThreadChoices[0].Text.Should().Be("Auto (4 threads)");
+    }
+
+    [Theory]
+    [InlineData(-3, 0)]
+    [InlineData(0, 0)]
+    [InlineData(12, 12)]
+    [InlineData(1000, MinimaxPlayer.MaxThreads)]
+    public void GameSettings_Normalize_ClampsThreadCount(int threadCount, int expected)
+    {
+        (GameSettings.Default with { ThreadCount = threadCount }).Normalize().ThreadCount.Should().Be(expected);
+    }
+
+    [Fact]
+    public void GameSettings_ResolveThreads_UsesAutoOnlyForZero()
+    {
+        GameSettings.Default.ResolveThreads(autoThreads: 6).Should().Be(6);
+        (GameSettings.Default with { ThreadCount = 3 }).ResolveThreads(autoThreads: 6).Should().Be(3);
+    }
 }

@@ -527,6 +527,24 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task SaveThenOpen_RoundTripsTheThreadCount()
+    {
+        var files = new TestGameFileService();
+        var dialogService = new TestDialogService { SettingsToReturn = GameSettings.Default with { ThreadCount = 5 } };
+        var vm = new MainViewModel(dialogService: dialogService, fileService: files);
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        await vm.SaveCommand.ExecuteAsync(null);
+        files.LastSavedText.Should().Contain("[ThreadCount \"5\"]");
+
+        files.FileToOpen = new GameFile("saved.checkers", files.LastSavedText!);
+        var reopened = new MainViewModel(fileService: files);
+        await reopened.OpenCommand.ExecuteAsync(null);
+
+        reopened.Settings.ThreadCount.Should().Be(5);
+    }
+
+    [Fact]
     public async Task OpenCommand_BackwardsCompatibilityWithDifficultyTag()
     {
         var baseSession = new GameSession();
@@ -913,6 +931,23 @@ public class MainViewModelTests
         vm.Settings.TranspositionTableEntries.Should().Be(16_777_216);
         var updatedAi = (MinimaxPlayer)vm.CreateAiPlayer();
         updatedAi.TranspositionTable!.Capacity.Should().Be(16_777_216);
+    }
+
+    [Fact]
+    public async Task EditSettings_ThreadCount_SetsTheAiPlayerThreads()
+    {
+        var dialogService = new TestDialogService
+        {
+            SettingsToReturn = GameSettings.Default with { ThreadCount = 3 }
+        };
+
+        var vm = new MainViewModel(dialogService: dialogService);
+        ((MinimaxPlayer)vm.CreateAiPlayer()).Threads.Should().Be(EngineThreadOptions.Desktop.AutoThreads);
+
+        await vm.EditSettingsCommand.ExecuteAsync(null);
+
+        vm.Settings.ThreadCount.Should().Be(3);
+        ((MinimaxPlayer)vm.CreateAiPlayer()).Threads.Should().Be(3);
     }
 
     [Fact]

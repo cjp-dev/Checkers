@@ -11,6 +11,10 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
 {
     private const int CooperativeGracePeriodMs = 300;
 
+    // Search threads in the browser: Auto uses up to 4 (one per logical processor), the setting allows up to 8.
+    private const int MaxAutoThreads = 4;
+    private const int MaxThreads = 8;
+
     private readonly IJSRuntime _js;
     private readonly LocalEngineHost _fallbackHost = new();
     private IJSObjectReference? _clientModule;
@@ -19,6 +23,8 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
     private IProgress<SearchAnalysis>? _activeProgress;
     private SearchAnalysis? _lastAnalysis;
     private bool _useFallback;
+    private bool _isThreaded;
+    private int _hardwareConcurrency = 1;
 
     public WebEngineHost(IJSRuntime js)
     {
@@ -53,6 +59,8 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
             _clientModule ??= await _js.InvokeAsync<IJSObjectReference>("import", "./js/engine-client.js");
             _selfRef ??= DotNetObjectReference.Create(this);
             await _clientModule.InvokeVoidAsync("start", _selfRef);
+            _isThreaded = await _clientModule.InvokeAsync<bool>("isThreaded");
+            _hardwareConcurrency = await _clientModule.InvokeAsync<int>("hardwareConcurrency");
             return _clientModule;
         }
         catch
@@ -61,6 +69,14 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
             return null;
         }
     }
+
+    /// <summary>
+    /// What the Threads setting offers: more than one thread only once the multithreaded engine has started.
+    /// </summary>
+    public EngineThreadOptions ThreadOptions => new(
+        _isThreaded && !_useFallback ? Math.Clamp(_hardwareConcurrency, 1, MaxAutoThreads) : 1,
+        MaxThreads,
+        Available: _isThreaded && !_useFallback);
 
     public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(
         BoardState state,
@@ -82,7 +98,9 @@ public sealed class WebEngineHost : IEngineHost, IAsyncDisposable
         _activeProgress = progress;
         _lastAnalysis = null;
 
-        string requestJson = EngineProtocol.WriteRequest(state, settings, computerTimeLeft, stateHashHistory);
+        EngineThreadOptions threadOptions = ThreadOptions;
+        int threads = Math.Min(settings.ResolveThreads(threadOptions.AutoThreads), threadOptions.MaxThreads);
+        string requestJson = EngineProtocol.WriteRequest(state, settings with { ThreadCount = threads }, computerTimeLeft, stateHashHistory);
         Task<string> searchTask = client.InvokeAsync<string>("call", "chooseMove", requestJson).AsTask();
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, moveNowToken);

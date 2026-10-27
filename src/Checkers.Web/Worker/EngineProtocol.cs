@@ -23,7 +23,8 @@ internal sealed record MoveRequest(
     long TimeTicks,
     bool UseOpeningBook,
     int TranspositionTableEntries,
-    ulong[] StateHashHistory);
+    ulong[] StateHashHistory,
+    int ThreadCount = 1);
 
 internal sealed record ProgressDto(
     string Move,
@@ -70,11 +71,12 @@ internal static class EngineProtocol
             limits.Time.Ticks,
             limits.UseOpeningBook,
             settings.TranspositionTableEntries,
-            stateHashHistory.ToArray());
+            stateHashHistory.ToArray(),
+            settings.ThreadCount);
         return JsonSerializer.Serialize(req, EngineProtocolJson.Default.MoveRequest);
     }
 
-    public static (BoardState State, CheckersVariant Variant, SearchLimits Limits, int TtEntries, ulong[] History) ReadRequest(string json)
+    public static (BoardState State, CheckersVariant Variant, SearchLimits Limits, int TtEntries, ulong[] History, int Threads) ReadRequest(string json)
     {
         MoveRequest req = JsonSerializer.Deserialize(json, EngineProtocolJson.Default.MoveRequest)!;
         var bp = new BitPosition
@@ -95,7 +97,7 @@ internal static class EngineProtocol
             TimeControlMode.TimePerMove => SearchLimits.TimePerMove(time, req.UseOpeningBook),
             _ => SearchLimits.TimePerGame(time > TimeSpan.Zero ? time : TimeSpan.FromMilliseconds(10), req.UseOpeningBook)
         };
-        return (state, req.Variant, limits, req.TranspositionTableEntries, req.StateHashHistory);
+        return (state, req.Variant, limits, req.TranspositionTableEntries, req.StateHashHistory, req.ThreadCount);
     }
 
     public static string WriteProgress(SearchAnalysis info) => JsonSerializer.Serialize(

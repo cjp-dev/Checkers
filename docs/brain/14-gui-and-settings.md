@@ -198,6 +198,10 @@ Combines opening book configuration and transposition table capacity in a unifie
   * **Dropdown Selector (Blazor Web):** Selectable options from `1,048,576 entries (16 MB) - Default` to `16,777,216 entries (256 MB)`.
   * **Slider (WPF Desktop):** Range $2^{20}$ ($1{,}048{,}576$ entries, $16\text{ MB}$) to $2^{24}$ ($16{,}777{,}216$ entries, $256\text{ MB}$).
   * **Hardware Cache Line Alignment:** Each entry occupies exactly 16 bytes, and four entries form a 64-byte bucket matching the host CPU's hardware L1/L2 cache line, pre-fetched via `Sse.Prefetch0`.
+* **Search Threads (Lazy SMP):** How many threads search the position together, sharing the transposition table ([Chapter 07](07-search.md#lazy-smp-multi-threaded-search)). Stored as `GameSettings.ThreadCount`, where 0 means **Auto**:
+  * **Slider (WPF Desktop):** `Auto (N threads)` (one per logical processor, at most 16), then 1 up to the number of logical processors.
+  * **Dropdown Selector (Blazor Web):** `Auto (N threads)` (`min(navigator.hardwareConcurrency, 4)`), then 1 to 8. It is disabled, with a note, when the browser runs the single-threaded engine.
+  * Saved with the settings and in the game record (`ThreadCount` tag), like the table size.
 
 ---
 
@@ -234,11 +238,11 @@ When enabled via **Options $\rightarrow$ Analysis** (`Ctrl+A`), the telemetry pa
 ### Natural Feel Delay ($250\text{ ms}$)
 Instant moves, such as book moves and forced captures, would otherwise appear the moment the human has moved. `MainViewModel` therefore plays a computer move no sooner than $250\text{ ms}$ (`AiDelayMs`) after the search started: a search that took $40\text{ ms}$ waits another $210\text{ ms}$, while a search that took longer than $250\text{ ms}$ is played at once. **Move Now** skips the wait.
 
-### Search in a Web Worker
-In the browser client (`Checkers.Web`), the search runs in an engine Web Worker, not on the page's UI thread:
-1. The worker starts its own .NET runtime and runs `MinimaxPlayer` there, so the page keeps rendering the thinking bar and the board while the computer thinks.
+### Search off the UI thread
+In the browser client (`Checkers.Web`), the search never runs on the page's UI thread. When the page is cross-origin isolated it runs in a separate multithreaded engine runtime with Lazy SMP; otherwise it runs in an engine Web Worker with one thread:
+1. The engine starts its own .NET runtime and runs `MinimaxPlayer` there, so the page keeps rendering the thinking bar and the board while the computer thinks.
 2. `MinimaxPlayer` reports a `SearchAnalysis` snapshot about every $100\text{ ms}$ and at each completed depth; the worker posts it to the page, which updates the Analysis panel.
-3. **Move Now** and **New Game** reach the worker through a `SharedArrayBuffer` signal that it checks on each report. If the worker cannot start, the page runs the search itself with `Task.Run`.
+3. **Move Now** and **New Game** stop the multithreaded engine through `SignalAsync`, and the worker through a `SharedArrayBuffer` signal that it checks on each report. If no engine can start, the page runs the search itself with `Task.Run` (one thread).
 
 See [Chapter 13](13-app-integration.md#blazor-webassembly) for the details.
 

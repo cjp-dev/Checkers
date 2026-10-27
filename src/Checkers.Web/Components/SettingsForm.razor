@@ -42,6 +42,19 @@
             <option value="16777216">16,777,216 entries (256 MB)</option>
         </select>
     </div>
+    <div style="margin-top: 0.75rem;">
+        <label style="margin-top: 0; display: block; margin-bottom: 0.25rem;">Search Threads (Lazy SMP):</label>
+        <select class="dialog-text" style="margin: 0.25rem 0;" @bind="Settings.ThreadCount" disabled="@(!Settings.ThreadsAvailable)">
+            @foreach (var (value, text) in Settings.ThreadChoices)
+            {
+                <option value="@value">@text</option>
+            }
+        </select>
+        @if (!Settings.ThreadsAvailable)
+        {
+            <div style="font-size: 0.85em; opacity: 0.8;">The multithreaded engine is not available in this browser session, so the computer uses one thread.</div>
+        }
+    </div>
 </fieldset>
 
 @code {

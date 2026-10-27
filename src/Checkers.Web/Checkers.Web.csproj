@@ -46,4 +46,39 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    The multithreaded engine (Checkers.Web.Engine) for local builds: published into wwwroot/engine/_framework
+    (git-ignored) whenever its sources change. CI publishes it in the deploy workflow instead.
+    Pass -p:RunAOTCompilation=true for an AOT-compiled engine (needs the wasm-tools workload).
+  -->
+  <Target Name="BuildEngine" BeforeTargets="AssignTargetPaths" Condition="'$(GITHUB_ACTIONS)' != 'true'"
+          Inputs="@(EngineSources)" Outputs="$(EngineStamp)">
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)/../Checkers.Web.Engine/Checkers.Web.Engine.csproj&quot; -c Release -p:RunAOTCompilation=$(RunAOTCompilation) -p:IntermediateOutputPath=&quot;$(EngineWorkDir)obj/&quot; -p:OutputPath=&quot;$(EngineWorkDir)bin/&quot; -o &quot;$(EnginePublishDir)&quot;" />
+    <RemoveDir Directories="wwwroot\engine" />
+    <ItemGroup>
+      <!-- Not the engine's own .br/.gz files: this app's static web assets compress the copies themselves,
+           and two sets of compressed files for one asset make the dev server send a body that doesn't match. -->
+      <EngineAssets Include="$(EnginePublishDir)wwwroot\_framework\**\*" Exclude="$(EnginePublishDir)wwwroot\_framework\**\*.br;$(EnginePublishDir)wwwroot\_framework\**\*.gz" />
+    </ItemGroup>
+    <Copy SourceFiles="@(EngineAssets)" DestinationFiles="@(EngineAssets->'wwwroot\engine\_framework\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Touch Files="$(EngineStamp)" AlwaysCreate="true" />
+    <!-- The wwwroot items were collected before this target replaced the files. -->
+    <ItemGroup>
+      <Content Remove="wwwroot\engine\**" />
+      <Content Include="wwwroot\engine\**" />
+    </ItemGroup>
+  </Target>
+
+  <PropertyGroup>
+    <EnginePublishDir>$(MSBuildProjectDirectory)/obj/engine_pub/</EnginePublishDir>
+    <!-- Own obj/bin folders, so this publish can't collide with a solution build of the engine project. -->
+    <EngineWorkDir>$(MSBuildProjectDirectory)/obj/engine_work/</EngineWorkDir>
+    <EngineStamp>$(MSBuildProjectDirectory)/obj/engine_pub.stamp</EngineStamp>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EngineSources Include="..\Checkers.Web.Engine\**\*.cs;..\Checkers.Web.Engine\*.csproj;..\Checkers.Core\**\*.cs;..\Checkers.Core\**\*.csproj;..\Checkers.Core\**\*.txt;..\Checkers.App\**\*.cs;Worker\EngineProtocol.cs"
+                   Exclude="..\**\bin\**;..\**\obj\**" />
+  </ItemGroup>
+
 </Project>

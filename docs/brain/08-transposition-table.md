@@ -17,33 +17,43 @@ When `MinimaxPlayer` encounters a position—either via a different move order i
 
 ## Compact 16-byte entry & 64-byte cache-line bucket layout
 
-Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), `NUMBER_OF_BUCKETS = 4` and `sizeof(struct hash_table_entry) == 16`), [`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** (`[StructLayout(LayoutKind.Sequential, Pack = 1)]`) so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**:
+Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), `NUMBER_OF_BUCKETS = 4` and `sizeof(struct hash_table_entry) == 16`), [`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**.
+
+The 16 bytes are **two 64-bit words**, so that several search threads ([Lazy SMP](07-search.md#lazy-smp-multi-threaded-search)) can share the table without locks:
 
 ```
-┌────────────────────┬───────────┬────────────┬───────────┬───────┬──────┬───────┬───────────┐
-│     Key32 (4 B)    │ Score(2B) │StaticEv(2B)│BestMove2B │ Depth │ Age  │ Flags │ Pad (3 B) │
-│     uint (0..3)    │short(4..5)│short (6..7)│ushort(8.9)│ (10)  │ (11) │ (12)  │  (13..15) │
-└────────────────────┴───────────┴────────────┴───────────┴───────┴──────┴───────┴───────────┘
- 0                  3 4         5 6          7 8         9   10      11     12    13       15
+┌──────────────────────────┬──────┬───────────┐┌───────────┬────────────┬────────────┬───────┬───────┐
+│ Key32 ^ Fold(Data) (4 B) │ Age  │ Unused 3B ││ Score(2B) │StaticEv(2B)│BestMove(2B)│ Depth │ Flags │
+└──────────────────────────┴──────┴───────────┘└───────────┴────────────┴────────────┴───────┴───────┘
+ 0                        3   4    5         7  8         9 10        11 12        13   14      15
+ └──────────────── _keyWord (ulong) ─────────┘  └──────────────────── _data (ulong) ─────────────────┘
 ```
 
 | Bytes | Field | Type | Contents |
 |---|---|---|---|
-| `0–3` | `Key32` | `uint` | Upper 32 bits of the 64-bit Zobrist hash: `(uint)(key >> 32)` |
-| `4–5` | `Score` | `short` | Centipawn or ply-normalized mate score ($\pm 30{,}000$) |
-| `6–7` | `StaticEval` | `short` | Cached static heuristic evaluation from `EvaluationFunction.Evaluate` |
-| `8–9` | `BestMove` | `ushort` | Packed bitboard move `(ushort)((fromSq << 8) \| toSq)` (`0..63`), or `0` if none |
-| `10` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded (`-1` if eval-only) |
-| `11` | `Age` | `byte` | 8-bit search generation counter (`0..255`), incremented once per root turn |
-| `12` | `Flags` | `byte` | Bits `0–1`: `TranspositionBound` ($0..2$ via `BoundMask = 0x03`); Bit `2` (`0x04`): `OccupiedBit` (`IsOccupied`); Bit `3` (`0x08`): `HasMoveBit` (`HasMove`); Bit `4` (`0x10`): `HasStaticEvalBit` (`HasStaticEval`) |
-| `13–15` | `_pad1`, `_pad2`, `_pad3` | `3 × byte` | Explicit alignment padding to exact 16-byte struct stride |
+| `0–3` | `Key32 ^ Fold(Data)` | `uint` | Upper 32 bits of the 64-bit Zobrist hash, `(uint)(key >> 32)`, XOR-ed with `Fold(Data) = (uint)Data ^ (uint)(Data >> 32)` |
+| `4` | `Age` | `byte` | 8-bit search generation counter (`0..255`), incremented once per root turn |
+| `5–7` | — | | Unused |
+| `8–9` | `Score` | `short` | Centipawn or ply-normalized mate score ($\pm 30{,}000$) |
+| `10–11` | `StaticEval` | `short` | Cached static heuristic evaluation from `EvaluationFunction.Evaluate` |
+| `12–13` | `BestMove` | `ushort` | Packed bitboard move `(ushort)((fromSq << 8) \| toSq)` (`0..63`), or `0` if none |
+| `14` | `Depth` | `sbyte` | Remaining search depth $d$ when the entry was recorded (`-1` if eval-only) |
+| `15` | `Flags` | `byte` | Bits `0–1`: `TranspositionBound` ($0..2$ via `BoundMask = 0x03`); Bit `2` (`0x04`): `OccupiedBit` (`IsOccupied`); Bit `3` (`0x08`): `HasMoveBit` (`HasMove`); Bit `4` (`0x10`): `HasStaticEvalBit` (`HasStaticEval`) |
+
+### Lock-free sharing between threads (the XOR trick)
+
+A writer stores `_data` first and `_keyWord` second (`Volatile.Write`); a reader loads `_keyWord` first and `_data` second (`Volatile.Read`, in `TranspositionEntry.Load`) and recomputes the key as `(uint)_keyWord ^ Fold(_data)`. Each word is read and written in one piece, so the only way to get a mixed entry is to see one word from one store and the other word from another. Then the recomputed key almost never matches (the same lockless-hashing idea as in Stockfish and in the [Gomoku engine](https://github.com/cjp-dev/Gomoku)), and the probe treats the slot as a different position: a **miss instead of a wrong score**. Without this, a probe could combine the score of one position with the depth or bound of another and make a wrong cutoff.
+
+Replacement still reads a slot and then overwrites it without a lock. When two threads race for the same slot, one of the two stores is lost. That costs a little search work but cannot corrupt an entry. A torn `Age` only changes which slot is replaced next. With one thread, the probe and store logic is exactly what it was before the change: the 40-position fixed-depth node-count signature is identical.
+
+The telemetry counters (`Probes`, `Hits`, `Cutoffs`, `Collisions`, `Stores`) are plain fields that every probe would write. With several threads they would race and keep the same cache line bouncing between cores, so they are only kept while `CollectStatistics` is on (the TT benchmarks and tests turn it on).
 
 ### 50–54 Bit Combined Zobrist Verification
 Because a table of $N = 2^k$ entries ($k \in \{20, \dots, 24\}$) contains $N_{\text{buckets}} = 2^{k-2}$ buckets, the bucket index `key & _bucketMask` implicitly verifies the lower $k - 2 \in \{18, \dots, 22\}$ bits of the 64-bit Zobrist hash, while `Key32 = (uint)(key >> 32)` explicitly verifies all upper 32 bits:
 
 $$\text{Total Verified Hash Bits} = 32 + \log_2(N / 4) = 30 + k \in [50, 54]\text{ bits}$$
 
-Saving 4 bytes on the key field (`uint Key32` instead of `ulong Key`) and 2 bytes on `Score` (`short` instead of `int`) frees the exact bytes needed to store `short StaticEval` and a full 8-bit `byte Age` inside the same 16-byte footprint.
+Saving 4 bytes on the key field (`uint Key32` instead of `ulong Key`) and 2 bytes on `Score` (`short` instead of `int`) frees the exact bytes needed to store `short StaticEval` and a full 8-bit `byte Age` inside the same 16-byte footprint. The XOR with `Fold(Data)` does not weaken the check: for a consistent entry it cancels out.
 
 ---
 
@@ -142,7 +152,7 @@ The capacity is user-configurable in the **Game -> Settings...** dialog across f
 | **Maximum ($2^{24}$)** | $16{,}777{,}216$ | $4{,}194{,}304$ | $256\text{ MiB}$ | Maximum capacity (zero collisions across 40 deep positions) |
 | **Lightweight / Tests ($2^{16}$)** | $65{,}536$ | $16{,}384$ | $1\text{ MiB}$ | Fast unit test execution |
 
-During interactive gameplay, `MainViewModel` retains the `TranspositionTable` across turns without calling `Clear()`. At the start of each computer turn, `MinimaxPlayer` calls `_tt.NewSearch()`, which increments `_currentAge` (`byte`, $0\dots 255$) in $O(1)$ time—allowing deep subtrees calculated on turn $t$ to accelerate turn $t + 1$ while automatically aging out stale entries during bucket eviction.
+During interactive gameplay, `MainViewModel` retains the `TranspositionTable` across turns without calling `Clear()`. At the start of each computer turn, `MinimaxPlayer` calls `_tt.NewSearch()`, which increments `_currentAge` (`byte`, $0\dots 255$) in $O(1)$ time—allowing deep subtrees calculated on turn $t$ to accelerate turn $t + 1$ while automatically aging out stale entries during bucket eviction. With Lazy SMP the main thread calls `NewSearch()` once, before the helper threads start, so all threads of one search store entries of the same age.
 
 ---
 

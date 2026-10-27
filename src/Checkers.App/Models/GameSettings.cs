@@ -6,8 +6,9 @@ using Checkers.Core.Models;
 namespace Checkers.App.Models;
 
 /// <summary>
-/// Controls the checkers variant, transposition table size, and how long the computer may think.
+/// Controls the checkers variant, transposition table size, search threads, and how long the computer may think.
 /// </summary>
+/// <remarks><see cref="ThreadCount"/> 0 means Auto: the host picks the number of search threads.</remarks>
 public sealed record GameSettings(
     TimeControlMode Mode,
     int Depth,
@@ -15,7 +16,8 @@ public sealed record GameSettings(
     int MinutesPerGame,
     CheckersVariant Variant = CheckersVariant.International,
     int TranspositionTableEntries = GameSettings.DefaultTranspositionTableEntries,
-    bool UseOpeningBook = true)
+    bool UseOpeningBook = true,
+    int ThreadCount = 0)
 {
     public const int MaxDepth = 20;
     public const int MaxSecondsPerMove = 60;
@@ -24,6 +26,8 @@ public sealed record GameSettings(
     public const int MaxTranspositionTableEntries = TranspositionTable.MaxEntries;         // 16,777,216 (2^24)
     public const int MinTranspositionTablePower = 20;
     public const int MaxTranspositionTablePower = 24;
+    public const int AutoThreads = 0;
+    public const int MaxThreadCount = MinimaxPlayer.MaxThreads;
 
     public static GameSettings Default { get; } = new(
         TimeControlMode.TimePerGame,
@@ -50,8 +54,12 @@ public sealed record GameSettings(
             Math.Clamp(MinutesPerGame, 1, MaxMinutesPerGame),
             Variant is CheckersVariant.English ? CheckersVariant.English : CheckersVariant.International,
             normalizedTt,
-            UseOpeningBook);
+            UseOpeningBook,
+            Math.Clamp(ThreadCount, AutoThreads, MaxThreadCount));
     }
+
+    /// <summary>The number of search threads: <see cref="ThreadCount"/>, or <paramref name="autoThreads"/> for Auto.</summary>
+    public int ResolveThreads(int autoThreads) => ThreadCount > 0 ? ThreadCount : Math.Max(1, autoThreads);
 
     public SearchLimits ToLimits(TimeSpan computerTimeLeft) => Mode switch
     {

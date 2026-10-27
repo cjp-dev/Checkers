@@ -3,6 +3,7 @@
     <Project Path="src/Checkers.App/Checkers.App.csproj" />
     <Project Path="src/Checkers.Core/Checkers.Core.csproj" />
     <Project Path="src/Checkers.Web/Checkers.Web.csproj" />
+    <Project Path="src/Checkers.Web.Engine/Checkers.Web.Engine.csproj" />
     <Project Path="src/Checkers.Wpf/Checkers.Wpf.csproj" />
   </Folder>
   <Folder Name="/tests/">

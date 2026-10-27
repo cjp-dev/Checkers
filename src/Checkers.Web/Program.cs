@@ -21,7 +21,8 @@ builder.Services.AddSingleton<ISoundService, BrowserSoundService>();
 builder.Services.AddBrainDocs("The Checkers brain", "Checkers", "https://github.com/cjp-dev/Checkers/blob/main/docs/brain/");
 builder.Services.AddSingleton<AppearanceStore>();
 builder.Services.AddSingleton<ISettingsStore, LocalStorageSettingsStore>();
-builder.Services.AddSingleton<IEngineHost, WebEngineHost>();
+builder.Services.AddSingleton<WebEngineHost>();
+builder.Services.AddSingleton<IEngineHost>(services => services.GetRequiredService<WebEngineHost>());
 builder.Services.AddSingleton(services => new MainViewModel(
     session: null,
     services.GetRequiredService<ISoundService>(),

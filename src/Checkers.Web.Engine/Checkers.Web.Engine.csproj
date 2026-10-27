@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!--
+    The multithreaded engine runtime. The Blazor app itself stays single-threaded (Blazor does not support
+    WasmEnableThreads); engine-client.js boots this second .NET runtime from /engine/_framework/ when the page
+    is cross-origin isolated, and the Lazy SMP search threads run on its pthread pool.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmEnableThreads>true</WasmEnableThreads>
+  </PropertyGroup>
+
+  <!-- The engine is CPU-bound, so CI publish compiles it to WebAssembly AOT (needs: dotnet workload install wasm-tools). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and ('$(RunAOTCompilation)' == 'true' or '$(GITHUB_ACTIONS)' == 'true')">
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Checkers.App\Checkers.App.csproj" />
+    <ProjectReference Include="..\Checkers.Core\Checkers.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Checkers.Web\Worker\EngineProtocol.cs" Link="Worker\EngineProtocol.cs" />
+  </ItemGroup>
+
+</Project>

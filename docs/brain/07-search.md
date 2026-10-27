@@ -4,7 +4,7 @@
 
 ## In short
 
-The search engine decides which move the computer will play. [`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 11 – Bitboards](11-bitboards.md)).
+The search engine decides which move the computer will play. [`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 11 – Bitboards](11-bitboards.md)). With several threads it runs as a [Lazy SMP](#lazy-smp-multi-threaded-search) search that shares the transposition table.
 
 Search limits are configured in the **Game -> Settings...** dialog ([Chapter 09](09-time-control.md)):
 * **Fixed depth:** $1$ to $20$ plies (default: $8$ plies)
@@ -188,9 +188,36 @@ When the position is outside the opening book (or the book is disabled), `Minima
 3. **Single-Search Multi-PV Root Mode (`SearchMultiPv`):** For opening book construction ([Chapter 10](10-opening-book.md#stage-1-top-down-multi-pv-dag-to-level-8-k--3-best-moves)) and multi-line analysis, `MinimaxPlayer.SearchMultiPv(state, topK, depth)` holds the root lower bound $\alpha$ at the $k$-th best score (`topKScores[k - 1]`) instead of the $1$-st best score, returning exact minimax scores (`MultiPvMoveResult`) for the top $k$ root moves in a single iterative-deepening pass.
 4. **PV, TT & History Seeding:** Each completed depth $d - 1$ populates the Transposition Table, Killer table, and History table, and promotes the best root move to index `0`, making depth $d$ dramatically faster ([Chapter 06](06-move-ordering.md)).
 5. **Non-Blocking UI & Cancellation:**
-   - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`.
-   - **Blazor WebAssembly:** Runs in an engine Web Worker with its own .NET runtime, so the search never blocks the page. Progress is reported about every $100\text{ ms}$, and Move Now and cancel arrive through a `SharedArrayBuffer` signal that the worker polls on each report ([Chapter 13](13-app-integration.md)).
-   - **Amortized Cancellation Check:** Every $4{,}096$ nodes (`(NodesEvaluated & 4095) == 0`), `cancellationToken.ThrowIfCancellationRequested()` and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.
+   - **WPF Desktop:** Runs on a background ThreadPool thread via `Task.Run`, with Lazy SMP helper threads (below).
+   - **Blazor WebAssembly:** Runs in a separate multithreaded .NET engine runtime when the page is cross-origin isolated, otherwise in a single-threaded engine Web Worker, so the search never blocks the page. Progress is reported about every $100\text{ ms}$ ([Chapter 13](13-app-integration.md)).
+   - **Amortized Cancellation Check:** Every $4{,}096$ nodes of the main thread (`(Nodes & 4095) == 0` in `SearchWorker.PollStop`), `cancellationToken.ThrowIfCancellationRequested()`, the Move Now token and `sw.ElapsedMilliseconds >= hardLimitMs` are checked.
+
+---
+
+## Lazy SMP (multi-threaded search)
+
+With `MinimaxPlayer.Threads` $= N > 1$, one search uses $N$ threads. The search state that a thread changes lives in a `SearchWorker` ([`SearchWorker.cs`](../../src/Checkers.Core/AI/SearchWorker.cs)): the per-ply move buffers, killers, history, the `DrawTable` and the node counters. Worker 0 is the main search, which runs the root loop described above on the calling thread. Workers $1 \dots N-1$ are **helpers**.
+
+* **Shared:** only the transposition table, which is lock-free ([Chapter 08](08-transposition-table.md#lock-free-sharing-between-threads-the-xor-trick)). The evaluation, move generator, Zobrist keys and opening book are immutable.
+* **Helpers:** each helper runs its own iterative deepening over the same root position with a full window and discards its results. The point is the transposition table: the helpers fill it with entries, so the main thread gets cutoffs and move-ordering hints in subtrees it hasn't searched yet. Helpers start on dedicated threads (`TaskCreationOptions.LongRunning`) once all workers are prepared.
+* **Diversification:** if all threads searched the same tree in the same order, they would only duplicate work. So odd helpers start **one ply deeper** than the main thread, and each helper searches the root moves after the first in a **rotated order**. The threads' own killer and history tables then make them drift further apart.
+* **Result and stopping:** only the main thread decides the move, with exactly the single-thread rules (partial-iteration adoption, dominant-move exit, mate exit). When it finishes, or on Move Now, cancel or the hard time limit, it sets a shared `SearchStop` flag, which the helpers check every $4{,}096$ nodes, and waits for them.
+* **Nodes and speed** are the sum over all threads, so the reported nps grows with $N$.
+* **Always one thread:** `Threads = 1` (the default) searches exactly as before (same node counts). A custom `IEvaluationFunction` (which may not be thread-safe), a search without a TT and `SearchMultiPv` (the book builder) always use one thread.
+
+The thread count is set in the **Settings** dialog ([Chapter 14](14-gui-and-settings.md)); Auto means one thread per logical processor (at most 16) on desktop and 4 in the browser.
+
+**Measured** with `smp-bench` (40 International positions at calibrated depth + 4, fixed depth, fresh 1M TT, minimum of 3 interleaved passes, 24 logical processors):
+
+| Threads | Time to depth | Speedup | Nodes vs 1 thread | NPS |
+|---:|---:|---:|---:|---:|
+| 1 | 2,065 ms | 1.00× | 1.00× | 9.3M |
+| 2 | 1,513 ms | 1.36× | 1.38× | 17.6M |
+| 4 | 1,093 ms | 1.89× | 1.90× | 33.5M |
+| 8 | 858 ms | 2.41× | 2.61× | 58.7M |
+| 16 | 702 ms | 2.94× | 3.13× | 86.0M |
+
+NPS scales almost linearly, but much of the extra work duplicates the main thread's, so reaching the same depth gets faster much more slowly. Matches show what the extra threads are worth in play; see [Chapter 12](12-engine-improvements.md#milestone-10-lazy-smp-multi-threaded-search).
 
 ---
 

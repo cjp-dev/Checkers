@@ -10,13 +10,13 @@ namespace Checkers.Web.Services;
 /// <summary>
 /// Modal dialogs shown one at a time by the DialogHost component.
 /// </summary>
-public sealed class BrowserDialogService(IJSInProcessRuntime js, ShellDialogs dialogs) : IDialogService
+public sealed class BrowserDialogService(IJSInProcessRuntime js, ShellDialogs dialogs, WebEngineHost engineHost) : IDialogService
 {
     private const string Caption = "Checkers";
 
     public async Task<GameSettings?> EditSettingsAsync(GameSettings current)
     {
-        var settings = new SettingsViewModel(current);
+        var settings = new SettingsViewModel(current, engineHost.ThreadOptions);
         int button = await ShowAsync(new DialogRequest { Title = "Settings", Body = SettingsForm.For(settings), Buttons = ["OK", "Cancel"] });
         return button == 0 ? settings.ToSettings() : null;
     }

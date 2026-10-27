@@ -5,13 +5,14 @@
   },
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": [ "/_framework/*", "/content/*", "/css/*", "/images/*", "/js/*", "*.{bin,css,dat,ico,jpg,js,json,md,png,svg,wasm}" ]
+    "exclude": [ "/_framework/*", "/engine/*", "/content/*", "/css/*", "/images/*", "/js/*", "*.{bin,css,dat,ico,jpg,js,json,md,mjs,png,svg,wasm}" ]
   },
   "mimeTypes": {
     ".bin": "application/octet-stream",
     ".dat": "application/octet-stream",
     ".json": "application/json",
     ".md": "text/markdown; charset=utf-8",
+    ".mjs": "text/javascript",
     ".wasm": "application/wasm"
   }
 }

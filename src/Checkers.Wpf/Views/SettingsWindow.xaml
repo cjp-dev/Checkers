@@ -59,7 +59,7 @@
         </Grid>
 
         <!-- Opening Book & Transposition Table Section -->
-        <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold" Text="Checkers Opening Book &amp; Transposition Table" />
+        <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold" Text="Checkers Opening Book, Transposition Table &amp; Threads" />
         <StackPanel Margin="4,0,0,0">
             <CheckBox Margin="0,0,0,10" Content="{Binding OpeningBookDescription}" IsChecked="{Binding UseOpeningBook}" />
             <Grid Margin="0,0,0,0">
@@ -77,6 +77,23 @@
                         AutomationProperties.Name="Transposition table size" />
                 <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
                            Text="{Binding TranspositionTableEntriesText}" />
+            </Grid>
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="130" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Margin="0,4,12,4" VerticalAlignment="Center" Text="Search threads"
+                           ToolTip="Lazy SMP: more threads search the same position and share the transposition table." />
+                <Slider Grid.Column="1" VerticalAlignment="Center"
+                        Minimum="0"
+                        Maximum="{Binding MaxThreadCount}"
+                        IsSnapToTickEnabled="True" TickFrequency="1"
+                        Value="{Binding ThreadCount}"
+                        AutomationProperties.Name="Search threads" />
+                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Text="{Binding ThreadCountText}" />
             </Grid>
         </StackPanel>
 

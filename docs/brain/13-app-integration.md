@@ -81,8 +81,8 @@ flowchart TD
 
 | Feature | WPF Desktop (`Checkers.Wpf`) | Blazor WebAssembly (`Checkers.Web`) |
 |---|---|---|
-| **Runtime Model** | Multi-threaded CLR (`.NET 10`) | WebAssembly (`.NET 10` AOT): the page and an engine Web Worker each run their own .NET runtime |
-| **AI Search Execution** | Background ThreadPool (`Task.Run`) | Engine Web Worker (`engine-worker.js` + `EngineWorker.ChooseMove`); `Task.Run` fallback when no worker is available |
+| **Runtime Model** | Multi-threaded CLR (`.NET 10`) | WebAssembly (`.NET 10` AOT): the page runs a single-threaded .NET runtime, the engine a second, multithreaded one (or a single-threaded one in a Web Worker) |
+| **AI Search Execution** | Background ThreadPool (`Task.Run`) + Lazy SMP helper threads | Multithreaded engine runtime (`Checkers.Web.Engine`, Lazy SMP) when the page is cross-origin isolated; otherwise the engine Web Worker (`engine-worker.js` + `EngineWorker.ChooseMove`, one thread); `Task.Run` fallback when neither starts |
 | **Telemetry Marshaling** | `Dispatcher` via `Progress<SearchAnalysis>` | `BrowserSynchronizationContext` + `Analysis.Updated` |
 | **File Save / Load** | Native `OpenFileDialog` / `SaveFileDialog` | Browser File API & Blob downloads (GameShell's `gameShell.openTextFile` / `gameShell.downloadTextFile` in `gameshell.js`) |
 | **Audio Synthesis** | Procedural PCM wave synthesis (`SoundService`) | Web Audio / HTML5 audio interop (`checkers.playSound`) |
@@ -124,10 +124,19 @@ sequenceDiagram
 ```
 
 ### Desktop WPF
-In WPF, UI rendering runs on the main STA thread while `Task.Run` executes `MinimaxPlayer.GetMoveAsync` on a background ThreadPool worker. `Progress<SearchAnalysis>` automatically marshals callbacks onto the WPF `Dispatcher`, keeping animations and telemetry updates smooth at 60 FPS.
+In WPF, UI rendering runs on the main STA thread while `Task.Run` executes `MinimaxPlayer.GetMoveAsync` on a background ThreadPool worker, which starts the Lazy SMP helper threads ([Chapter 07](07-search.md#lazy-smp-multi-threaded-search)). `LocalEngineHost` sets `MinimaxPlayer.Threads` from the **Search threads** setting (Auto = one per logical processor, at most 16). `Progress<SearchAnalysis>` automatically marshals callbacks onto the WPF `Dispatcher`, keeping animations and telemetry updates smooth at 60 FPS.
 
 ### Blazor WebAssembly
-In WebAssembly, the page's C# code shares the browser's UI thread with the DOM renderer, so a search on that thread would freeze the page. `WebEngineHost` therefore runs the search in an engine Web Worker:
+In WebAssembly, the page's C# code shares the browser's UI thread with the DOM renderer, so a search on that thread would freeze the page. `engine-client.js` therefore starts the engine in one of two ways.
+
+**Multithreaded engine (Lazy SMP).** Blazor itself does not support WebAssembly threads, so the threaded engine is a separate project, `Checkers.Web.Engine` (`WasmEnableThreads`, AOT), published into `/engine/_framework/` next to the app. When the page is cross-origin isolated (`self.crossOriginIsolated` and `SharedArrayBuffer`), `engine-client.js` boots that runtime **on the Window** (a threaded .NET 10 runtime cannot be created inside a Web Worker), with a pool of 16 pthreads (`withConfig({ pthreadPoolInitialSize: 16 })`; the MSBuild pool-size property is not passed on to `dotnet.js`).
+* The runtime keeps managed code off the UI thread (its deputy thread). All of its `[JSExport]` methods are async, and `ChooseMoveAsync` runs `MinimaxPlayer` inside `Task.Run`, so nothing ever blocks the runtime's JS thread.
+* Search threads never call JavaScript: progress goes into a queue that the page drains every $50\text{ ms}$ (`DrainProgressAsync`), and Move Now / cancel call `SignalAsync`, which cancels the search's tokens directly.
+* The page resolves Auto to `min(navigator.hardwareConcurrency, 4)` threads; the setting allows up to 8. `InitAsync` raises the thread pool's minimum so new threads aren't held back by hill climbing.
+* Cross-origin isolation comes from the `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` headers in `staticwebapp.config.json` on Azure. On hosts that don't send them, `coi-serviceworker.js` adds them with a service worker (it does nothing when the page is already isolated).
+* If the page isn't isolated, or the runtime doesn't start within $20\text{ s}$, the single-threaded worker below is used. The console says which engine runs (`[Checkers.Engine] Multithreaded engine started …`), and the Settings dialog then disables the thread choice.
+
+**Single-threaded engine Web Worker** (the fallback):
 * The worker (`engine-worker.js`) starts its own .NET runtime and calls `EngineWorker.ChooseMove`, which runs `MinimaxPlayer.GetMoveAsync` synchronously inside the worker. The page stays free to render.
 * `MinimaxPlayer` reports a `SearchAnalysis` about every $100\text{ ms}$. The worker's `ProgressPoster` sends it to the page with `postMessage` (at most every $100\text{ ms}$ unless the depth or best move changed), and `WebEngineHost.OnProgress` passes it to `AnalysisViewModel`, which triggers `StateHasChanged()`.
 * Move Now and cancel are written to a `SharedArrayBuffer` (1 = Move Now, 2 = cancel). `ProgressPoster` polls it on each report and cancels the matching token. If the worker does not stop within $300\text{ ms}$, or shared memory is not available, the page restarts the worker and plays the best move from the last analysis.

@@ -8,7 +8,7 @@ using Checkers.Core.Models;
 namespace Checkers.App.ViewModels;
 
 /// <summary>
-/// ViewModel for the computer thinking, transposition table, and checkers variant settings dialog.
+/// ViewModel for the computer thinking, transposition table, search threads, and checkers variant settings dialog.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -36,8 +36,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _useOpeningBook;
 
-    public SettingsViewModel(GameSettings settings)
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ThreadCountText))]
+    private int _threadCount;
+
+    public SettingsViewModel(GameSettings settings, EngineThreadOptions? threadOptions = null)
     {
+        ThreadOptions = threadOptions ?? EngineThreadOptions.Desktop;
         var normalized = settings.Normalize();
         Variant = normalized.Variant;
         Mode = normalized.Mode;
@@ -46,7 +51,23 @@ public sealed partial class SettingsViewModel : ObservableObject
         MinutesPerGame = normalized.MinutesPerGame;
         TranspositionTableEntries = normalized.TranspositionTableEntries;
         UseOpeningBook = normalized.UseOpeningBook;
+        ThreadCount = Math.Min(normalized.ThreadCount, ThreadOptions.MaxThreads);
     }
+
+    public EngineThreadOptions ThreadOptions { get; }
+    public int MaxThreadCount => ThreadOptions.MaxThreads;
+    public bool ThreadsAvailable => ThreadOptions.Available;
+
+    /// <summary>"Auto (N threads)" for 0, otherwise "N threads".</summary>
+    public string ThreadCountText => FormatThreads(ThreadCount);
+
+    /// <summary>The choices for a drop-down: Auto, then 1 to <see cref="MaxThreadCount"/>.</summary>
+    public IReadOnlyList<(int Value, string Text)> ThreadChoices =>
+        Enumerable.Range(0, MaxThreadCount + 1).Select(n => (n, FormatThreads(n))).ToList();
+
+    private string FormatThreads(int count) => count == GameSettings.AutoThreads
+        ? $"Auto ({ThreadOptions.AutoThreads} {(ThreadOptions.AutoThreads == 1 ? "thread" : "threads")})"
+        : $"{count} {(count == 1 ? "thread" : "threads")}";
 
     public int MaxDepth => GameSettings.MaxDepth;
     public int MaxSecondsPerMove => GameSettings.MaxSecondsPerMove;
@@ -106,7 +127,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     public GameSettings ToSettings() =>
-        new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame, Variant, TranspositionTableEntries, UseOpeningBook).Normalize();
+        new GameSettings(Mode, Depth, SecondsPerMove, MinutesPerGame, Variant, TranspositionTableEntries, UseOpeningBook, ThreadCount).Normalize();
 
     private void SelectMode(bool selected, TimeControlMode mode)
     {

@@ -27,7 +27,8 @@ public static partial class EngineWorker
     [JSExport]
     public static string ChooseMove(string requestJson)
     {
-        (BoardState state, CheckersVariant variant, SearchLimits limits, int ttEntries, ulong[] history) =
+        // This single-threaded runtime is the fallback engine; it ignores the requested thread count.
+        (BoardState state, CheckersVariant variant, SearchLimits limits, int ttEntries, ulong[] history, _) =
             EngineProtocol.ReadRequest(requestJson);
 
         if (s_tt is null || s_tt.Capacity != ttEntries)

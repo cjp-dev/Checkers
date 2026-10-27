@@ -36,7 +36,11 @@ public sealed class LocalEngineHost : IEngineHost
             settings.ToLimits(computerTimeLeft),
             ruleEngine: new RuleEngine(settings.Variant),
             evaluator: new EvaluationFunction(settings.Variant),
-            transpositionTable: _transpositionTable);
+            transpositionTable: _transpositionTable)
+        {
+            // In the browser this host is only the fallback and runs on the single UI thread.
+            Threads = OperatingSystem.IsBrowser() ? 1 : settings.ResolveThreads(EngineThreadOptions.Desktop.AutoThreads)
+        };
     }
 
     public async Task<(Move Move, SearchAnalysis? LastAnalysis)> ChooseMoveAsync(

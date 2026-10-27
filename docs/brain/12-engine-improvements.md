@@ -513,5 +513,15 @@ dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Relea
 
 # Run the 40-position standard and deep TT suites
 dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- --deep
+
+# Milestone 10 (Lazy SMP): fixed-depth node-count signature of the 1-thread search (save, then compare after a change)
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- signature --out signature.json
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- signature --compare signature.json
+
+# Milestone 10: time to depth per thread count (40 positions, calibrated depth + 4, 3 interleaved passes)
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- smp-bench --threads 1,2,4,8,16 --depth-plus 4 --passes 3
+
+# Milestone 10: 400-game match, 4 threads against 1 thread (same build), 500 ms/move
+dotnet run --project tools/Checkers.Benchmark/Checkers.Benchmark.csproj -c Release -- smp-match --variant International --threads-a 1 --threads-b 4 --time-ms 500 --ballots 200
 ```
 

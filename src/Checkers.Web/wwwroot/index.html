@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Checkers (Draughts) – Play Online with International Flying Kings</title>
     <base href="/" />
+    <!-- Cross-origin isolation (needed by the multithreaded engine) on hosts that don't send COOP/COEP; a no-op on Azure.
+         It must sit in the site root: a service worker only controls pages below its own folder. -->
+    <script src="coi-serviceworker.js"></script>
     <link rel="preload" id="webassembly" />
     <link rel="stylesheet" href="_content/GameShell/gameshell.css" />
     <link rel="stylesheet" href="css/app.css" />

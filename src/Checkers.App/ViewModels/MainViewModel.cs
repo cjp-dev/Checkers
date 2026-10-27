@@ -573,6 +573,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Settings = (Settings with { TranspositionTableEntries = parsedTtEntries }).Normalize();
         }
 
+        if (loaded.Tags.TryGetValue("ThreadCount", out var threadsStr) &&
+            int.TryParse(threadsStr, out var parsedThreads))
+        {
+            Settings = (Settings with { ThreadCount = parsedThreads }).Normalize();
+        }
+
         AttachSession(loaded.Session);
         FileName = file.Path;
         RefreshBoard();
@@ -602,7 +608,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ["Depth"] = Settings.Depth.ToString(),
             ["SecondsPerMove"] = Settings.SecondsPerMove.ToString(),
             ["MinutesPerGame"] = Settings.MinutesPerGame.ToString(),
-            ["TranspositionTableEntries"] = Settings.TranspositionTableEntries.ToString()
+            ["TranspositionTableEntries"] = Settings.TranspositionTableEntries.ToString(),
+            ["ThreadCount"] = Settings.ThreadCount.ToString()
         };
 
         string recordText = GameRecordFormat.Format(Session, tags);
