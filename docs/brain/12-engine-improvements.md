@@ -4,13 +4,14 @@
 
 ## In short
 
-During the development of `Checkers.Core`, the AI engine evolved through **nine rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), root-level partial-iteration adoption & dominant-move early termination, a hardware `POPCNT`-vectorized static evaluation overhaul (`board_eval.c` 1:1 port for English Checkers + Flying Kings adaptation for International Draughts), and embedded 12-ply Drop-Out Expansion (DOE) opening books (`32,369` English / `26,367` International positions).
+During the development of `Checkers.Core`, the AI engine evolved through **ten rigorously benchmarked engineering milestones**—starting from an initial object-oriented `Piece?[8, 8]` array prototype and progressing to a zero-allocation 64-bit bitboard engine equipped with a 4-way set-associative cache-line transposition table, hardware `Sse.Prefetch0` prefetching, Principal Variation Search (PVS), Killer/History move ordering, path-aware repetition detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), two-stage Verified Late Move Reductions (LMR), root-level partial-iteration adoption & dominant-move early termination, a hardware `POPCNT`-vectorized static evaluation overhaul (`board_eval.c` 1:1 port for English Checkers + Flying Kings adaptation for International Draughts), embedded 12-ply Drop-Out Expansion (DOE) opening books (`32,369` English / `26,367` International positions), and a Lazy SMP multi-threaded search on desktop and in the browser.
 
 Every milestone was validated against automated benchmark suites (`tools/Checkers.Benchmark`) to verify search correctness, measure exact node reductions, and quantify wall-clock throughput (`nodes/s`), search depth gains, and head-to-head self-play Elo strength:
 * **Raw Tree-Walk Throughput:** Increased from **`0.64M–0.66M nodes/s`** in the `Piece?[8, 8]` array engine to **`32.83M–37.18M nodes/s`** in the bitboard engine (**51×–65× raw speedup** with 100% node-for-node equivalence).
 * **40-Position Deep Fixed-Depth Suite ($7\text{–}14$ plies):** Total runtime across all 40 deep International positions dropped from **`148,822 ms` ($2.48\text{ minutes}$)** in the uncached array baseline down to **`193 ms` ($0.19\text{ seconds}$)** in Phase 6 (**771× total speedup**), and in English Checkers from **`142,038 ms` down to `173 ms` (821× total speedup; 875× No-TT speedup)**.
 * **5-Position Timed Suite ($5.0\text{ s}$ per position, $16\text{M}$ TT):** Completed iterative deepening depth increased by **+4 to +5 plies** across every position (reaching **21 to 25 plies**, plus partial depth-22 root adoption on `Pos #1`), enabling the engine to solve a **21-ply forced win** on Position #40 in **`< 2.2 seconds`**.
 * **200-Game Bot-vs-Bot Self-Play Verification (`1000 ms/move`, 50 Balanced Opening Ballots × 2 Sides per Variant):** The Phase 6 static evaluation overhaul defeated the baseline evaluation by **`69.5 – 30.5` (`+41 =57 -2`, `+143.1 ± 42.9 Elo`, `100.0% LOS`)** in **English Checkers** and **`56.5 – 43.5` (`+22 =69 -9`, `+45.4 ± 37.8 Elo`, `99.2% LOS`)** in **International (Flying Kings) Checkers** (`126.0 / 200` combined, `+63 =126 -11`).
+* **Lazy SMP (Milestone 10):** 4 search threads beat 1 thread **`216.0 – 184.0`** over 400 games (`+85 =262 -53`, **`+27.9 ± 20.0 Elo`**, `99.7% LOS`, `500 ms/move`, International), with the 1-thread search unchanged node for node.
 * **Embedded 12-Ply DOE Opening Books (Phase 7):** Built across 3 stages of innovation—Stage 1 Top-Down Multi-PV ($k=3$) DAG to `lv 8` (`2,100` / `2,228` positions), Stage 2 Full-Width Early Plies (`lv 0..3`, `273` positions), and Stage 3 Depth-First Drop-Out Expansion (`lv 4..12`, `60 s` Multi-PV search per position)—yielding **`32,369` English** and **`26,367` International** book positions (`0` Negamax back-up errors).
 
 > [!NOTE]
@@ -490,6 +491,38 @@ In **Phase 7**, we designed and generated embedded, human-readable opening books
 | **Backed-Up Root Score (`lv 0`)** | `+2 cp` (Eng, `22-18`) / `+4 cp` (Intl, `22-17`) | **`+2 cp` (`22-18 +2`)** | **`+2 cp` (`22-18 +2`, `21-17 +1`)** |
 | **Negamax Back-Up Consistency** | `0 errors` | **`0 errors` (100% exact)** | **`0 errors` (100% exact)** |
 | **Embedded File Size** | `68,180` / `73,041 bytes` (`~67` / `~71 KB`) | **`1,062,670 bytes` (`1.01 MB`)** | **`875,844 bytes` (`855.3 KB`)** |
+
+---
+
+## Milestone 10: Lazy SMP (Multi-Threaded Search)
+
+The search can now use several threads ([Chapter 07](07-search.md#lazy-smp-multi-threaded-search)): helper threads search the same root and fill the shared, now lock-free transposition table ([Chapter 08](08-transposition-table.md#lock-free-sharing-between-threads-the-xor-trick)); only the main thread decides the move. The design follows the [Gomoku engine](https://github.com/cjp-dev/Gomoku), including its multithreaded WebAssembly engine ([Chapter 13](13-app-integration.md#blazor-webassembly)).
+
+**Gate 1 — the 1-thread search is unchanged.** The new `signature` command searches the 40 benchmark positions of both variants at their calibrated depth with no TT and with a fresh 1M TT (160 searches) and records nodes, move and score. Before and after the change, at calibrated depth and at calibrated depth + 2 (`72,570,162` nodes), all 160 searches are **identical**. Moving the search into `SearchWorker` shortened NegaMax's parameter list, which made the 1-thread search about 3% faster (depth + 2 signature: best of 10 interleaved runs `5,131 ms` against `5,251 ms`).
+
+**Gate 2 — time to depth** (`smp-bench`, 40 International positions at calibrated depth + 4, fresh 1M TT, minimum of 3 interleaved passes):
+
+| Threads | Time to depth | Speedup | Nodes vs 1 thread | NPS |
+|---:|---:|---:|---:|---:|
+| 1 | 2,065 ms | 1.00× | 1.00× | 9.3M |
+| 2 | 1,513 ms | 1.36× | 1.38× | 17.6M |
+| 4 | 1,093 ms | 1.89× | 1.90× | 33.5M |
+| 8 | 858 ms | 2.41× | 2.61× | 58.7M |
+| 16 | 702 ms | 2.94× | 3.13× | 86.0M |
+
+**Gate 3 — matches** (`smp-match`, same build, 200 balanced International ballots × 2 colours = 400 games, `500 ms/move`, own 1M TT per side, games in parallel without oversubscribing the 24 logical processors):
+
+| Match | Games at once | Score | W / D / L | 95% lower bound | Elo (± 95%) | Avg depth | NPS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2 threads vs 1 | 12 | 210.0 / 400 (**52.5%**) | +79 = 262 −59 | 49.6% | +17.4 ± 20.0 | 20.99 vs 20.52 | 7.9M vs 4.0M |
+| **4 threads vs 1 (gate)** | 5 | 216.0 / 400 (**54.0%**) | +85 = 262 −53 | **51.1%** | **+27.9 ± 20.0** | 22.70 vs 21.72 | 19.7M vs 5.2M |
+| 8 threads vs 1 | 3 | 242.5 / 400 (**60.6%**) | +125 = 235 −40 | 57.7% | +75.0 ± 21.7 | 22.34 vs 21.06 | 35.1M vs 5.0M |
+
+The gate (4 threads, 95% lower bound above 50%) passed. 2 threads is ahead but not significant at 400 games; 8 threads is clearly stronger. Full results are in `Plans/lazy-smp-results/`.
+
+Search speed in the matches is lower than in `smp-bench` because up to 24 search threads run at once on the machine (games run in parallel; only the side to move searches).
+
+**Gate 4 — the browser** (headless Chromium, AOT-compiled engine, 3 s/move from the start position, same machine): 1 thread `4.6M nps` (19 plies), 4 threads `15.2M nps` (20 plies), Auto (4) `16.6M nps`, 8 threads `29.1M nps` (21 plies). Move Now answers in about 0.1 s with 4 threads. Without cross-origin isolation the single-threaded worker takes over and the Threads choice is disabled.
 
 ---
 
