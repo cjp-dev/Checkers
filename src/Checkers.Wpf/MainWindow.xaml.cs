@@ -36,12 +36,12 @@ public partial class MainWindow : Window
 
     private void OnUserGuideExecuted(object sender, ExecutedRoutedEventArgs e)
     {
-        OpenUrl("https://github.com/cjp-dev/Checkers/blob/main/docs/brain/14-gui-and-settings.md");
+        OpenUrl("https://github.com/cjp-dev/Checkers/blob/main/docs/14-gui-and-settings.md");
     }
 
     private void OnDocumentationExecuted(object sender, ExecutedRoutedEventArgs e)
     {
-        OpenUrl("https://github.com/cjp-dev/Checkers/blob/main/docs/brain/README.md");
+        OpenUrl("https://github.com/cjp-dev/Checkers/blob/main/docs/README.md");
     }
 
     private static void OpenUrl(string url)

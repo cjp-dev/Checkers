@@ -7,8 +7,8 @@
 During the first 12 plies (`6` full turns for both White and Black), the Checkers game tree branches across millions of move sequences and move-order transpositions. Searching the initial board from scratch on every move wastes clock time and tends to play the exact same deterministic opening line in every game.
 
 To give `Checkers.Core` instant, varied, and deeply analyzed opening play for both **English Checkers** and **International Draughts (Flying Kings)**, the engine embeds two pre-computed, transposition-aware **12-ply Opening Books** (`lv 0 .. lv 11` evaluated at `60s` per position, reaching `lv 12` frontier leaves, with an effective search horizon of **`ply 36–42`** from the start of the game):
-- [`src/Checkers.Core/AI/Book/OpeningBook.English.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.English.txt) (**`32,369` unique positions**, `14,320` evaluated internal nodes + `18,049` frontier leaves, **`1.01 MB`**)
-- [`src/Checkers.Core/AI/Book/OpeningBook.International.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.International.txt) (**`26,367` unique positions**, `11,541` evaluated internal nodes + `14,826` frontier leaves, **`855.3 KB`**)
+- [`src/Checkers.Core/AI/Book/OpeningBook.English.txt`](../src/Checkers.Core/AI/Book/OpeningBook.English.txt) (**`32,369` unique positions**, `14,320` evaluated internal nodes + `18,049` frontier leaves, **`1.01 MB`**)
+- [`src/Checkers.Core/AI/Book/OpeningBook.International.txt`](../src/Checkers.Core/AI/Book/OpeningBook.International.txt) (**`26,367` unique positions**, `11,541` evaluated internal nodes + `14,826` frontier leaves, **`855.3 KB`**)
 
 ---
 
@@ -53,7 +53,7 @@ flowchart LR
 
 ## 2. Architecture Overview
 
-The opening book subsystem in [`src/Checkers.Core/AI/Book/`](../../src/Checkers.Core/AI/Book/) consists of three core classes and a CLI generator/verifier in [`tools/Checkers.Benchmark/BookCommands.cs`](../../tools/Checkers.Benchmark/BookCommands.cs):
+The opening book subsystem in [`src/Checkers.Core/AI/Book/`](../src/Checkers.Core/AI/Book) consists of three core classes and a CLI generator/verifier in [`tools/Checkers.Benchmark/BookCommands.cs`](../tools/Checkers.Benchmark/BookCommands.cs):
 
 ```mermaid
 flowchart TD
@@ -80,17 +80,17 @@ flowchart TD
 
 | File | Responsibility |
 | :--- | :--- |
-| [`BookFile.cs`](../../src/Checkers.Core/AI/Book/BookFile.cs) | Reads, writes, parses, and formats [`BookNode`](../../src/Checkers.Core/AI/Book/BookFile.cs) records and resilient `.partial` checkpoints (`ReadPartialNodes`). |
-| [`BookBuilder.cs`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) | Implements two-phase Full-Width + Drop-Out Expansion (`ExpandDropOut`), uniform Top-Down Multi-PV generation (`GenerateTopDown`), bottom-up topological Negamax score propagation (`BackUp`), and full graph verification (`CheckBackUp`). |
-| [`OpeningBook.cs`](../../src/Checkers.Core/AI/Book/OpeningBook.cs) | Lazy-loads the embedded resource for each [`CheckersVariant`](../../src/Checkers.Core/Models/CheckersVariant.cs) into an $O(1)$ `Dictionary<ulong, BookNode>` keyed by 64-bit `ZobristHash`, and implements `TryGetMove` with configurable randomization margin (`10 cp`) and child-transposition fallback. |
-| [`BookCommands.cs`](../../tools/Checkers.Benchmark/BookCommands.cs) | Multi-threaded CLI (`book expand-doe`, `book generate`, and `book verify`) with per-node `.partial` checkpointing, periodic live book flushes, timed execution budgets, and `Ctrl+C` graceful stop/resume. |
+| [`BookFile.cs`](../src/Checkers.Core/AI/Book/BookFile.cs) | Reads, writes, parses, and formats [`BookNode`](../src/Checkers.Core/AI/Book/BookFile.cs) records and resilient `.partial` checkpoints (`ReadPartialNodes`). |
+| [`BookBuilder.cs`](../src/Checkers.Core/AI/Book/BookBuilder.cs) | Implements two-phase Full-Width + Drop-Out Expansion (`ExpandDropOut`), uniform Top-Down Multi-PV generation (`GenerateTopDown`), bottom-up topological Negamax score propagation (`BackUp`), and full graph verification (`CheckBackUp`). |
+| [`OpeningBook.cs`](../src/Checkers.Core/AI/Book/OpeningBook.cs) | Lazy-loads the embedded resource for each [`CheckersVariant`](../src/Checkers.Core/Models/CheckersVariant.cs) into an $O(1)$ `Dictionary<ulong, BookNode>` keyed by 64-bit `ZobristHash`, and implements `TryGetMove` with configurable randomization margin (`10 cp`) and child-transposition fallback. |
+| [`BookCommands.cs`](../tools/Checkers.Benchmark/BookCommands.cs) | Multi-threaded CLI (`book expand-doe`, `book generate`, and `book verify`) with per-node `.partial` checkpointing, periodic live book flushes, timed execution budgets, and `Ctrl+C` graceful stop/resume. |
 
 ---
 
 ## 3. Core Algorithms in Detail
 
 ### 3.1 Single-Search Multi-PV Root Search (`MinimaxPlayer.SearchMultiPv`)
-At each position selected for evaluation (`maxMoves = all legal moves` at `lv 0..3`; `maxMoves = 3` at `lv 4..11`), [`MinimaxPlayer.SearchMultiPv`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) runs a **single 60-second iterative-deepening search** (`d = 1 .. 48`) to find the top $k$ moves and their exact scores:
+At each position selected for evaluation (`maxMoves = all legal moves` at `lv 0..3`; `maxMoves = 3` at `lv 4..11`), [`MinimaxPlayer.SearchMultiPv`](../src/Checkers.Core/AI/MinimaxPlayer.cs) runs a **single 60-second iterative-deepening search** (`d = 1 .. 48`) to find the top $k$ moves and their exact scores:
 - In standard single-PV alpha-beta, root `alpha` is raised to the `1st`-best move's score (`topScores[0]`), which causes the `2nd` and `3rd` best moves to fail low without receiving exact scores.
 - In `SearchMultiPv(state, legalMoves, multiPvCount: k)`, root `alpha` is instead held at the **$k$-th best score found so far at depth $d$** (`topKScores[k - 1]`, or `-200,000` until $k$ moves have been searched):
   - All moves that enter the top $k$ beat `alpha` against an open upper window (`beta = +200,000`, i.e., `alpha_child = -200,000`) and therefore return their **exact minimax scores** in a single pass sharing the same `32 MiB` `TranspositionTable`.
@@ -107,7 +107,7 @@ In Phase B of `BookBuilder.ExpandDropOut`, the generator expands the DAG selecti
 1. **Depth-Tapered Drop-Out Filter ($\delta(\text{ply})$):**
    At any expanded internal node $u$ with best move score $S^*(u) = \max_{m} \text{MoveScore}(u, m)$, a stored move $m$ is considered **active** if and only if:
    $$S^*(u) - \text{MoveScore}(u, m) \le \delta(\text{ply})$$
-   where [`BookBuilder.GetDefaultDropOutDelta`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) uses a tapered schedule:
+   where [`BookBuilder.GetDefaultDropOutDelta`](../src/Checkers.Core/AI/Book/BookBuilder.cs) uses a tapered schedule:
    - **`lv 0 .. lv 5`:** $\delta = 15\text{ cp}$ (`5 cp` safety buffer above the runtime `10 cp` randomization margin so slightly trailing early lines can recover if deeper search shows they equalize)
    - **`lv 6 .. lv 9`:** $\delta = 10\text{ cp}$ (matches the runtime `10 cp` randomization margin)
    - **`lv 10+`:** $\delta = 6\text{ cp}$ (narrows deep exploration to the strongest principal continuations)
@@ -122,7 +122,7 @@ After every node expansion:
 2. Scores are propagated bottom-up from the frontier leaves (`lv 4..12`) to the root (`lv 0`) via Negamax:
    $$\text{MoveScore}(u, m) = -\text{Score}(\text{Child}(u, m)), \qquad \text{Score}(u) = \max_{m \in \text{Moves}(u)} \text{MoveScore}(u, m)$$
    Because scores are backed up after every expansion, a branch that begins to lose material at `lv 10` immediately sees its score drop at `lv 6..8`; if it falls more than $\delta(\text{ply})$ behind its sibling moves, it **automatically drops out** of future DOE descents, while previously trailing alternatives that hold equality automatically become active.
-3. [`BookBuilder.CheckBackUp`](../../src/Checkers.Core/AI/Book/BookBuilder.cs) verifies that every reachable node and move in the book satisfies `node.Score == max(m.Score)` and `m.Score == -child.Score` with **0 errors**.
+3. [`BookBuilder.CheckBackUp`](../src/Checkers.Core/AI/Book/BookBuilder.cs) verifies that every reachable node and move in the book satisfies `node.Score == max(m.Score)` and `m.Score == -child.Score` with **0 errors**.
 
 ---
 
@@ -178,12 +178,12 @@ Each line in `OpeningBook.English.txt` and `OpeningBook.International.txt` store
 ```
 
 ### 5.2 Runtime Lookup & `10 cp` Randomized Variety
-At the beginning of [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs), when `UseOpeningBook` is enabled:
+At the beginning of [`MinimaxPlayer.GetMoveAsync`](../src/Checkers.Core/AI/MinimaxPlayer.cs), when `UseOpeningBook` is enabled:
 1. `OpeningBook.GetDefault(_variant)` looks up `state.ZobristHash` in $O(1)$.
 2. Inspired by `ACCEPTABLE_EVAL_LOSS = 10` in [`opening_book.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/opening_book.c) from Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine), `TryGetMove` filters the node's stored moves to those within **`BookRandomMarginCp` (`10 cp` by default)** of the highest-scored book move (`bestScore - move.Score <= 10`) and selects one uniformly at random.
    - For example, at `lv 0` in English Checkers (`22-18:+2`, `22-17:-4`, `24-19:-4`, `23-18:-8`, `23-19:-8`, `21-17:-16`, `24-20:-16`), the top **5 classical openings** (`22-18`, `22-17`, `24-19`, `23-18`, `23-19`) are all within `10 cp` of `+2` and are played with equal probability, while weaker starting moves (`21-17:-16`, `24-20:-16`) are excluded when the AI chooses a move — yet remain stored in the book so the AI knows all replies if a human opponent plays them!
 3. If a position has no explicit move list (or the opponent played an off-book move that transposes back into a known book position on the next ply), `TryGetMove` also checks if any legal move leads to a child `ZobristHash` present in the book (`impliedScore = -childNode.Score`).
-4. When a book move is returned, `MinimaxPlayer` returns immediately (`0.0s`, `NodesEvaluated = 0`) and reports `Depth = "Book (12 plies)"` and `FromBook = true` in [`SearchAnalysis`](../../src/Checkers.Core/AI/SearchAnalysis.cs).
+4. When a book move is returned, `MinimaxPlayer` returns immediately (`0.0s`, `NodesEvaluated = 0`) and reports `Depth = "Book (12 plies)"` and `FromBook = true` in [`SearchAnalysis`](../src/Checkers.Core/AI/SearchAnalysis.cs).
 
 > [!TIP]
 > **Shared Transposition Table & Resumable Checkpointing (From `opening_book.c`):** Following `book_search_init` / `book_search_reset` and `CHECKPOINT_EVERY` in [`opening_book.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/opening_book.c), `BookBuilder` reuses a persistent `MinimaxPlayer` and its `32 MiB` 4-way Transposition Table across sibling and child book evaluations (since adjacent opening positions share massive overlapping subtrees) and writes periodic atomic checkpoints (`CheckpointInterval`) so multi-hour book generation runs can be safely paused and resumed at any time.
@@ -192,7 +192,7 @@ At the beginning of [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/Mi
 
 ## 6. CLI Reference (`Checkers.Benchmark book`)
 
-All opening book commands are provided by [`tools/Checkers.Benchmark/BookCommands.cs`](../../tools/Checkers.Benchmark/BookCommands.cs) and invoked via:
+All opening book commands are provided by [`tools/Checkers.Benchmark/BookCommands.cs`](../tools/Checkers.Benchmark/BookCommands.cs) and invoked via:
 
 ```powershell
 dotnet run -c Release --project tools/Checkers.Benchmark -- book <subcommand> [options]

@@ -4,7 +4,7 @@
 
 ## In short
 
-The search engine decides which move the computer will play. [`MinimaxPlayer`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 11 – Bitboards](11-bitboards.md)). With several threads it runs as a [Lazy SMP](#lazy-smp-multi-threaded-search) search that shares the transposition table.
+The search engine decides which move the computer will play. [`MinimaxPlayer`](../src/Checkers.Core/AI/MinimaxPlayer.cs) implements a **Negamax Alpha-Beta search with Principal Variation Search (PVS), In-Search Repetition Detection (`DrawTable`), Reverse Futility Pruning (RFP), Futility Pruning (FP), Verified Late Move Reductions (LMR), Quiescence Search, and Iterative Deepening**, powered by an allocation-free 64-bit bitboard copy-make architecture ([Chapter 11 – Bitboards](11-bitboards.md)). With several threads it runs as a [Lazy SMP](#lazy-smp-multi-threaded-search) search that shares the transposition table.
 
 Search limits are configured in the **Game -> Settings...** dialog ([Chapter 09](09-time-control.md)):
 * **Fixed depth:** $1$ to $20$ plies (default: $8$ plies)
@@ -97,7 +97,7 @@ Because a null-window test in an exact search tree returns $\text{score}_{\text{
 
 A cached Transposition Table entry stores the static or subtree evaluation of a board configuration without knowing the path of moves that led to it. Without path-aware repetition tracking, an engine that is ahead by $+300$ centipawns can cycle Kings back and forth into a 3-fold repetition draw because the repeated board still evaluates to $+300$ at the horizon; conversely, a losing engine cannot intentionally seek a perpetual repetition to salvage a draw.
 
-Inspired by [`draw_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/draw_table.c) and `GAME_HISTORY` seeding in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c) (which identified that running the repetition check *before* the TT probe is essential to prevent stale TT cutoffs from hiding repetition draws), [`DrawTable`](../../src/Checkers.Core/AI/DrawTable.cs) tracks 64-bit Zobrist hashes along the active search path and from the game's `StateHistory`:
+Inspired by [`draw_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/draw_table.c) and `GAME_HISTORY` seeding in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c) (which identified that running the repetition check *before* the TT probe is essential to prevent stale TT cutoffs from hiding repetition draws), [`DrawTable`](../src/Checkers.Core/AI/DrawTable.cs) tracks 64-bit Zobrist hashes along the active search path and from the game's `StateHistory`:
 1. **Checked Before TT Probe (`ply > 0`):** At the start of `NegaMax`, *before* probing `TranspositionTable`, `_drawTable.IsRepetition(in pos, ply)` checks whether `pos.Hash` repeats an ancestor or completes a game-history repetition. If so, `NegaMax` immediately returns `0` (Draw) without polluting the TT with a path-dependent score.
 2. **Pre-Root Game History Seeding (`_twoFoldHashes` & `_oneFoldHashes`):**
    - Any position that has already occurred $\ge 2$ times in `stateHashHistory` is seeded into `_twoFoldHashes`. Reaching it even once in the search (`ply >= 1`) completes a 3-fold repetition in the game and immediately returns `0`.
@@ -196,7 +196,7 @@ When the position is outside the opening book (or the book is disabled), `Minima
 
 ## Lazy SMP (multi-threaded search)
 
-With `MinimaxPlayer.Threads` $= N > 1$, one search uses $N$ threads. The search state that a thread changes lives in a `SearchWorker` ([`SearchWorker.cs`](../../src/Checkers.Core/AI/SearchWorker.cs)): the per-ply move buffers, killers, history, the `DrawTable` and the node counters. Worker 0 is the main search, which runs the root loop described above on the calling thread. Workers $1 \dots N-1$ are **helpers**.
+With `MinimaxPlayer.Threads` $= N > 1$, one search uses $N$ threads. The search state that a thread changes lives in a `SearchWorker` ([`SearchWorker.cs`](../src/Checkers.Core/AI/SearchWorker.cs)): the per-ply move buffers, killers, history, the `DrawTable` and the node counters. Worker 0 is the main search, which runs the root loop described above on the calling thread. Workers $1 \dots N-1$ are **helpers**.
 
 * **Shared:** only the transposition table, which is lock-free ([Chapter 08](08-transposition-table.md#lock-free-sharing-between-threads-the-xor-trick)). The evaluation, move generator, Zobrist keys and opening book are immutable.
 * **Helpers:** each helper runs its own iterative deepening over the same root position with a full window and discards its results. The point is the transposition table: the helpers fill it with entries, so the main thread gets cutoffs and move-ordering hints in subtrees it hasn't searched yet. Helpers start on dedicated threads (`TaskCreationOptions.LongRunning`) once all workers are prepared.

@@ -4,7 +4,7 @@
 
 ## In short
 
-Legal move generation in `Checkers.Core` is governed by [`IRuleEngine`](../../src/Checkers.Core/Engine/IRuleEngine.cs), implemented by [`RuleEngine`](../../src/Checkers.Core/Engine/RuleEngine.cs) and [`BitboardMoveGenerator`](../../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs).
+Legal move generation in `Checkers.Core` is governed by [`IRuleEngine`](../src/Checkers.Core/Engine/IRuleEngine.cs), implemented by [`RuleEngine`](../src/Checkers.Core/Engine/RuleEngine.cs) and [`BitboardMoveGenerator`](../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs).
 
 The engine supports two selectable rule variants via `CheckersVariant`:
 1. **International Draughts (`CheckersVariant.International` — Flying Kings):** Regular men move and jump forward; Kings slide across any number of empty diagonal squares and jump distant enemy pieces along open diagonals.
@@ -100,7 +100,7 @@ Formally, let $L(\text{enemySq}, \mathbf{d})$ be the set of empty landing square
 
 $$L^* = \begin{cases} \bigl\{\ell \in L : \text{HasFollowUp}(\ell)\bigr\} & \text{if } \exists\,\ell \in L \text{ such that } \text{HasFollowUp}(\ell) \\ L & \text{otherwise} \end{cases}$$
 
-In [`BitboardMoveGenerator.cs`](../../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs), this is enforced during recursive ray expansion:
+In [`BitboardMoveGenerator.cs`](../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs), this is enforced during recursive ray expansion:
 1. First, the generator tests every candidate landing square $\ell \in L$ for recursive follow-up jumps (`CanKingCaptureFrom`).
 2. If `anyContinuation` is `true`, only the extended multi-jump chains are emitted.
 3. Only if `anyContinuation` is `false` (no landing square along that ray offers another jump) are the individual squares in $L$ emitted as terminal capture destinations.

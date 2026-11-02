@@ -6,7 +6,7 @@
 
 Every move played in a match is recorded as an immutable `Move` object containing its full path, captured squares, promotion flag, and standard Draughts notation (`11-15`, `29x18x4`).
 
-The [`GameSession`](../../src/Checkers.Core/Engine/GameSession.cs) coordinator acts as the single source of truth for an active game, managing turn transitions, linear Undo/Redo stacks, terminal win/draw evaluation, and Portable Draughts Notation (PDN) file persistence via [`GameRecordFormat`](../../src/Checkers.Core/Engine/GameRecordFormat.cs).
+The [`GameSession`](../src/Checkers.Core/Engine/GameSession.cs) coordinator acts as the single source of truth for an active game, managing turn transitions, linear Undo/Redo stacks, terminal win/draw evaluation, and Portable Draughts Notation (PDN) file persistence via [`GameRecordFormat`](../src/Checkers.Core/Engine/GameRecordFormat.cs).
 
 ---
 
@@ -99,7 +99,7 @@ Every `BoardState` carries a 64-bit `ZobristHash` encoding exact piece placement
 
 ## Game record persistence & Portable Draughts Notation (PDN)
 
-[`GameRecordFormat.cs`](../../src/Checkers.Core/Engine/GameRecordFormat.cs) serializes and parses complete matches using the standard **Portable Draughts Notation (PDN)** format (`.pdn` / `.checkers`).
+[`GameRecordFormat.cs`](../src/Checkers.Core/Engine/GameRecordFormat.cs) serializes and parses complete matches using the standard **Portable Draughts Notation (PDN)** format (`.pdn` / `.checkers`).
 
 ### 1. PDN File Structure & Metadata Tags
 Saved files consist of seven tag pairs (`MainViewModel` writes the variant, game mode and settings), a blank line, and the moves played, separated by spaces. Undone moves are not saved. The parser also accepts move numbers (`1.`), results (`1-0`, `*`) and `{...}` or `;` comments, so ordinary PDN files load too:

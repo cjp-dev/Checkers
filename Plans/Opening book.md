@@ -7,7 +7,7 @@ The goal is to create, verify, embed, and use an **Opening Book** for this Check
 - [`Connect-4/Connect4.Net/Connect4.Engine/Book/BookFile.cs`](file:///c:/Udvikling/Spil/Checkers/Connect-4/Connect4.Net/Connect4.Engine/Book/BookFile.cs) — Human-readable, git-friendly text format with `#` header comments.
 - [`Connect-4/Connect4.Net/Connect4.Engine/Book/OpeningBook.cs`](file:///c:/Udvikling/Spil/Checkers/Connect-4/Connect4.Net/Connect4.Engine/Book/OpeningBook.cs) — Lazy-loaded embedded resource backed by a compact sorted array / dictionary for instant $O(\log N)$ or $O(1)$ lookup during search.
 - [`Connect-4/Connect4.Net/Connect4.Tools/BookCommands.cs`](file:///c:/Udvikling/Spil/Checkers/Connect-4/Connect4.Net/Connect4.Tools/BookCommands.cs) & [`ParallelSolver.cs`](file:///c:/Udvikling/Spil/Checkers/Connect-4/Connect4.Net/Connect4.Tools/ParallelSolver.cs) — Multi-threaded CLI generator with live progress/ETA reporting, `Ctrl+C` graceful stop, `.partial` file checkpoint/resume, and a `verify` command.
-- [`Connect-4/docs/brain/11-opening-book.md`](file:///c:/Udvikling/Spil/Checkers/Connect-4/docs/brain/11-opening-book.md) — Documentation of book structure, generation cost, and search integration.
+- [`Connect-4/docs/11-opening-book.md`](file:///c:/Udvikling/Spil/Checkers/Connect-4/docs/11-opening-book.md) — Documentation of book structure, generation cost, and search integration.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Plan Status & Phase Overview
 
-You can request implementation of this plan **one phase at a time** (e.g., *"Implement Phase 1"*, *"Proceed with Phase 2"*, etc.) or multiple phases together. After each phase, we will update the status table below, run the 5-position benchmark suite, and record the cumulative metrics in [`docs/brain/12-benchmarks-and-experiments.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/12-benchmarks-and-experiments.md).
+You can request implementation of this plan **one phase at a time** (e.g., *"Implement Phase 1"*, *"Proceed with Phase 2"*, etc.) or multiple phases together. After each phase, we will update the status table below, run the 5-position benchmark suite, and record the cumulative metrics in [`docs/12-benchmarks-and-experiments.md`](file:///c:/Udvikling/Spil/Checkers/docs/12-benchmarks-and-experiments.md).
 
 | Phase | Area | Scope & Deliverables | Exact vs. Selective | Status |
 | :--- | :--- | :--- | :---: | :---: |
@@ -46,7 +46,7 @@ flowchart LR
 - [x] **1.4 Phase 1 Verification, Benchmark & Documentation**
   - All 136 unit tests pass (`dotnet test -c Release`).
   - **40-Position Deep Fixed-Depth Benchmark:** 100% node equivalence (`40/40` positions in both International and English); throughput increased to **32.83M/s** (International No-TT), **16.30M/s (+6.2%)** (International 1M TT), **36.66M/s (+2.9%)** (English No-TT), and **17.34M/s (+10.9%)** (English 1M TT).
-  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #13 (Middlegame)` gained **+1 ply** (`16 → 17 plies`) and `Pos #32 (Endgame)` completed 20 plies `601 ms` faster (`4,912 ms → 4,311 ms`). Recorded in [`docs/brain/10-bitboards.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/10-bitboards.md) and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #13 (Middlegame)` gained **+1 ply** (`16 → 17 plies`) and `Pos #32 (Endgame)` completed 20 plies `601 ms` faster (`4,912 ms → 4,311 ms`). Recorded in [`docs/10-bitboards.md`](file:///c:/Udvikling/Spil/Checkers/docs/10-bitboards.md) and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).
 
 ---
 
@@ -68,7 +68,7 @@ flowchart LR
 - [x] **2.5 Phase 2 Verification, Benchmark & Documentation**
   - All 139 unit tests pass (`99` in `Checkers.Core.Tests` + `40` in `Checkers.App.Tests`), including 3 new tests for 4-way bucket residency, victim eviction, and `StaticEval` caching.
   - **40-Position Deep Fixed-Depth Benchmark:** Index collisions dropped by **99.91%–100%** (`141,091 → 120` in International 1M TT, `9,175 → 0` in International 16M TT, `121,868 → 78` in English 1M TT, `7,915 → 0` in English 16M TT); English 1M TT node count dropped from `9,974,305 → 9,944,217` (matching the 256 MiB 16M TT exactly!); and TT search throughput reached **17.18M/s** (International 1M TT, **+11.9% faster than Phase 0**) and **17.85M/s** (English 1M TT, **+14.2% faster than Phase 0**).
-  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #32 (Endgame)` completed 20 plies in **`4,145 ms`** (`13.04M/s`, down from `4,912 ms` in Phase 0 and `4,311 ms` in Phase 1). Documented in [`docs/brain/08-transposition-table.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/08-transposition-table.md) and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #32 (Endgame)` completed 20 plies in **`4,145 ms`** (`13.04M/s`, down from `4,912 ms` in Phase 0 and `4,311 ms` in Phase 1). Documented in [`docs/08-transposition-table.md`](file:///c:/Udvikling/Spil/Checkers/docs/08-transposition-table.md) and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).
 
 ---
 
@@ -87,7 +87,7 @@ flowchart LR
 - [x] **3.4 Phase 3 Verification, Benchmark & Documentation**
   - All **142 unit tests** pass (`102` in `Checkers.Core.Tests` + `40` in `Checkers.App.Tests`), including 3 new tests for `DrawTable` path/history repetition, winning repetition avoidance, and losing repetition seeking.
   - **40-Position Deep Fixed-Depth Benchmark:** Nodes dropped by **-64.58%** (International No-TT: `95.81M → 33.93M`, `2,951 ms → 1,367 ms`), **-28.48%** (International 1M TT: `10.96M → 7.84M`, `714 ms → 548 ms`), **-64.86%** (English No-TT: `94.11M → 33.07M`, `2,641 ms → 1,124 ms`), and **-26.56%** (English 1M TT: `9.97M → 7.32M`, `638 ms → 447 ms`).
-  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** Reached **+1 ply deeper** on `Pos #1 (Opening)` (`17 → 18 plies`), **+2 plies deeper** on `Pos #20 (Middlegame)` (`18 → 20 plies`), and **+1 ply deeper** on `Pos #40 (Blockade/Tension)` (`18 → 19 plies` in `4,032 ms`). Documented in [`docs/brain/06-move-ordering.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/06-move-ordering.md), [`docs/brain/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/07-search.md), and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** Reached **+1 ply deeper** on `Pos #1 (Opening)` (`17 → 18 plies`), **+2 plies deeper** on `Pos #20 (Middlegame)` (`18 → 20 plies`), and **+1 ply deeper** on `Pos #40 (Blockade/Tension)` (`18 → 19 plies` in `4,032 ms`). Documented in [`docs/06-move-ordering.md`](file:///c:/Udvikling/Spil/Checkers/docs/06-move-ordering.md), [`docs/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/07-search.md), and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).
 
 ---
 
@@ -105,7 +105,7 @@ flowchart LR
 - [x] **4.4 Phase 4 Verification, Benchmark & Documentation**
   - All **143 unit tests** pass (`103` in `Checkers.Core.Tests` + `40` in `Checkers.App.Tests`).
   - **40-Position Deep Fixed-Depth Benchmark:** Nodes dropped by **-92.98%** (International No-TT: `95.81M → 6.73M`, `2,951 ms → 458 ms`, **6.44x faster**), **-78.57%** (International 1M TT: `10.96M → 2.35M`, `714 ms → 246 ms`, **2.90x faster**, `0` collisions), **-93.71%** (English No-TT: `94.11M → 5.92M`, `2,641 ms → 302 ms`, **8.75x faster**), and **-79.11%** (English 1M TT: `9.97M → 2.08M`, `638 ms → 173 ms`, **3.69x faster**, `0` collisions).
-  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** Reached **21 plies (+4 vs P0, +3 vs P3)** on `Pos #1 (Opening)`, **21 plies (+5 vs P0, +4 vs P3)** on `Pos #13 (Middlegame)`, **22 plies (+4 vs P0, +2 vs P3)** on `Pos #20 (Middlegame)`, **25 plies (+5 vs P0 & P3)** on `Pos #32 (Endgame)`, and **22 plies (`+Win in 23 plies` solved in `2,151 ms`)** on `Pos #40 (Blockade/Tension)`. Documented in [`docs/brain/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/07-search.md) and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** Reached **21 plies (+4 vs P0, +3 vs P3)** on `Pos #1 (Opening)`, **21 plies (+5 vs P0, +4 vs P3)** on `Pos #13 (Middlegame)`, **22 plies (+4 vs P0, +2 vs P3)** on `Pos #20 (Middlegame)`, **25 plies (+5 vs P0 & P3)** on `Pos #32 (Endgame)`, and **22 plies (`+Win in 23 plies` solved in `2,151 ms`)** on `Pos #40 (Blockade/Tension)`. Documented in [`docs/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/07-search.md) and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).
 
 ---
 
@@ -121,4 +121,4 @@ flowchart LR
 - [x] **5.3 Phase 5 Verification, Benchmark & Cumulative Documentation Summary**
   - All **145 unit tests** pass (`105` in `Checkers.Core.Tests` + `40` in `Checkers.App.Tests`), including 2 new tests for partial-iteration root move adoption on timeout and early root termination on a dominant move.
   - **40-Position Deep Fixed-Depth Benchmark:** 100% node equivalence with Phase 4 (`6,727,472` International No-TT in **`433 ms` / 6.82x faster than P0**; `2,349,717` International 1M TT in **`236 ms` / 3.03x faster than P0**; `5,922,594` English No-TT in **`300 ms` / 8.80x faster than P0**; `2,083,260` English 1M TT in **`174 ms` / 3.67x faster than P0**).
-  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #1` completed 21 plies and adopted the partial depth-22 PV evaluation (`9-14`, `+2`); `Pos #13` (`21 plies`, `4,103 ms`), `Pos #20` (`22 plies`, `4,247 ms`), `Pos #32` (`25 plies`, `4,158 ms`), and `Pos #40` (`22 plies`, `+Win in 23 plies` solved in **`2,108 ms`**). Documented in [`docs/brain/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/07-search.md), [`docs/brain/09-time-control.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/09-time-control.md), and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+  - **5-Position 5.0s Timed Benchmark (International, 16M TT):** `Pos #1` completed 21 plies and adopted the partial depth-22 PV evaluation (`9-14`, `+2`); `Pos #13` (`21 plies`, `4,103 ms`), `Pos #20` (`22 plies`, `4,247 ms`), `Pos #32` (`25 plies`, `4,158 ms`), and `Pos #40` (`22 plies`, `+Win in 23 plies` solved in **`2,108 ms`**). Documented in [`docs/07-search.md`](file:///c:/Udvikling/Spil/Checkers/docs/07-search.md), [`docs/09-time-control.md`](file:///c:/Udvikling/Spil/Checkers/docs/09-time-control.md), and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).

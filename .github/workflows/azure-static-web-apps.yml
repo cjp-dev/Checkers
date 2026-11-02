@@ -8,7 +8,7 @@ on:
       - 'src/Checkers.Web.Engine/**'
       - 'src/Checkers.App/**'
       - 'src/Checkers.Core/**'
-      - 'docs/brain/**'
+      - 'docs/**'
       - 'Images/**'
       - 'external/GameShell'
       - 'external/GameShell/**'

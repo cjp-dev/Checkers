@@ -56,7 +56,7 @@ flowchart TD
 ## Shared ViewModels (`Checkers.App`)
 
 ### `MainViewModel`
-[`MainViewModel.cs`](../../src/Checkers.App/ViewModels/MainViewModel.cs) is the central coordinator for interactive gameplay:
+[`MainViewModel.cs`](../src/Checkers.App/ViewModels/MainViewModel.cs) is the central coordinator for interactive gameplay:
 * **Board State Synchronization:** Maintains an $8 \times 8$ array and observable `BoardSquares` collection of `SquareViewModel` instances bound to XAML/Razor templates.
 * **Game Modes & Sides:** Supports **vs Computer (White)** (`HumanVsComputer` — human plays White), **vs Computer (Black)** (`ComputerVsHuman` — human plays Black with automatic board flip), **vs Human (Two players)** (`HumanVsHuman`), and `ComputerVsComputer`. Manages mid-game side switching (`SwitchSidesCommand`) and fair-play tracking (`IsStatusModified`).
 * **Selection, Drag-and-Drop & Mandatory Capture Highlighting:** Intercepts square clicks and drag-and-drop gestures, computes legal destination squares, highlights pieces with mandatory captures, and executes legal moves.
@@ -64,12 +64,12 @@ flowchart TD
 * **Undo/Redo & Clocks:** Coordinates linear Undo/Redo stacks, marks matches as modified when taking back moves vs. the computer, and refunds elapsed chess clock time (`_timeLeftAtPly`) to both players in `TimePerGame` mode ([Chapter 09](09-time-control.md)).
 
 ### `AnalysisViewModel`
-[`AnalysisViewModel.cs`](../../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:
+[`AnalysisViewModel.cs`](../src/Checkers.App/ViewModels/AnalysisViewModel.cs) binds the real-time search telemetry panel:
 * Observable properties: `Move`, `Depth` (including `Book (12 plies)` on opening book hits), `Score`, `BestMove`, `Nodes` (`0 (Book)` on book hits), `Speed`, `Time`.
 * **`Updated` Event:** Raises `public event Action? Updated;` whenever a new `SearchAnalysis` snapshot arrives so Blazor components can trigger `InvokeAsync(StateHasChanged)`.
 
 ### `SettingsViewModel`
-[`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs) backs the **Game -> Settings...** modal dialog:
+[`SettingsViewModel.cs`](../src/Checkers.App/ViewModels/SettingsViewModel.cs) backs the **Game -> Settings...** modal dialog:
 * Rule variant selection: **International Draughts (Flying Kings)** vs. **English Checkers (1-Step Kings)**.
 * Time control mode & sliders: **Fixed Depth** ($1\text{–}20$), **Time per Move** ($1\text{–}60\text{ s}$), and **Time per Game** ($1\text{–}60\text{ min}$).
 * Transposition Table size selector: **$1{,}048{,}576$ ($16\text{ MiB}$)** up to **$16{,}777{,}216$ ($256\text{ MiB}$)** entries.
@@ -146,7 +146,7 @@ In WebAssembly, the page's C# code shares the browser's UI thread with the DOM r
 
 ## Integrated Documentation Pipeline (`BrainDocs`)
 
-In `Checkers.Web`, the contents of `docs/brain/` (including Markdown chapters and `images/*.svg` diagrams) are copied into `wwwroot/content/brain/` during build (`CopyBrainDocs` target in `Checkers.Web.csproj`) and rendered dynamically at `/docs` ([`Docs.razor`](../../src/Checkers.Web/Pages/Docs.razor) routes to the shared [GameShell](https://github.com/cjp-dev/GameShell) viewer, registered with `AddBrainDocs` in `Program.cs`):
+In `Checkers.Web`, the contents of `docs/` (including Markdown chapters and `images/*.svg` diagrams) are copied into `wwwroot/content/docs/` during build (`CopyDocs` target in `Checkers.Web.csproj`) and rendered dynamically at `/docs` ([`Docs.razor`](../src/Checkers.Web/Pages/Docs.razor) routes to the shared [GameShell](https://github.com/cjp-dev/GameShell) viewer, registered with `AddBrainDocs` in `Program.cs`):
 1. **Chapter Discovery:** [`BrainDocs.cs`](https://github.com/cjp-dev/GameShell/blob/main/src/GameShell/Docs/BrainDocs.cs) parses `README.md` and extracts all links to chapter files (`05-evaluation.md`, or appendices such as `appendix-a-....md`) to build the ordered sidebar Table of Contents and Previous/Next chapter navigation.
 2. **Markdown to HTML:** Markdig (`UseAutoIdentifiers(AutoIdentifierOptions.GitHub)` + `UseAdvancedExtensions()`) compiles Markdown tables, code blocks, math spans (`$...$`, `$$...$$`), and `mermaid` fenced blocks into semantic HTML and rewrites relative image and chapter URLs.
 3. **Client-Side Math & Diagrams:** [`docs.js`](https://github.com/cjp-dev/GameShell/blob/main/src/GameShell/wwwroot/docs.js) lazy-loads **KaTeX** to typeset LaTeX equations and **Mermaid.js** to render architectural flowcharts, sequence diagrams, and state machines.

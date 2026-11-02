@@ -47,7 +47,7 @@ Official Draughts literature, tournament records, and Portable Draughts Notation
 
 ### Mathematical Mapping Formulas
 
-[Position.cs](../../src/Checkers.Core/Models/Position.cs) and [BitboardMasks.cs](../../src/Checkers.Core/Bitboards/BitboardMasks.cs) convert between all three coordinate systems in $O(1)$ constant time:
+[Position.cs](../src/Checkers.Core/Models/Position.cs) and [BitboardMasks.cs](../src/Checkers.Core/Bitboards/BitboardMasks.cs) convert between all three coordinate systems in $O(1)$ constant time:
 
 #### 1. Between `(Row, Col)` and 64-Bit Bitboard Index (`sq = 0..63`):
 
@@ -120,7 +120,7 @@ classDiagram
 Both `Position` and `Piece` are immutable value types (`readonly record struct`), ensuring value semantics (`==`) and zero heap allocation overhead.
 
 ### `BoardState` & `BitPosition`
-[BoardState.cs](../../src/Checkers.Core/Models/BoardState.cs) is backed directly by a value-type [`BitPosition`](../../src/Checkers.Core/Bitboards/BitPosition.cs) (`4 × ulong` bitboards + `ulong Hash`) without allocating any 2D array:
+[BoardState.cs](../src/Checkers.Core/Models/BoardState.cs) is backed directly by a value-type [`BitPosition`](../src/Checkers.Core/Bitboards/BitPosition.cs) (`4 × ulong` bitboards + `ulong Hash`) without allocating any 2D array:
 * `ulong WhiteMen`, `BlackMen`, `WhiteKings`, `BlackKings`: Four 64-bit integers where bit `sq` is `1` if a piece of that color and type occupies square `sq`.
 * `PieceColor ActivePlayer`: Player whose turn it is (`White` moves first).
 * `int HalfMoveClock`: Plies elapsed since the last capture or promotion (triggers a draw at `80` half-moves = 40 full moves).
@@ -151,7 +151,7 @@ Zobrist hashing maps any board configuration and side-to-move to a deterministic
 
 ### Key Generation and Incremental XOR Math
 
-At static initialization, [Zobrist.cs](../../src/Checkers.Core/Engine/Zobrist.cs) populates a table of 64-bit pseudo-random numbers using a fixed seed (`1013904223`):
+At static initialization, [Zobrist.cs](../src/Checkers.Core/Engine/Zobrist.cs) populates a table of 64-bit pseudo-random numbers using a fixed seed (`1013904223`):
 * `PieceTable[64, 4]`: One 64-bit key $K_{\text{piece}}(\text{sq}, p)$ for each of the 64 squares and 4 piece types ($p \in \{0:\text{WhiteMan},\, 1:\text{WhiteKing},\, 2:\text{BlackMan},\, 3:\text{BlackKing}\}$).
 * `BlackToMoveKey` ($K_{\text{turn}}$): XORed into the hash whenever `ActivePlayer == PieceColor.Black`.
 

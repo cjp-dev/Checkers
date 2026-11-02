@@ -220,7 +220,7 @@ Runs the 40-position benchmark for **both `CheckersVariant.International` and `C
    - **Array + Default TT ($1,048,576$ entries)**
    - **Bitboard + Default TT ($1,048,576$ entries)**
 3. Verifies `NodesEvaluated`, `BestMove`, and `Score` match 100% between Array and Bitboard in both No-TT and Default TT modes.
-4. Outputs Markdown comparison tables (No-TT table and Default TT table for International and for English) and saves JSON results (`docs/brain/bitboard_benchmark_results.json` and `docs/brain/bitboard_deep_benchmark_results.json`).
+4. Outputs Markdown comparison tables (No-TT table and Default TT table for International and for English) and saves JSON results (`docs/bitboard_benchmark_results.json` and `docs/bitboard_deep_benchmark_results.json`).
 
 #### [MODIFY] `tools/Checkers.Benchmark/Program.cs`
 Add `--engines` CLI flag (combinable with `--deep`) to run the Array vs. Bitboard benchmark across both variants.
@@ -241,8 +241,8 @@ Add `--engines` CLI flag (combinable with `--deep`) to run the Array vs. Bitboar
 
 ### 5. Documentation Updates
 
-- **[NEW]** `docs/brain/15-bitboards.md`: Comprehensive chapter covering the 64-bit `4 x ulong` bitboard layout, bitwise shift/mask tables, $O(1)$ capture detection, hardware-intrinsic flying-king ray scanning (`TrailingZeroCount` / `LeadingZeroCount`), copy-make `BitPosition`, compact `BitMove`, incremental Zobrist hashing, and the full empirical benchmark tables (Standard & Deep, International & English, No-TT & Default TT).
-- **[MODIFY]** `docs/brain/README.md`, `01-overview.md`, `02-board-and-coordinates.md`, `07-search.md`, `08-transposition-table.md` (if 40-position seeds shift slightly for dual-variant compatibility), and `Create a checkers game.md`.
+- **[NEW]** `docs/15-bitboards.md`: Comprehensive chapter covering the 64-bit `4 x ulong` bitboard layout, bitwise shift/mask tables, $O(1)$ capture detection, hardware-intrinsic flying-king ray scanning (`TrailingZeroCount` / `LeadingZeroCount`), copy-make `BitPosition`, compact `BitMove`, incremental Zobrist hashing, and the full empirical benchmark tables (Standard & Deep, International & English, No-TT & Default TT).
+- **[MODIFY]** `docs/README.md`, `01-overview.md`, `02-board-and-coordinates.md`, `07-search.md`, `08-transposition-table.md` (if 40-position seeds shift slightly for dual-variant compatibility), and `Create a checkers game.md`.
 
 ---
 
@@ -259,4 +259,4 @@ Add `--engines` CLI flag (combinable with `--deep`) to run the Array vs. Bitboar
    dotnet run --project tools/Checkers.Benchmark -c Release -- --engines
    dotnet run --project tools/Checkers.Benchmark -c Release -- --engines --deep
    ```
-   Verify 100% node-count, best-move, and score equivalence between Array and Bitboard across all 40 positions in both variants, and record all empirical tables in `docs/brain/15-bitboards.md` and `Create a checkers game.md`.
+   Verify 100% node-count, best-move, and score equivalence between Array and Bitboard across all 40 positions in both variants, and record all empirical tables in `docs/15-bitboards.md` and `Create a checkers game.md`.

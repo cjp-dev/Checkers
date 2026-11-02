@@ -4,7 +4,7 @@
 
 ## In short
 
-When the search tree reaches its depth horizon (`depth == 0` and no further tactical captures exist in quiescence search), the engine estimates the strategic value of the quiet board position using [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs) (with the earlier baseline heuristic preserved in [`LegacyEvaluationFunction.cs`](../../src/Checkers.Core/AI/LegacyEvaluationFunction.cs) for A/B benchmarking and self-play matches).
+When the search tree reaches its depth horizon (`depth == 0` and no further tactical captures exist in quiescence search), the engine estimates the strategic value of the quiet board position using [`EvaluationFunction.cs`](../src/Checkers.Core/AI/EvaluationFunction.cs) (with the earlier baseline heuristic preserved in [`LegacyEvaluationFunction.cs`](../src/Checkers.Core/AI/LegacyEvaluationFunction.cs) for A/B benchmarking and self-play matches).
 
 The evaluation operates directly on 64-bit [`BitPosition`](11-bitboards.md) structs (`int Evaluate(in BitPosition pos, CheckersVariant variant)`) with **zero heap allocations**, returning a score in **centipawns** (where $100\text{ cp} = 1\text{ regular man}$) from the perspective of `SideToMove`:
 * **Positive ($> 0$):** The active player has a material or positional advantage.

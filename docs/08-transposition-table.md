@@ -4,7 +4,7 @@
 
 ## In short
 
-In Checkers, many different move sequences transpose into the exact same board configuration. The **Transposition Table** ([`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs)) is a high-speed, **4-way set-associative hash table** indexed by the 64-bit Zobrist hash ([Chapter 02](02-board-and-coordinates.md)) and organized into **64-byte CPU cache-line buckets** on the .NET **Pinned Object Heap (POH)**.
+In Checkers, many different move sequences transpose into the exact same board configuration. The **Transposition Table** ([`TranspositionTable.cs`](../src/Checkers.Core/AI/TranspositionTable.cs)) is a high-speed, **4-way set-associative hash table** indexed by the 64-bit Zobrist hash ([Chapter 02](02-board-and-coordinates.md)) and organized into **64-byte CPU cache-line buckets** on the .NET **Pinned Object Heap (POH)**.
 
 When `MinimaxPlayer` encounters a position—either via a different move order in the current tree, across successive iterations of Iterative Deepening, or on subsequent turns of a game—it probes the 4-way bucket in $O(1)$ time to:
 1. **Trigger an immediate $\alpha$-$\beta$ cutoff** if the cached entry was searched to at least the required remaining depth (`entry.Depth >= depth`) and its bound flag satisfies $[\alpha, \beta]$.
@@ -17,7 +17,7 @@ When `MinimaxPlayer` encounters a position—either via a different move order i
 
 ## Compact 16-byte entry & 64-byte cache-line bucket layout
 
-Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), `NUMBER_OF_BUCKETS = 4` and `sizeof(struct hash_table_entry) == 16`), [`TranspositionTable.cs`](../../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**.
+Inspired by the cache-line bucket layout in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c), `NUMBER_OF_BUCKETS = 4` and `sizeof(struct hash_table_entry) == 16`), [`TranspositionTable.cs`](../src/Checkers.Core/AI/TranspositionTable.cs) packs each `TranspositionEntry` into an exact **16-byte value struct** so that **one 4-way bucket ($4 \times 16\text{ B} = 64\text{ B}$) fits inside a single 64-byte CPU cache line**.
 
 The 16 bytes are **two 64-bit words**, so that several search threads ([Lazy SMP](07-search.md#lazy-smp-multi-threaded-search)) can share the table without locks:
 
@@ -68,7 +68,7 @@ Because Alpha-Beta searches within a window $[\alpha, \beta]$, not every node fi
 | **`UpperBound`** (`2`) | $\text{score} \le \alpha$ | A fail-low occurred (all moves scored $\le \alpha$); the true minimax score is *at most* `score`. **Triggers cutoff if $\text{score} \le \alpha$.** *(Ancestral C macro: `UPPER_BOUND 3`)* |
 
 > [!NOTE]
-> **Lineage Adaptation — 0-Indexed Enum vs. Ancestral C Macros:** In Collin Kees's C engine ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c#L12-L14)), search bounds were defined as 1-indexed preprocessor macros (`#define PV_NODE 1`, `#define LOWER_BOUND 2`, `#define UPPER_BOUND 3`). In .NET 10, [`TranspositionBound`](../../src/Checkers.Core/AI/TranspositionTable.cs) is a 0-indexed byte enum (`Exact = 0, LowerBound = 1, UpperBound = 2`) masked with `BoundMask = 0x03`, with bits 2, 3, and 4 dedicated to `OccupiedBit = 0x04`, `HasMoveBit = 0x08`, and `HasStaticEvalBit = 0x10`.
+> **Lineage Adaptation — 0-Indexed Enum vs. Ancestral C Macros:** In Collin Kees's C engine ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c#L12-L14)), search bounds were defined as 1-indexed preprocessor macros (`#define PV_NODE 1`, `#define LOWER_BOUND 2`, `#define UPPER_BOUND 3`). In .NET 10, [`TranspositionBound`](../src/Checkers.Core/AI/TranspositionTable.cs) is a 0-indexed byte enum (`Exact = 0, LowerBound = 1, UpperBound = 2`) masked with `BoundMask = 0x03`, with bits 2, 3, and 4 dedicated to `OccupiedBit = 0x04`, `HasMoveBit = 0x08`, and `HasStaticEvalBit = 0x10`.
 
 ---
 

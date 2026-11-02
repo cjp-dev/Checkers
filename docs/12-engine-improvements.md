@@ -348,7 +348,7 @@ In **Phase 4**, we added three selective pruning and depth-reduction algorithms 
 
 Detailed architectural documentation: [Chapter 07 – Search (Iterative Deepening)](07-search.md#iterative-deepening-root-search--asynchronous-execution) and [Chapter 09 – Time control](09-time-control.md#root-search--time-management-optimizations-phase-5).
 
-In **Phase 5**, [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) was enhanced with two root-level search and clock management improvements:
+In **Phase 5**, [`MinimaxPlayer.GetMoveAsync`](../src/Checkers.Core/AI/MinimaxPlayer.cs) was enhanced with two root-level search and clock management improvements:
 1. **Partial-Iteration Root Move Adoption on Timeout (`LastSearchAdoptedPartialIteration`):** Because `currentOrder[0]` is always the best move from completed depth $d - 1$, once $i = 0$ finishes cleanly at depth $d$, any subsequent root move $i > 0$ that completes without aborting and strictly beats `bestScoreThisDepth` is proven superior at full depth $d$. `GetMoveAsync` publishes it to `bestMoveOverall` and `bestScoreOverall` immediately so that if a later root move hits `hardLimitMs`, the engine preserves the deeper depth-$d$ result instead of discarding the entire partial iteration.
 2. **Early Root Termination on Single Viable Move (`UseEarlyRootTermination` / `LastSearchTerminatedEarly`):** Tracks `bestScoreThisDepth` and `secondBestScoreThisDepth` across root moves. In timed modes (`TimePerMove` and `TimePerGame`), iterative deepening terminates early when all moves are proven forced losses ($\text{bestScoreOverall} \le -28{,}000$) or when at depth $d \ge 8$ the same root move leads all alternatives by $\ge 150\text{ cp}$ ($1.5\text{ men}$) for $2$ consecutive completed iterations.
 
@@ -381,7 +381,7 @@ Because Phase 5 preserves exact root windows in `FixedDepth` mode, all 40 fixed-
 
 Detailed architectural documentation: [Chapter 05 – Evaluation](05-evaluation.md).
 
-In **Phase 6**, we preserved the original static evaluator as [`LegacyEvaluationFunction.cs`](../../src/Checkers.Core/AI/LegacyEvaluationFunction.cs), added zero-allocation `int Evaluate(in BitPosition pos)` dispatch to [`IEvaluationFunction.cs`](../../src/Checkers.Core/AI/IEvaluationFunction.cs), and upgraded [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs) with:
+In **Phase 6**, we preserved the original static evaluator as [`LegacyEvaluationFunction.cs`](../src/Checkers.Core/AI/LegacyEvaluationFunction.cs), added zero-allocation `int Evaluate(in BitPosition pos)` dispatch to [`IEvaluationFunction.cs`](../src/Checkers.Core/AI/IEvaluationFunction.cs), and upgraded [`EvaluationFunction.cs`](../src/Checkers.Core/AI/EvaluationFunction.cs) with:
 1. **English Checkers (`EvaluateEnglish`, 1:1 `board_eval.c` Port at $2\times$ Centipawn Scale):**
    - `Man = 100 cp`, `English King = 140 cp` (`1.40×` Man).
    - Hardware `POPCNT`-vectorized Man and King Piece-Square Tables (`WhiteManPst1/2/3Mask`, `BlackManPst1/2/3Mask`, `EnglishKingPst4/5Mask`).
@@ -430,7 +430,7 @@ When embedded inside `MinimaxPlayer` with the `1M` Transposition Table enabled, 
 
 ### Part D: 200-Game Bot-vs-Bot Self-Play Match Results (`50` Balanced Ballots × `2` Sides / Variant, `1000 ms/move`)
 
-Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/EvaluationMatchRunner.cs), we generated **50 deterministic, unique, balanced opening ballots** per variant (`10` each at `6, 7, 8, 9, and 10 plies` from the initial board, verified at depth 6 to have equal piece counts, `0` Kings, no pending captures, and $|\text{eval}| \le 30\text{ cp}$ under both evaluators). Each ballot was played twice with colors swapped (`100` games per variant at `1000 ms/move`), with complete per-engine isolation (dedicated `MinimaxPlayer` and `32 MiB` `TranspositionTable` per side).
+Using [`EvaluationMatchRunner.cs`](../src/Checkers.Core/AI/Benchmark/EvaluationMatchRunner.cs), we generated **50 deterministic, unique, balanced opening ballots** per variant (`10` each at `6, 7, 8, 9, and 10 plies` from the initial board, verified at depth 6 to have equal piece counts, `0` Kings, no pending captures, and $|\text{eval}| \le 30\text{ cp}$ under both evaluators). Each ballot was played twice with colors swapped (`100` games per variant at `1000 ms/move`), with complete per-engine isolation (dedicated `MinimaxPlayer` and `32 MiB` `TranspositionTable` per side).
 
 #### 1. English Checkers — 100-Game Match (`NewEval` vs. `LegacyEval`, `1000 ms/move`)
 
@@ -468,7 +468,7 @@ Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/Evaluati
 
 > [!NOTE]
 > **Why Phase 6 Was Retained Over Phase 6b (Scan 3.1 Ray-Mobility Experiment):**
-> Adding Scan 3.1's per-King ray reachability (`safe` vs. `deny` mobility against enemy Man jump threats), Left/Right Wing Skew, and endgame draw scaling (`2K vs. 1K` `/ 8`) more than doubled raw leaf evaluation latency (`13.1 ns/eval` $\to$ `26.4–31.3 ns/eval`) and compressed endgame pruning margins, costing **`1.19 plies` of average search depth** (`24.12` $\to$ `22.93 plies`) and **`3.5 Elo`** (`56.5 / 100` $\to$ `56.0 / 100`). Because Phase 6's $O(1)$ bitmasks (`FlyingKingMainDiagonalMask`, `FlyingKingInnerMask`, `FlyingKingShortCornerMask`) already capture the essential $8 \times 8$ Flying-King geometry at half the CPU cost, the simpler, faster, and stronger **Phase 6 `EvaluateInternational`** was retained in [`EvaluationFunction.cs`](../../src/Checkers.Core/AI/EvaluationFunction.cs).
+> Adding Scan 3.1's per-King ray reachability (`safe` vs. `deny` mobility against enemy Man jump threats), Left/Right Wing Skew, and endgame draw scaling (`2K vs. 1K` `/ 8`) more than doubled raw leaf evaluation latency (`13.1 ns/eval` $\to$ `26.4–31.3 ns/eval`) and compressed endgame pruning margins, costing **`1.19 plies` of average search depth** (`24.12` $\to$ `22.93 plies`) and **`3.5 Elo`** (`56.5 / 100` $\to$ `56.0 / 100`). Because Phase 6's $O(1)$ bitmasks (`FlyingKingMainDiagonalMask`, `FlyingKingInnerMask`, `FlyingKingShortCornerMask`) already capture the essential $8 \times 8$ Flying-King geometry at half the CPU cost, the simpler, faster, and stronger **Phase 6 `EvaluateInternational`** was retained in [`EvaluationFunction.cs`](../src/Checkers.Core/AI/EvaluationFunction.cs).
 
 ---
 
@@ -476,7 +476,7 @@ Using [`EvaluationMatchRunner.cs`](../../src/Checkers.Core/AI/Benchmark/Evaluati
 
 Detailed architectural documentation: [Chapter 10 – Opening book](10-opening-book.md).
 
-In **Phase 7**, we designed and generated embedded, human-readable opening books ([`OpeningBook.English.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.English.txt) and [`OpeningBook.International.txt`](../../src/Checkers.Core/AI/Book/OpeningBook.International.txt)) across three iterative stages:
+In **Phase 7**, we designed and generated embedded, human-readable opening books ([`OpeningBook.English.txt`](../src/Checkers.Core/AI/Book/OpeningBook.English.txt) and [`OpeningBook.International.txt`](../src/Checkers.Core/AI/Book/OpeningBook.International.txt)) across three iterative stages:
 1. **Stage 1 — Top-Down Multi-PV ($k = 3$) DAG (`lv 0..8`):** Used `MinimaxPlayer.SearchMultiPv` ($k=3$, `60 s` per position) to build an initial book of `2,100` English and `2,228` International positions, proving the Zobrist DAG format and bottom-up Negamax verification (`BookBuilder.CheckBackUp`).
 2. **Stage 2 — Full-Width Early Plies (`lv 0..3`):** Expanded all legal moves (`100%` width) across the first 4 plies (`273` positions at `lv 0..3`) so the computer never falls out of book on moves 1–2 regardless of which of the 7 legal opening moves (`22-18`, `24-19`, `22-17`, `23-18`, `23-19`, `21-17`, `24-20`) a human opponent chooses.
 3. **Stage 3 — Depth-First Drop-Out Expansion (`lv 4..12`, `60 s` Multi-PV Search per Position):** Replaced breadth-first expansion with **Drop-Out Expansion (DOE)** after Thomas Lincke (`BookBuilder.ExpandDropOut`). It repeatedly walks from the root to the least-visited active leaf, where a move stays active while its backed-up score trails the best move by no more than the depth-tapered margin $\delta$ (`15 cp` at `lv 0..5`, `10 cp` at `lv 6..9`, `6 cp` at `lv 10+`; see [Chapter 10](10-opening-book.md)). Each position is evaluated with a `60 s` Multi-PV search (`32 MiB` TT per worker), and the backed-up Negamax scores are propagated at once to guide the next walk, all the way to **100% completion at `lv 12`**.

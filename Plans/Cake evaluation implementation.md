@@ -122,7 +122,7 @@ A critical detail discovered while examining [`consts.h`](file:///c:/Udvikling/S
 
 ### Phase 3: Decision & Documentation (✅ COMPLETED — Cake Code Removed, `board_eval.c` Retained)
 1. Based on the empirical benchmark and 100-game match results below, `board_eval.c` (`+143.1 Elo`, `8.8 ns/eval`) outperformed the Cake 1.89g port (`+115.2 Elo`, `62.1 ns/eval`) by **`+27.9 Elo`**.
-2. Removed `CakeEnglishEvaluator.cs` and `CakeBackRankTable.cs` from the codebase and documented the experiment and reasons for removal in [`docs/brain/05-evaluation.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/05-evaluation.md) and [`docs/brain/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/brain/11-engine-improvements.md).
+2. Removed `CakeEnglishEvaluator.cs` and `CakeBackRankTable.cs` from the codebase and documented the experiment and reasons for removal in [`docs/05-evaluation.md`](file:///c:/Udvikling/Spil/Checkers/docs/05-evaluation.md) and [`docs/11-engine-improvements.md`](file:///c:/Udvikling/Spil/Checkers/docs/11-engine-improvements.md).
 
 ---
 

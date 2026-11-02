@@ -18,7 +18,7 @@ By reducing the effective branching factor from $b$ to $\sqrt{b}$, strong move o
 
 ## Move ordering pipeline in `MinimaxPlayer`
 
-At every interior node, [`MinimaxPlayer.cs`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) orders the generated `Span<BitMove>` slice in-place before expanding child subtrees:
+At every interior node, [`MinimaxPlayer.cs`](../src/Checkers.Core/AI/MinimaxPlayer.cs) orders the generated `Span<BitMove>` slice in-place before expanding child subtrees:
 
 ```mermaid
 flowchart TD
@@ -51,7 +51,7 @@ $$S(m) = \begin{cases} 10{,}000{,}000 & \text{if } P(m) = P_{\text{TT}} \text{ (
 
 ## Packed 16-Bit Move Identifier (`BitMove.PackedMove`)
 
-Inspired by the compact 16-bit move encoding in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c) and [`killer_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/killer_table.c), where `short move = (move_start << 8) | move_end` packs the start square into the high byte and the destination square into the low byte), [`BitMove`](../../src/Checkers.Core/Bitboards/BitMove.cs) exposes a single 16-bit packed property to avoid comparing separate `From` and `To` fields during move ordering:
+Inspired by the compact 16-bit move encoding in Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine) ([`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c) and [`killer_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/killer_table.c), where `short move = (move_start << 8) | move_end` packs the start square into the high byte and the destination square into the low byte), [`BitMove`](../src/Checkers.Core/Bitboards/BitMove.cs) exposes a single 16-bit packed property to avoid comparing separate `From` and `To` fields during move ordering:
 
 $$\text{PackedMove} = \text{ ushort }\bigl((\text{From} \ll 8) \mid \text{To}\bigr)$$
 

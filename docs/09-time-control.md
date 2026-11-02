@@ -14,7 +14,7 @@ The search engine uses **Iterative Deepening** ([Chapter 07](07-search.md)) boun
 
 ## The three time control modes
 
-[`SearchLimits.cs`](../../src/Checkers.Core/AI/SearchLimits.cs) and [`GameSettings.cs`](../../src/Checkers.App/Models/GameSettings.cs):
+[`SearchLimits.cs`](../src/Checkers.Core/AI/SearchLimits.cs) and [`GameSettings.cs`](../src/Checkers.App/Models/GameSettings.cs):
 
 | Mode | Factory Method | UI Slider Range | Max Iterative Depth | Description |
 |---|---|:---:|:---:|---|
@@ -75,7 +75,7 @@ Because branching factor $b$ causes depth $d + 1$ to take roughly $\sqrt{b} \app
 
 ## Root Search & Time Management Optimizations (Phase 5)
 
-Inspired by `USE_PARTIAL_ITERATION` and `TERMINATE_EARLY_THRESHOLD` in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c) from Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine), [`MinimaxPlayer.GetMoveAsync`](../../src/Checkers.Core/AI/MinimaxPlayer.cs) implements two root-level time management mechanisms to maximize search quality when an iteration crosses $T_{\text{hard}}$ and avoid wasting clock time when a single move clearly dominates (see [Chapter 12 – Engine improvements](12-engine-improvements.md#milestone-7-phase-5-root-search--time-management)):
+Inspired by `USE_PARTIAL_ITERATION` and `TERMINATE_EARLY_THRESHOLD` in [`board_search.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_search.c) from Collin Kees's [**Checkers-Engine (Marcher Engine)**](https://github.com/Stermere/Checkers-Engine), [`MinimaxPlayer.GetMoveAsync`](../src/Checkers.Core/AI/MinimaxPlayer.cs) implements two root-level time management mechanisms to maximize search quality when an iteration crosses $T_{\text{hard}}$ and avoid wasting clock time when a single move clearly dominates (see [Chapter 12 – Engine improvements](12-engine-improvements.md#milestone-7-phase-5-root-search--time-management)):
 
 ### 1. Partial-Iteration Root Move Adoption on Timeout (`LastSearchAdoptedPartialIteration`)
 At the start of every iterative deepening pass $d$, `currentOrder[0]` is always the Principal Variation move from completed depth $d - 1$.
@@ -97,7 +97,7 @@ During each root pass $d$, `GetMoveAsync` tracks both the highest score $S_d^{(1
 
 ## Chess clock management, Timeouts & Undo refunds
 
-In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainViewModel.cs) manages independent digital chess clocks for both players across the match lifecycle:
+In `TimePerGame` mode, [`MainViewModel`](../src/Checkers.App/ViewModels/MainViewModel.cs) manages independent digital chess clocks for both players across the match lifecycle:
 1. **Clock Display & Initiation:** Dual countdown clocks (`M:SS`) appear in the player score cards adjacent to each player's name. Both players start with the full configured bank of time (e.g., `5:00`). Clocks begin ticking down when the first move of the match is played.
 2. **Real-Time Turn Ticking:** The active player's clock counts down in real time every $250\text{ ms}$ during their turn (both while the human player ponders a move and while the computer is calculating). The upper-right corner of the Status card displays the match limit (e.g., `5 min / game`) in neutral text color when playing against the computer (hidden in two-player mode).
 3. **Snapshot Before Turn:** At each ply $k$, the exact remaining times for both players are recorded in `_timeLeftAtPly[k] = (WhiteTime, BlackTime)`.
@@ -113,7 +113,7 @@ In `TimePerGame` mode, [`MainViewModel`](../../src/Checkers.App/ViewModels/MainV
 
 ## Settings Dialog Configuration
 
-The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../../src/Checkers.App/ViewModels/SettingsViewModel.cs)) consolidates all rule, time control, opening book, and memory settings:
+The **Game -> Settings...** modal dialog ([`SettingsViewModel.cs`](../src/Checkers.App/ViewModels/SettingsViewModel.cs)) consolidates all rule, time control, opening book, and memory settings:
 
 1. **Checkers Rules & Variant:**
    - **International Draughts (Flying Kings):** Kings slide and capture across open diagonals with mandatory continuation.

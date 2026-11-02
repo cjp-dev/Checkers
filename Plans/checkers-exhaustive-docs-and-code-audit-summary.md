@@ -2,7 +2,7 @@
 
 > **Companion Review & Completion Record for:** [`Plans/checkers-exhaustive-docs-and-code-audit-plan.md`](checkers-exhaustive-docs-and-code-audit-plan.md)  
 > **Date of Audit:** October 25, 2026  
-> **Target Scope:** 18 Markdown Documents (16 Chapters in [`docs/brain/`](../docs/brain/), [`docs/brain/README.md`](../docs/brain/README.md), and [`docs/general-game-gui-specification.md`](../docs/general-game-gui-specification.md))  
+> **Target Scope:** 18 Markdown Documents (16 Chapters in [`docs/`](../docs/), [`docs/README.md`](../docs/README.md), and [`docs/general-game-gui-specification.md`](../docs/general-game-gui-specification.md))  
 > **Codebase Target:** Checkers .NET 10 (`Checkers.slnx`: `Checkers.Core`, `Checkers.App`, `Checkers.Wpf`, `Checkers.Web`, `Checkers.Benchmark`, `Checkers.Core.Tests`, `Checkers.App.Tests`)  
 > **Ancestral Lineage References:** Collin Kees's C/WebAssembly engine ([`Checkers-Engine-main`](https://github.com/Stermere/Checkers-Engine) / Marcher Engine), Martin Fierz's `Cake 1.89g`, Fabien Letouzey's `Scan 3.1`, Thomas R. Lincke's Drop-Out Expansion (ETH Zürich), and official WCDF/FMJD rulesets.
 
@@ -47,22 +47,22 @@ flowchart TD
 - Generated the initial baseline discrepancy register ([`scratch/checkers-audit-report.md`](../scratch/checkers-audit-report.md)) flagging 33 potential defects across 6 categories.
 
 ### Phase 2: Core Board, Geometry, Rules & Move Generation (Chapters 01, 02, 03, 04)
-1. **Chapter 01 ([`01-overview.md`](../docs/brain/01-overview.md)):**
+1. **Chapter 01 ([`01-overview.md`](../docs/01-overview.md)):**
    - Updated unit test metrics from outdated `123 Core / 40 App` to active **`124 Core / 70 App`** (`194` total passing tests).
    - Reconciled Clean Architecture diagram and the life-of-a-move sequence diagram to reflect `NegaMax`, `BitPosition.Apply`, and `EvaluateGameStatus`.
-2. **Chapter 02 ([`02-board-and-coordinates.md`](../docs/brain/02-board-and-coordinates.md)):**
+2. **Chapter 02 ([`02-board-and-coordinates.md`](../docs/02-board-and-coordinates.md)):**
    - Corrected the Zobrist PRNG seed from vanity documentation value `0x5A0B_7157_C0DE_2026` to actual production seed **`1013904223`** in [`Zobrist.cs`](../src/Checkers.Core/Engine/Zobrist.cs#L14).
    - Verified coordinate conversions $(Row, Col) \leftrightarrow \text{sq } 0..63 \leftrightarrow \text{Draughts } 1\dots 32$ and dark-square parity $(Row + Col) \bmod 2 = 1$.
-3. **Chapter 03 ([`03-rules-and-move-generation.md`](../docs/brain/03-rules-and-move-generation.md)):**
+3. **Chapter 03 ([`03-rules-and-move-generation.md`](../docs/03-rules-and-move-generation.md)):**
    - Verified the mathematical proof and recursive termination condition of the **Mandatory Continuation Requirement** ($L^*$) in International Flying Kings against `CanKingCaptureFrom` recursion.
    - Verified Free Choice among multiple capture lines and immediate turn-ending crown-rank promotions.
-4. **Chapter 04 ([`04-game-record.md`](../docs/brain/04-game-record.md)):**
+4. **Chapter 04 ([`04-game-record.md`](../docs/04-game-record.md)):**
    - Corrected prose claiming `BitMove` is a `readonly record struct` (it is a **`public readonly struct BitMove`**).
    - Verified `Move` record snippet line-by-line against [`Move.cs`](../src/Checkers.Core/Models/Move.cs).
    - Verified PDN 3.0 serialization, tag-pairs, and 40-move / threefold repetition terminal conditions.
 
 ### Phase 3: Positional Static Evaluation, PSTs & Classical Patterns (Chapter 05)
-1. **Chapter 05 ([`05-evaluation.md`](../docs/brain/05-evaluation.md)):**
+1. **Chapter 05 ([`05-evaluation.md`](../docs/05-evaluation.md)):**
    - Verified 1:1 $2\times$ centipawn scaling of Collin Kees's [`board_eval.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/board_eval.c) for English Checkers: `Man = 100 cp`, `King = 140 cp`, PST bitmasks (`WhiteManPst1/2/3Mask`, `BlackManPst1/2/3Mask`, `EnglishKingPst4/5Mask`), late advancement `totalPieces <= 12`, runaway promotion cones (`ConeWhite/ConeBlack`), tail pins (`+10 cp`), single-corner king trap (`-40 cp`), non-linear simplification curve (`calculatePieceBonus`), and 5 structural formations (`Right Lock +40`, `Bridge +30`, `Triangle +20`, `Oreo +20`, `Dog +10`).
    - Verified International Flying Kings adaptation: `King = 300 cp`, continuous advancement, main long-diagonal PST (`+12 cp`), inner ring mask (`+6 cp`), short-corner penalty (`-20 cp`), and material-gated trade bonus ($\ge 80\text{ cp}$).
    - Reconciled empirical 100-game self-play Elo numbers with JSON match logs: **`+143.1 ± 42.9 Elo`** (English) and **`+45.4 ± 37.8 Elo`** (International).
@@ -70,21 +70,21 @@ flowchart TD
    - Corrected stale comment on line 72 from `(+8 cp)` to `(+6 cp)` to match active code `* 6` and documentation.
 
 ### Phase 4: Move Ordering, Negamax Search & In-Search Repetition (Chapters 06, 07)
-1. **Chapter 06 ([`06-move-ordering.md`](../docs/brain/06-move-ordering.md)):**
+1. **Chapter 06 ([`06-move-ordering.md`](../docs/06-move-ordering.md)):**
    - **Eliminated Fictitious Code Branch:** Removed the non-existent `if (moves[0].IsCapture)` branch in the `OrderBitMoves` snippet (lines 112–130) and aligned the code verbatim with production single-pass inline scoring:
      ```csharp
      scores[i] = 1_000_000 + (m.CaptureCount * 10_000) + (m.IsPromotion ? 1_000 : 0);
      ```
    - Clarified that `OrderCaptureMoves` is a private helper dedicated exclusively to `Quiescence`.
    - Updated root PV move promotion snippet and replaced all references to `NegamaxBitboard` with `NegaMax`.
-2. **Chapter 07 ([`07-search.md`](../docs/brain/07-search.md)):**
+2. **Chapter 07 ([`07-search.md`](../docs/07-search.md)):**
    - Systematically replaced all occurrences of `NegamaxBitboard` with active C# method `NegaMax` in text and Mermaid diagrams.
    - Reconciled Negamax recurrence and verified Stage A Exact Search: PVS null-window bounds $[-\alpha - 1, -\alpha]$ and `DrawTable` pre-TT repetition check (`ply > 0`).
    - Verified Stage B Selective Pruning: Reverse Futility Pruning ($M=40$), Futility Pruning ($M=60$), and Two-Stage Verified LMR ($R = 1 + \mathbb{I}[i \ge 8]$, verified at full depth $d - 1$ on null window).
    - Verified Quiescence stand-pat and $O(1)$ hardware `HasAnyCapture` shortcut.
 
 ### Phase 5: Transposition Table, Time Control & Opening Book (Chapters 08, 09, 10)
-1. **Chapter 08 ([`08-transposition-table.md`](../docs/brain/08-transposition-table.md)):**
+1. **Chapter 08 ([`08-transposition-table.md`](../docs/08-transposition-table.md)):**
    - **Corrected Bounds Table:** Corrected bound flag values from ancestral C preprocessor macros in [`hash_table.c`](https://github.com/Stermere/Checkers-Engine/blob/main/src/engine/hash_table.c#L12-L14) (`#define PV_NODE 1`, `LOWER_BOUND 2`, `UPPER_BOUND 3`) to active C# enum [`TranspositionBound`](../src/Checkers.Core/AI/TranspositionTable.cs#L13-L23) (`Exact = 0, LowerBound = 1, UpperBound = 2`). Added an alert note documenting the lineage transition.
    - **Corrected Flags Bitmask:** Corrected bitfield description: bits 0–1 is `TranspositionBound` ($0..2$ via `BoundMask = 0x03`), bit 2 is `OccupiedBit = 0x04` (`IsOccupied`), bit 3 is `HasMoveBit = 0x08` (`HasMove`), and bit 4 is `HasStaticEvalBit = 0x10` (`HasStaticEval`).
    - **Corrected Struct Padding:** Corrected padding fields from `_pad0, _pad1` to `_pad1, _pad2, _pad3` (`3 × byte`).
@@ -103,11 +103,11 @@ flowchart TD
      }
      ```
    - Reconciled same-key depth protection from obsolete `depth >= existing.Depth - 2` to active code `depth >= existing.Depth` (or `existing.Age != _age`).
-2. **Chapter 09 ([`09-time-control.md`](../docs/brain/09-time-control.md)):**
+2. **Chapter 09 ([`09-time-control.md`](../docs/09-time-control.md)):**
    - Replaced `NegamaxBitboard` with `NegaMax` on line 11.
    - Verified soft budget ($2/3$) and dynamic piece-count formula ($\hat{M} = \text{clamp}(P, 2, 25)$ with $10\text{ ms}$ floor) against [`MinimaxPlayer.cs`](../src/Checkers.Core/AI/MinimaxPlayer.cs#L217-L230).
    - Verified the polling interval `(NodesEvaluated & 4095) == 0`, dominant-move cutoff ($d \ge 8$, lead $\ge 150\text{ cp}$ for 2 consecutive plies), and partial-iteration root move adoption (`LastSearchAdoptedPartialIteration`).
-3. **Chapter 10 ([`10-opening-book.md`](../docs/brain/10-opening-book.md)):**
+3. **Chapter 10 ([`10-opening-book.md`](../docs/10-opening-book.md)):**
    - Verified the 3 stages of innovation (Stage 1 Top-Down Width-3 to `lv 8`, Stage 2 Full-Width `lv 0..3`, Stage 3 Drop-Out Expansion to `lv 12`).
    - Verified depth-tapered drop-out margins $\delta(\text{ply})$ in [`BookBuilder.GetDefaultDropOutDelta`](../src/Checkers.Core/AI/Book/BookBuilder.cs#L116):
      $$\delta(\text{ply}) = \begin{cases} 15\text{ cp} & \text{if } \text{ply} \le 5 \\ 10\text{ cp} & \text{if } \text{ply} \le 9 \\ 6\text{ cp} & \text{if } \text{ply} \ge 10 \end{cases}$$
@@ -115,7 +115,7 @@ flowchart TD
    - Verified Collin Kees lineage for `BookRandomMarginCp` (`10 cp`) from `ACCEPTABLE_EVAL_LOSS = 10` in `opening_book.c`.
 
 ### Phase 6: Bitboards & Chronological Milestones (Chapters 11, 12)
-1. **Chapter 11 ([`11-bitboards.md`](../docs/brain/11-bitboards.md)):**
+1. **Chapter 11 ([`11-bitboards.md`](../docs/11-bitboards.md)):**
    - Corrected `BitMove` classification on line 11 from `readonly record struct` to active production [`public readonly struct BitMove`](../src/Checkers.Core/Bitboards/BitMove.cs#L11).
    - Updated the `HasAnyLegalMove` snippet (lines 77–82) from pseudocode (`upMovers & NotColA`) to active C# in [`BitboardMoveGenerator.cs`](../src/Checkers.Core/Bitboards/BitboardMoveGenerator.cs#L30-L35):
      ```csharp
@@ -128,17 +128,17 @@ flowchart TD
      ```
    - Fully qualified all column masks with `BitboardMasks.` across the precomputed masks table, shift descriptions, LaTeX jump capture formulas ($J_{\text{UL}}, J_{\text{UR}}, J_{\text{DL}}, J_{\text{DR}}$), and Men move generation.
    - Replaced all occurrences of `NegamaxBitboard` with `NegaMax` in prose and Mermaid diagrams.
-2. **Chapter 12 ([`12-engine-improvements.md`](../docs/brain/12-engine-improvements.md)):**
+2. **Chapter 12 ([`12-engine-improvements.md`](../docs/12-engine-improvements.md)):**
    - Verified all 9 chronological development milestones (Bitboards, TT Scaling, Speed Micro-opts, 4-Way Buckets, Stage A Exact, Stage B Selective, Root Search, Eval Overhaul, 12-Ply Opening Book) against active code, JSON benchmark result logs, and test suites.
    - Refined linter pattern to exclude markdown table cell delimiters (`|`), eliminating false-positive boundary matches.
    - Reconciled benchmark CLI switches in [`Program.cs`](../tools/Checkers.Benchmark/Program.cs).
 
 ### Phase 7: Application Layer, GUI Architecture & Blueprint (Chapters 13, 14 & GUI Spec)
-1. **Chapter 13 ([`13-app-integration.md`](../docs/brain/13-app-integration.md)):**
+1. **Chapter 13 ([`13-app-integration.md`](../docs/13-app-integration.md)):**
    - Updated the sequence diagram on line 105 from `NegamaxBitboard search (d plies)` to `NegaMax search (d plies)`.
    - Verified Clean MVVM boundaries (`Checkers.App`), desktop WPF background worker execution (`Task.Run` + `Progress<SearchAnalysis>`), and Blazor WebAssembly single-threaded cooperative yielding (`await Task.Delay(1, cancellationToken)` + `BrowserSynchronizationContext` + `Analysis.Updated`).
    - Verified dynamic documentation hosting in Blazor WebAssembly (`BrainDocs.cs` + Markdig + KaTeX + Mermaid.js).
-2. **Chapter 14 ([`14-gui-and-settings.md`](../docs/brain/14-gui-and-settings.md)):**
+2. **Chapter 14 ([`14-gui-and-settings.md`](../docs/14-gui-and-settings.md)):**
    - Normalized file line endings to clean standard LF, eliminating legacy `\r\r\n` line-break anomalies.
    - Corrected the dynamic time-per-game formula on line 188:
      $$T_{\text{move}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{remaining}}}{\text{clamp}(P, 2, 25)} \right\rfloor\right), \qquad T_{\text{soft}} = \left\lfloor \frac{2}{3}\, T_{\text{move}} \right\rfloor$$
@@ -149,11 +149,11 @@ flowchart TD
    - Verified that the universal 2-player turn-based board game specification aligns 100% with the active Checkers implementation contracts, component boundaries, and tokens.
 
 ### Phase 8: Glossary, Academic References & Index (Chapters 15, 16 & README)
-1. **Chapter 15 ([`15-glossary.md`](../docs/brain/15-glossary.md)):**
+1. **Chapter 15 ([`15-glossary.md`](../docs/15-glossary.md)):**
    - Verified and refined technical definitions: updated Pinned Object Heap (POH) entry to reflect zero-overhead non-relocated address access for `Sse.Prefetch0`; updated anchor links for Drop-Out Expansion (DOE) and Multi-PV Search to match Chapter 10 section headers.
-2. **Chapter 16 ([`16-references.md`](../docs/brain/16-references.md)):**
+2. **Chapter 16 ([`16-references.md`](../docs/16-references.md)):**
    - Verified comprehensive citations and source repository attributions for Collin Kees (`Checkers-Engine`), Martin Fierz (`Cake 1.89g`), Fabien Letouzey (`Scan 3.1`), Thomas R. Lincke (DOE), Arthur Samuel, Claude Shannon, Donald Knuth, Albert Zobrist, Slate & Atkin, Marsland & Reinefeld, Jonathan Schaeffer, WCDF, and FMJD.
-3. **README ([`README.md`](../docs/brain/README.md)):**
+3. **README ([`README.md`](../docs/README.md)):**
    - Verified the master chapter index, reading paths, and the "brain on one page" flowchart.
 
 ### Phase 9: Solution-Wide Verification & In-App Synchronization
@@ -168,22 +168,22 @@ flowchart TD
 
 | # | Discrepancy Category | File & Location | Severity | Original Text in Docs | Corrected Production Reality | Resolution Impact |
 |:---:|---|---|:---:|---|---|---|
-| 1 | `OUTDATED_TEST_COUNT` | [`01-overview.md`](../docs/brain/01-overview.md#L18) | Warning | `123 unit tests` (Core) / `40 unit tests` (App) | **`124 Core` / `70 App`** (194 passing) | Accuracy in test verification metrics. |
-| 2 | `ZOBRIST_VANITY_SEED` | [`02-board-and-coordinates.md`](../docs/brain/02-board-and-coordinates.md#L62) | Warning | Seed `0x5A0B_7157_C0DE_2026` | Actual PRNG seed **`1013904223`** | Deterministic Zobrist hash fidelity. |
-| 3 | `BITMOVE_RECORD_STRUCT` | [`04-game-record.md`](../docs/brain/04-game-record.md#L34), [`11-bitboards.md`](../docs/brain/11-bitboards.md#L11) | Warning | `readonly record struct` | **`public readonly struct BitMove`** | Exact C# struct categorization. |
+| 1 | `OUTDATED_TEST_COUNT` | [`01-overview.md`](../docs/01-overview.md#L18) | Warning | `123 unit tests` (Core) / `40 unit tests` (App) | **`124 Core` / `70 App`** (194 passing) | Accuracy in test verification metrics. |
+| 2 | `ZOBRIST_VANITY_SEED` | [`02-board-and-coordinates.md`](../docs/02-board-and-coordinates.md#L62) | Warning | Seed `0x5A0B_7157_C0DE_2026` | Actual PRNG seed **`1013904223`** | Deterministic Zobrist hash fidelity. |
+| 3 | `BITMOVE_RECORD_STRUCT` | [`04-game-record.md`](../docs/04-game-record.md#L34), [`11-bitboards.md`](../docs/11-bitboards.md#L11) | Warning | `readonly record struct` | **`public readonly struct BitMove`** | Exact C# struct categorization. |
 | 4 | `EVAL_STALE_COMMENT` | [`src/.../EvaluationFunction.cs`](../src/Checkers.Core/AI/EvaluationFunction.cs#L72) | Warning | Code comment `(+8 cp)` | Fixed comment to **`(+6 cp)`** matching `* 6` code | Code-to-doc static eval alignment. |
-| 5 | `ORDERING_FICTITIOUS_CAPTURE_BRANCH` | [`06-move-ordering.md`](../docs/brain/06-move-ordering.md#L112-L130) | **Error** | Fictitious `if (moves[0].IsCapture)` branch with manual shifts | Removed branch; aligned with single-pass `scores[i]` inline calculation | Eliminated non-existent algorithmic branch. |
+| 5 | `ORDERING_FICTITIOUS_CAPTURE_BRANCH` | [`06-move-ordering.md`](../docs/06-move-ordering.md#L112-L130) | **Error** | Fictitious `if (moves[0].IsCapture)` branch with manual shifts | Removed branch; aligned with single-pass `scores[i]` inline calculation | Eliminated non-existent algorithmic branch. |
 | 6 | `METHOD_NAME_NEGAMAX` | Chapters 06, 07, 08, 09, 11, 13 | **Error** | References `NegamaxBitboard` (7 occurrences) | Updated all occurrences to **`NegaMax`** | Method identifier unified with `MinimaxPlayer.cs`. |
-| 7 | `TT_BOUND_FLAG_C_MACROS` | [`08-transposition-table.md`](../docs/brain/08-transposition-table.md#L56-L58) | **Error** | Ancestral C `#define` numbering: `Exact (1), LowerBound (2), UpperBound (3)` | Active 0-indexed C# enum: **`Exact = 0, LowerBound = 1, UpperBound = 2`** | Eliminated ancestral C macro copy drift. |
-| 8 | `TT_FLAG_BIT_EVAL_MISMATCH` | [`08-transposition-table.md`](../docs/brain/08-transposition-table.md#L38) | **Error** | Bit 2 (`0x04`) is `HasStaticEval` | Bit 2 is **`OccupiedBit = 0x04`**, Bit 3 is **`HasMoveBit = 0x08`**, Bit 4 is **`HasStaticEvalBit = 0x10`** | Exact bitmask specification fidelity. |
-| 9 | `TT_GHOST_POINTER` | [`08-transposition-table.md`](../docs/brain/08-transposition-table.md#L104-L116) | **Error** | Arithmetic on nonexistent `TranspositionEntry* _entriesPtr` | Aligned with **`ref MemoryMarshal.GetArrayDataReference(_entries)`** with `unsafe` | Verbatim fidelity to production prefetch method. |
-| 10 | `TT_DEPTH_PROTECTION_DRIFT` | [`08-transposition-table.md`](../docs/brain/08-transposition-table.md#L88) | Warning | Same-key store requires `depth >= existing.Depth - 2` | Active code requires **`depth >= existing.Depth`** (or `existing.Age != _age`) | Cache replacement logic fidelity. |
-| 11 | `BITBOARD_UPMOVERS_PSEUDOCODE` | [`11-bitboards.md`](../docs/brain/11-bitboards.md#L78-L79) | Warning | Pseudocode `upMovers & NotColA` | Production C#: **`ownMen & BitboardMasks.NotColA`** | Verbatim C# source snippet. |
-| 12 | `BITBOARD_BARE_MASKS` | [`11-bitboards.md`](../docs/brain/11-bitboards.md) | Warning | Unqualified constants `NotColA`, `NotColH`, `NotColAB`, `NotColGH` | Fully qualified: **`BitboardMasks.NotCol*`** | Compilation symbol correctness. |
-| 13 | `TIME_CONTROL_FORMULA_DRIFT` | [`14-gui-and-settings.md`](../docs/brain/14-gui-and-settings.md#L188) | Warning | $T_{\text{move}} = \frac{T_{\text{rem}}}{\max(6, 12 + \text{Pieces})}$ | **$T_{\text{move}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{rem}}}{\text{clamp}(P, 2, 25)} \right\rfloor\right)$** | Mathematical accuracy in clock management. |
-| 14 | `FILE_LINE_ENDING_ANOMALY` | [`14-gui-and-settings.md`](../docs/brain/14-gui-and-settings.md) | Warning | Legacy `\r\r\n` line endings | Normalized to standard **`\n` (LF)** | Clean tool and Git interoperability. |
-| 15 | `EXTERNAL_URLS_IN_DOCS` | [`14-gui-and-settings.md`](../docs/brain/14-gui-and-settings.md#L268-L276) | Warning | GitHub web URLs (`https://github.com/cjp-dev/...`) | Relative markdown links (**`../../src/...`**) | Local offline reader navigation. |
-| 16 | `GLOSSARY_ANCHORS` | [`15-glossary.md`](../docs/brain/15-glossary.md#L25,L42,L46) | Warning | Outdated anchor `#stage-3-depth-first...`; pointer arithmetic text | Updated anchors to match Chapter 10; refined POH description | Broken cross-link prevention. |
+| 7 | `TT_BOUND_FLAG_C_MACROS` | [`08-transposition-table.md`](../docs/08-transposition-table.md#L56-L58) | **Error** | Ancestral C `#define` numbering: `Exact (1), LowerBound (2), UpperBound (3)` | Active 0-indexed C# enum: **`Exact = 0, LowerBound = 1, UpperBound = 2`** | Eliminated ancestral C macro copy drift. |
+| 8 | `TT_FLAG_BIT_EVAL_MISMATCH` | [`08-transposition-table.md`](../docs/08-transposition-table.md#L38) | **Error** | Bit 2 (`0x04`) is `HasStaticEval` | Bit 2 is **`OccupiedBit = 0x04`**, Bit 3 is **`HasMoveBit = 0x08`**, Bit 4 is **`HasStaticEvalBit = 0x10`** | Exact bitmask specification fidelity. |
+| 9 | `TT_GHOST_POINTER` | [`08-transposition-table.md`](../docs/08-transposition-table.md#L104-L116) | **Error** | Arithmetic on nonexistent `TranspositionEntry* _entriesPtr` | Aligned with **`ref MemoryMarshal.GetArrayDataReference(_entries)`** with `unsafe` | Verbatim fidelity to production prefetch method. |
+| 10 | `TT_DEPTH_PROTECTION_DRIFT` | [`08-transposition-table.md`](../docs/08-transposition-table.md#L88) | Warning | Same-key store requires `depth >= existing.Depth - 2` | Active code requires **`depth >= existing.Depth`** (or `existing.Age != _age`) | Cache replacement logic fidelity. |
+| 11 | `BITBOARD_UPMOVERS_PSEUDOCODE` | [`11-bitboards.md`](../docs/11-bitboards.md#L78-L79) | Warning | Pseudocode `upMovers & NotColA` | Production C#: **`ownMen & BitboardMasks.NotColA`** | Verbatim C# source snippet. |
+| 12 | `BITBOARD_BARE_MASKS` | [`11-bitboards.md`](../docs/11-bitboards.md) | Warning | Unqualified constants `NotColA`, `NotColH`, `NotColAB`, `NotColGH` | Fully qualified: **`BitboardMasks.NotCol*`** | Compilation symbol correctness. |
+| 13 | `TIME_CONTROL_FORMULA_DRIFT` | [`14-gui-and-settings.md`](../docs/14-gui-and-settings.md#L188) | Warning | $T_{\text{move}} = \frac{T_{\text{rem}}}{\max(6, 12 + \text{Pieces})}$ | **$T_{\text{move}} = \max\!\left(10\text{ ms},\; \left\lfloor \frac{T_{\text{rem}}}{\text{clamp}(P, 2, 25)} \right\rfloor\right)$** | Mathematical accuracy in clock management. |
+| 14 | `FILE_LINE_ENDING_ANOMALY` | [`14-gui-and-settings.md`](../docs/14-gui-and-settings.md) | Warning | Legacy `\r\r\n` line endings | Normalized to standard **`\n` (LF)** | Clean tool and Git interoperability. |
+| 15 | `EXTERNAL_URLS_IN_DOCS` | [`14-gui-and-settings.md`](../docs/14-gui-and-settings.md#L268-L276) | Warning | GitHub web URLs (`https://github.com/cjp-dev/...`) | Relative markdown links (**`../../src/...`**) | Local offline reader navigation. |
+| 16 | `GLOSSARY_ANCHORS` | [`15-glossary.md`](../docs/15-glossary.md#L25,L42,L46) | Warning | Outdated anchor `#stage-3-depth-first...`; pointer arithmetic text | Updated anchors to match Chapter 10; refined POH description | Broken cross-link prevention. |
 
 ---
 
@@ -241,7 +241,7 @@ Time Elapsed 00:00:02.60
 
 ## 5. Certification & Archival
 
-The Checkers .NET technical documentation in [`docs/brain/`](../docs/brain/) and universal blueprint [`docs/general-game-gui-specification.md`](../docs/general-game-gui-specification.md) are certified to have achieved **100% mathematical, algorithmic, syntactic, and structural fidelity** to the active .NET 10 production codebase and its documented historical lineage.
+The Checkers .NET technical documentation in [`docs/`](../docs/) and universal blueprint [`docs/general-game-gui-specification.md`](../docs/general-game-gui-specification.md) are certified to have achieved **100% mathematical, algorithmic, syntactic, and structural fidelity** to the active .NET 10 production codebase and its documented historical lineage.
 
 Both this summary report and the comprehensive execution plan are permanently archived in the [`Plans/`](.) directory:
 1. **The Plan:** [`Plans/checkers-exhaustive-docs-and-code-audit-plan.md`](checkers-exhaustive-docs-and-code-audit-plan.md)

@@ -13,7 +13,7 @@ Date: 2026-10-27. Branch `feature/lazy-smp`. Spec: `Checkers Lazy SMP.md` (in th
 | 5 | **Tooling.** `signature` (fixed-depth node counts of 160 searches, save/compare), `smp-bench` (time to depth per thread count), `smp-match` (N threads against M threads, same build). The match runner takes two player factories; `eval-match` is unchanged. | `tools/Checkers.Benchmark/SmpCommands.cs`, `EvaluationMatchRunner.cs` |
 | 6 | **Settings.** `GameSettings.ThreadCount` (0 = Auto), saved in settings and the game record. WPF slider (Auto = min(16, cores), up to all cores); web drop-down (Auto = min(hardwareConcurrency, 4), up to 8; disabled when the threaded engine isn't running). | `Checkers.App`, `Checkers.Wpf`, `Checkers.Web` |
 | 7 | **Threaded web engine.** New `Checkers.Web.Engine` project (`WasmEnableThreads`, AOT in CI) served from `/engine/_framework/`, booted on the Window by `engine-client.js` with 16 pthreads; async `[JSExport]`s, queued progress, direct token cancellation. Falls back to the existing single-threaded worker. `coi-serviceworker.js`, `.mjs` MIME type and `/engine/*` fallback exclusion; the deploy workflow publishes and copies the engine. | `src/Checkers.Web.Engine/*`, `src/Checkers.Web/wwwroot/*`, `.github/workflows/azure-static-web-apps.yml` |
-| 8 | **Docs.** Chapters 07 (Lazy SMP section), 08 (lock-free layout, diagram), 12 (Milestone 10, commands), 13 and 14. | `docs/brain/*` |
+| 8 | **Docs.** Chapters 07 (Lazy SMP section), 08 (lock-free layout, diagram), 12 (Milestone 10, commands), 13 and 14. | `docs/*` |
 
 ## Gates
 

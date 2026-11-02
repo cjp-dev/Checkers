@@ -18,7 +18,7 @@ builder.Services.AddSingleton<BrowserDialogService>();
 builder.Services.AddSingleton<IDialogService>(services => services.GetRequiredService<BrowserDialogService>());
 builder.Services.AddSingleton<IGameFileService, BrowserGameFileService>();
 builder.Services.AddSingleton<ISoundService, BrowserSoundService>();
-builder.Services.AddBrainDocs("The Checkers brain", "Checkers", "https://github.com/cjp-dev/Checkers/blob/main/docs/brain/");
+builder.Services.AddBrainDocs("The Checkers brain", "Checkers", "https://github.com/cjp-dev/Checkers/blob/main/docs/");
 builder.Services.AddSingleton<AppearanceStore>();
 builder.Services.AddSingleton<ISettingsStore, LocalStorageSettingsStore>();
 builder.Services.AddSingleton<WebEngineHost>();

@@ -13,7 +13,7 @@ The project follows **Clean Architecture** to ensure complete decoupling between
   - Computer Settings modal dialog and time controls matching Stello and Connect-4 (`Fixed depth`, `Time per move`, `Time per game`).
 - **Web Client:** Blazor WebAssembly application (`Checkers.Web`) with Ahead-Of-Time (AOT) compilation, sharing the exact same core engine and app layer.
 - **Deployment:** Automated CI/CD deploying the Blazor WebAssembly static files to **Azure Static Web Apps** via GitHub Actions, following the deployment method in `C:\Udvikling\Spil\Stello\.github\workflows\azure-static-web-apps.yml`.
-- **Documentation:** Comprehensive architectural and engine documentation in `docs/brain/`, following the numbered chapter format and technical depth of `C:\Udvikling\Spil\Connect-4\docs\brain` and `C:\Udvikling\Spil\Stello\docs\brain`. The documentation is served directly inside the web client via Markdig markdown rendering.
+- **Documentation:** Comprehensive architectural and engine documentation in `docs/`, following the numbered chapter format and technical depth of `C:\Udvikling\Spil\Connect-4\docs` and `C:\Udvikling\Spil\Stello\docs`. The documentation is served directly inside the web client via Markdig markdown rendering.
 
 Design and user interface inspiration for desktop and web clients is drawn from the existing game projects in `C:\Udvikling\Spil\Stello` and `C:\Udvikling\Spil\Connect-4`.
 
@@ -158,7 +158,7 @@ Checkers/
 ### 3.4 `Checkers.Web` (Blazor WebAssembly)
 * High-performance browser client using Blazor WebAssembly targeting .NET 10 with Ahead-Of-Time (AOT) compilation enabled for Release builds (`<RunAOTCompilation>true</RunAOTCompilation>`).
 * Responsive board design inspired by Stello and Connect-4.
-* Integrated `/docs` route rendering `docs/brain` markdown chapters using Markdig.
+* Integrated `/docs` route rendering `docs` markdown chapters using Markdig.
 * Targets Azure Static Web Apps with automated GitHub Actions deployment.
 
 ---
@@ -235,8 +235,8 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
        - **Node Reduction:** `95,898,151` baseline nodes $\rightarrow$ `11,117,122` Default TT nodes (**88.4% reduction**) / `11,076,738` Max TT nodes (**88.45% reduction**, saving **40,384 additional nodes** over $1\text{M}$ TT — $662\times$ larger node savings than at 7–9 plies).
        - **Speedup:** `154,278 ms` (`154.3s`) baseline time $\rightarrow$ `18,900 ms` (`18.9s`) Default TT time (**8.16x overall speedup**, peak **32.53x speedup** and **97.1% reduction** on Position 3).
        - **Collision Reduction ($1\text{M}$ vs $16\text{M}$):** `142,781` collisions at $1,048,576$ entries $\rightarrow$ `9,165` collisions at $16,777,216$ entries (**93.6% collision reduction**, eliminating `133,616` collisions).
-  5. **Documentation in `docs/brain`:**
-     * The full methodology, position dataset, comparative tables for both Standard and Deep benchmarks, and CPU L3 cache vs capacity analysis are published in `docs/brain/08-transposition-table.md`.
+  5. **Documentation in `docs`:**
+     * The full methodology, position dataset, comparative tables for both Standard and Deep benchmarks, and CPU L3 cache vs capacity analysis are published in `docs/08-transposition-table.md`.
 
 ### 4.4 64-Bit Bitboard Engine (`Checkers.Core.Bitboards`) & Comparative Benchmarks
 * **64-Bit Bitboard Representation (`BitPosition`, `BoardState` & `BitMove`):**
@@ -253,7 +253,7 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
   * **Deep Search (7–14 Plies, ~5s/pos baseline, ~95M nodes, 100% Node Equivalence):**
     - **International Draughts:** **50.43x speedup** without TT (`148,822 ms` $\rightarrow$ `2,951 ms`, **32.47M nodes/s**) and **25.13x speedup** with 1M TT (`17,941 ms` $\rightarrow$ `714 ms`, **208.43x combined speedup**).
     - **English Checkers:** **53.78x speedup** without TT (`142,038 ms` $\rightarrow$ `2,641 ms`, **35.63M nodes/s**) and **25.61x speedup** with 1M TT (`16,342 ms` $\rightarrow$ `638 ms`, **222.63x combined speedup**).
-  * Documented in `docs/brain/10-bitboards.md`.
+  * Documented in `docs/10-bitboards.md`.
 
 ### 4.5 Future Engine Optimizations
 * **Endgame Tablebases:** Solved endgame databases / heuristics for small-piece positions.
@@ -266,11 +266,11 @@ To accelerate search depth and eliminate duplicate subtree evaluations across br
 | Phase | Milestone | Deliverables | Status |
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Core Domain & Rules Engine** | • Board representation & coordinates<br>• Move generator (regular, jumps, multi-jump chains)<br>• Flying King logic & mandatory jump enforcement<br>• Terminal condition detection (win/loss/draw)<br>• 100% test coverage on move edge cases (39 tests) | **COMPLETED** |
-| **Phase 1.5** | **Engine Documentation (`docs/brain`)** | • Create `docs/brain/` structure matching Stello & Connect-4<br>• `README.md` (The Checkers brain on one page)<br>• `01-overview.md` (Architecture, life of a move)<br>• `02-board-and-coordinates.md` (Coordinates, 1..32 notation, Zobrist)<br>• `03-rules-and-move-generation.md` (Rules, flying kings, captures)<br>• `04-game-record.md` (GameSession, history, draw rules) | **COMPLETED** |
+| **Phase 1.5** | **Engine Documentation (`docs`)** | • Create `docs/` structure matching Stello & Connect-4<br>• `README.md` (The Checkers brain on one page)<br>• `01-overview.md` (Architecture, life of a move)<br>• `02-board-and-coordinates.md` (Coordinates, 1..32 notation, Zobrist)<br>• `03-rules-and-move-generation.md` (Rules, flying kings, captures)<br>• `04-game-record.md` (GameSession, history, draw rules) | **COMPLETED** |
 | **Phase 2** | **Shared App Layer & WPF Desktop GUI** | • `Checkers.App` shared ViewModels & game coordinator<br>• `Checkers.Wpf` desktop application<br>• Responsive 8x8 checkerboard with piece rendering<br>• Click-to-move, drag-and-drop & visual move indicator highlights<br>• Flying King capture path preview & target crosshairs<br>• Turn management, Undo/Redo, and sound effects | **COMPLETED** |
 | **Phase 3** | **AI Opponent, Analysis & Game Records** | • `IPlayer` abstraction & `MinimaxPlayer` with heuristics<br>• Non-blocking asynchronous AI turns with cancellation<br>• Real-time **Analysis Pane** (Move, Depth, Score, Best Move, Nodes, Time) matching Stello<br>• Full **Save & Load** system (PDN-compatible format and tags)<br>• Document chapters `05-evaluation.md`, `06-move-ordering.md`, `07-search.md` | **COMPLETED** |
 | **Phase 4** | **Computer Settings, Time Controls & Engine Polish** | • **Computer Settings Dialog** matching Stello & Connect-4 (Fixed depth, Time per move, Time per game, Transposition Table size $1\text{M}$–$16\text{M}$ entries)<br>• **Chess clock / time management** with iterative deepening & clock countdown/refund on undo<br>• **Transposition table** (64-bit Zobrist hashing, 16-byte compact entry, replacement scheme)<br>• **40-position empirical benchmarks** (Standard: 70.5% reduction, 3.22x speedup; Deep: 88.4% reduction, 8.16x speedup, 40,384 extra nodes saved at 16M)<br>• **Quiescence search** & capture chain extension<br>• Document chapters `08-transposition-table.md`, `09-time-control.md` | **COMPLETED** |
-| **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs/brain` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | **COMPLETED** |
+| **Phase 5** | **Blazor WebAssembly Client & Deployment** | • `Checkers.Web` project with .NET 10 WebAssembly AOT<br>• Responsive Web board UI inspired by Stello and Connect-4<br>• Integrated `/docs` viewer rendering `docs` using Markdig<br>• CI/CD pipeline: `.github/workflows/azure-static-web-apps.yml`<br>• Automated deployment to Azure Static Web Apps | **COMPLETED** |
 | **Phase 6** | **Multi-Variant Support (English Checkers & International Flying Kings)** | • `CheckersVariant` domain enum (`International`, `English`)<br>• 1-step King move generation & 4-direction single-hop multi-jumps in `RuleEngine`<br>• Variant-aware `EvaluationFunction` (King values 300 vs 170, King centralization)<br>• Radio button variant selection in desktop `SettingsWindow.xaml` & web `DialogHost.razor`<br>• PDN `[Variant ...]` tag serialization & deserialization<br>• Full unit test coverage for English Checkers rules & moves | **COMPLETED** |
 | **Phase 7** | **64-Bit Bitboard Engine & Comparative Benchmarks** | • `BitPosition` (`4 × ulong`), `BitMove` (`16B`), and `BitboardMasks`<br>• `BoardState`, `RuleEngine`, `EvaluationFunction`, and `MinimaxPlayer` unified onto 64-bit bitboards<br>• `BitboardMoveGenerator` (shift/mask + `LeadingZeroCount`/`TrailingZeroCount` ray scans)<br>• 100% node-for-node equivalence verified across 40 positions in both variants (50x–65x No-TT speedup, 24x–25.6x TT speedup)<br>• Document chapter `10-bitboards.md` | **COMPLETED** |
 

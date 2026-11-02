@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DOCS_DIR = path.resolve('docs/brain');
+const DOCS_DIR = path.resolve('docs');
 const GUI_SPEC_FILE = path.resolve('docs/general-game-gui-specification.md');
 const REPORT_FILE = path.resolve('scratch/checkers-audit-report.md');
 const INVENTORY_FILE = path.resolve('scratch/checkers-snippet-inventory.json');
@@ -209,7 +209,7 @@ fs.writeFileSync(INVENTORY_FILE, JSON.stringify({
 let mdReport = `# Checkers Documentation & Code Snippet Audit Report (Phase 1 Baseline)
 
 Generated: ${new Date().toISOString()}  
-Target: **${mdFiles.length} files** (${mdFiles.length - 1} chapters in \`docs/brain/\` + \`docs/general-game-gui-specification.md\`)  
+Target: **${mdFiles.length} files** (${mdFiles.length - 1} chapters in \`docs/\` + \`docs/general-game-gui-specification.md\`)  
 Total Fenced Code Blocks: **${allBlocks.length}**  
 Detected Discrepancies: **${allDiscrepancies.length}** (${allDiscrepancies.filter(d => d.severity === 'ERROR').length} Errors, ${allDiscrepancies.filter(d => d.severity === 'WARNING').length} Warnings)
 

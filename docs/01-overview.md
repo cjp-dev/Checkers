@@ -4,7 +4,7 @@
 
 ## In short
 
-The solution [Checkers.slnx](../../Checkers.slnx) is built with **Clean Architecture** so that the core game rules, bitboard state representation, move generation, and AI search engine are 100% independent of any visual presentation framework.
+The solution [Checkers.slnx](../Checkers.slnx) is built with **Clean Architecture** so that the core game rules, bitboard state representation, move generation, and AI search engine are 100% independent of any visual presentation framework.
 
 The domain library `Checkers.Core` has zero UI dependencies, produces deterministic state transitions, and targets **.NET 10**. Two presentation clients (`Checkers.Wpf` for Windows desktop and `Checkers.Web` for Blazor WebAssembly) consume the shared application layer `Checkers.App`, which coordinates the game loop, asynchronous AI dispatching, chess clocks, and MVVM view models.
 
