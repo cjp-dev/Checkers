@@ -25,7 +25,7 @@ flowchart LR
     S1 --> S2 --> S3
 ```
 
-### Stage 1 — Top-Down Multi-PV (k = 3) Book to `lv 8` (`GenerateTopDown`)
+### Stage 1 — Top-Down Multi-PV ($k = 3$) Book to `lv 8` (`GenerateTopDown`)
 * **Goal & Motivation:** A naive full-width Checkers tree to 8 plies contains over `200,000` positions, most of which arise from weak or losing moves. The first stage (`BookBuilder.GenerateTopDown`) aimed to build a compact book containing **only relevant candidate moves** — the **top 3 moves per position** ($k = 3$) — evaluated with a 60-second Single-Search Multi-PV search, merged into a `ZobristHash` Directed Acyclic Graph (DAG), and backed up bottom-up via Negamax (`BookBuilder.BackUp`).
 * **Result:** Produced a verified 8-ply (`lv 0..8`) baseline book of **`2,100` unique positions** for English Checkers (`1h 57m`) and **`2,228` unique positions** for International Checkers (`2h 04m`).
 * **Limitation Discovered:** In the very first plies of Checkers (`lv 0..3`), there are **more than 3 good, nearly equal moves per position**. At `lv 0`, there are `7` legal starting moves (`22-18`, `22-17`, `24-19`, `23-19`, `21-17`, `23-18`, `24-20`), `6` of which are famous named openings within `10 cp` of each other. Storing only `3` moves at `lv 0..3` meant the AI never played classic openings like *Old Faithful* (`23-19`), *Double Corner* (`24-19`), or *Cross* (`23-18`), and if a human opponent played one of those on move 1 or 2, the AI was immediately out of book.
